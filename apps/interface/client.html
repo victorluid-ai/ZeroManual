@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="paper">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZeroManual · Portal de cliente</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='none' stroke='%230e1116' stroke-width='2'/><circle cx='16' cy='16' r='8' fill='%234f46e5'/></svg>" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f6f7f9; --bg-2: #eff1f4; --bg-3: #e9edf3; --line: #e6e9ee;
+      --fg: #0e1116; --fg-2: #3a4150; --fg-3: #6b7280;
+      --accent: #4f46e5; --accent-h: #4338ca; --accent-soft: #eef0fe;
+      --ok: #047857; --warn: #b7791f; --err: #e5484d;
+      --r: 14px; --r-sm: 10px;
+      --shadow: 0 1px 2px rgba(14,17,22,0.04), 0 8px 24px rgba(14,17,22,0.06);
+      --font: 'IBM Plex Sans', system-ui, sans-serif;
+      --display: 'Space Grotesk', system-ui, sans-serif;
+    }
+    .login-brand-name, .topbar-brand-name, .login-title, .card-title, .auto-name, .google-box-title { font-family: var(--display); }
+    .login-title { font-size: 22px; letter-spacing: -.01em; }
+    .auto-card { border-radius: var(--r-sm); }
+    .btn { font-weight: 600; }
+    html, body { height: 100%; }
+    body { font-family: var(--font); background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.5; }
+    #login-overlay {
+      position: fixed; inset: 0; background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100; transition: opacity .2s;
+    }
+    #login-overlay.hidden { opacity: 0; pointer-events: none; }
+    .login-card {
+      background: #fff; border: 1px solid var(--line); border-radius: var(--r);
+      box-shadow: var(--shadow); padding: 40px 36px; width: 340px;
+    }
+    .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+    .login-brand-mark {
+      width: 28px; height: 28px; border: 1.5px solid var(--fg); border-radius: 50%;
+      position: relative; display: inline-block; flex-shrink: 0;
+    }
+    .login-brand-mark::after {
+      content: ""; position: absolute; inset: 5px;
+      background: var(--accent); border-radius: 50%; animation: pulse 2.4s ease-in-out infinite;
+    }
+    .login-brand-name { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+    .login-brand-name span { font-weight: 300; }
+    .login-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+    .login-sub { color: var(--fg-3); margin-bottom: 24px; font-size: 13px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--fg-2); margin-bottom: 5px; }
+    .form-group input {
+      width: 100%; padding: 9px 11px; background: var(--bg); border: 1px solid var(--line);
+      border-radius: var(--r-sm); font: inherit; font-size: 14px; color: var(--fg);
+      outline: none; transition: border-color .15s;
+    }
+    .form-group input:focus { border-color: var(--accent); }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px;
+      border-radius: var(--r-sm); border: 1px solid transparent; font: inherit;
+      font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none;
+      transition: background .15s, border-color .15s, color .15s; white-space: nowrap;
+    }
+    .btn.primary { background: var(--accent); color: #fff; }
+    .btn.primary:hover { background: var(--accent-h); }
+    .btn.ghost { background: transparent; border-color: var(--line); color: var(--fg-2); }
+    .btn.ghost:hover { background: var(--bg-2); }
+    .btn.danger { background: transparent; border-color: var(--err); color: var(--err); }
+    .btn.danger:hover { background: var(--err); color: #fff; }
+    .btn.sm { padding: 5px 10px; font-size: 12px; }
+    .btn.full { width: 100%; justify-content: center; margin-top: 8px; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .error-msg { color: var(--err); font-size: 12px; margin-top: 8px; min-height: 16px; }
+    #app { display: flex; flex-direction: column; height: 100%; }
+    .topbar {
+      background: #fff; border-bottom: 1px solid var(--line);
+      display: flex; align-items: center; padding: 0 20px; height: 52px; gap: 16px; flex-shrink: 0;
+    }
+    .topbar-brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); }
+    .topbar-brand-mark {
+      width: 22px; height: 22px; border: 1.5px solid var(--fg); border-radius: 50%;
+      position: relative; display: inline-block; flex-shrink: 0;
+    }
+    .topbar-brand-mark::after {
+      content: ""; position: absolute; inset: 4px;
+      background: var(--accent); border-radius: 50%; animation: pulse 2.4s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.55); opacity: 0.7; } }
+    .topbar-brand-name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .topbar-brand-name span { font-weight: 300; }
+    .topbar-divider { width: 1px; height: 18px; background: var(--line); }
+    .topbar-sub { font-size: 12px; color: var(--fg-3); }
+    .topbar-spacer { flex: 1; }
+    .topbar-user { font-size: 12px; color: var(--fg-3); }
+    .topbar-user strong { color: var(--fg-2); }
+    .tabs { display: flex; padding: 0 20px; background: #fff; border-bottom: 1px solid var(--line); gap: 2px; flex-shrink: 0; }
+    .tab {
+      padding: 11px 14px; font-size: 13px; font-weight: 500; color: var(--fg-3);
+      border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s; font-family: inherit;
+    }
+    .tab:hover { color: var(--fg); }
+    .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
+    .content { flex: 1; overflow-y: auto; padding: 24px 20px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 20px; margin-bottom: 16px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .card-title { font-size: 13px; font-weight: 600; }
+    .card-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
+    .auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .auto-card {
+      background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
+      padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: border-color .15s;
+    }
+    .auto-card:hover { border-color: var(--accent); }
+    .auto-card-body { flex: 1; }
+    .auto-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
+    .auto-desc { font-size: 12px; color: var(--fg-3); line-height: 1.4; }
+    .auto-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .auto-status { font-size: 11px; font-weight: 500; }
+    .auto-status.on { color: var(--ok); }
+    .auto-status.off { color: var(--fg-3); }
+    .auto-warn {
+      font-size: 11px; color: #8a6516; background: #faf0da;
+      border-radius: var(--r-sm); padding: 6px 10px;
+    }
+    .auto-warn a { color: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
+    .google-box {
+      border: 1px solid var(--line); border-radius: var(--r); padding: 24px;
+      background: var(--bg); display: flex; flex-direction: column; gap: 16px; max-width: 480px;
+    }
+    .google-box-head { display: flex; align-items: center; gap: 10px; }
+    .google-box-icon { width: 32px; height: 32px; flex-shrink: 0; }
+    .google-box-title { font-size: 15px; font-weight: 600; }
+    .google-box-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
+    .google-box-body { font-size: 13px; color: var(--fg-2); line-height: 1.6; }
+    .google-box-meta { font-size: 12px; color: var(--fg-3); }
+    .badge { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 11px; font-weight: 500; line-height: 1.5; }
+    .badge.ok { background: #e3f3eb; color: #1f6e49; }
+    .badge.neu { background: var(--bg-2); color: var(--fg-3); }
+    .empty { text-align: center; padding: 48px 16px; color: var(--fg-3); font-size: 13px; }
+    .loading { text-align: center; padding: 32px; color: var(--fg-3); font-size: 13px; }
+    #toast {
+      position: fixed; bottom: 24px; right: 24px; background: var(--fg); color: var(--bg);
+      border-radius: var(--r-sm); padding: 10px 16px; font-size: 13px; font-weight: 500;
+      transform: translateY(16px); opacity: 0; transition: transform .2s, opacity .2s;
+      pointer-events: none; z-index: 200;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.ok { background: var(--ok); }
+    #toast.err { background: var(--err); }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<!-- Login -->
+<div id="login-overlay">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-brand-mark"></div>
+      <div class="login-brand-name">Zero<span>Manual</span></div>
+    </div>
+    <!-- Login view -->
+    <div id="view-login">
+      <div class="login-title">Portal de cliente</div>
+      <div class="login-sub">Accede a tu panel de automatizaciones.</div>
+      <div class="form-group">
+        <label for="inp-email">Email</label>
+        <input id="inp-email" type="email" autocomplete="email" placeholder="tu@empresa.com" />
+      </div>
+      <div class="form-group">
+        <label for="inp-password">Contraseña</label>
+        <input id="inp-password" type="password" autocomplete="current-password" placeholder="••••••••" />
+      </div>
+      <div class="error-msg" id="login-error"></div>
+      <button class="btn primary full" id="btn-login">Entrar →</button>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
+        ¿Primera vez? <button onclick="showRegister()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Crear cuenta</button>
+      </div>
+    </div>
+    <!-- Register view -->
+    <div id="view-register" style="display:none">
+      <div class="login-title">Crear cuenta</div>
+      <div class="login-sub">Empieza a automatizar tu negocio.</div>
+      <div class="form-group">
+        <label for="reg-name">Nombre del negocio</label>
+        <input id="reg-name" type="text" placeholder="Panadería La Lupita" />
+      </div>
+      <div class="form-group">
+        <label for="reg-email">Email</label>
+        <input id="reg-email" type="email" autocomplete="email" placeholder="tu@empresa.com" />
+      </div>
+      <div class="form-group">
+        <label for="reg-password">Contraseña</label>
+        <input id="reg-password" type="password" placeholder="Mínimo 8 caracteres" />
+      </div>
+      <div class="error-msg" id="register-error"></div>
+      <button class="btn primary full" id="btn-register">Crear cuenta →</button>
+      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
+        ¿Ya tienes cuenta? <button onclick="showLogin()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Entrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app">
+  <div class="topbar">
+    <a class="topbar-brand" href="/">
+      <div class="topbar-brand-mark"></div>
+      <div class="topbar-brand-name">Zero<span>Manual</span></div>
+    </a>
+    <div class="topbar-divider"></div>
+    <div class="topbar-sub">Portal de cliente</div>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-user" id="lbl-business"></div>
+    <button class="btn ghost sm" id="btn-logout">Salir</button>
+  </div>
+  <div class="tabs">
+    <button class="tab on" data-tab="automations">Mis automatizaciones</button>
+    <button class="tab" data-tab="google">Conectar Google</button>
+  </div>
+  <div class="content" id="content"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  const TOKEN_KEY = 'mz_client_token';
+  const CART_HANDOFF_KEY = 'zm_pending_activations';
+  let token = localStorage.getItem(TOKEN_KEY) || null;
+  let currentClient = null, activeTab = 'automations';
+
+  const AUTOMATION_LABELS = {
+    google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
+    gmb_posts:      { name: 'Publicar en Google Business',   desc: 'Publica actualizaciones regulares en tu ficha de Google Business.' },
+    instagram_posts:{ name: 'Publicar en Instagram',         desc: 'Programa y publica contenido en Instagram de forma automática.' },
+    newsletter:     { name: 'Newsletter a clientes',         desc: 'Envía un email semanal a tu lista de clientes.' },
+    dms:            { name: 'Responder DMs y comentarios',   desc: 'Contesta mensajes directos y comentarios automáticamente.' },
+  };
+
+  const $ = id => document.getElementById(id);
+  let toastTimer = null;
+
+  function toast(msg, kind = '') {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'show' + (kind ? ' ' + kind : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = ''; }, 2800);
+  }
+
+  function escHtml(s) {
+    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function authHeaders() {
+    return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+  }
+
+  async function api(method, path, body) {
+    const opts = { method, headers: authHeaders() };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const r = await fetch(path, opts);
+    if (r.status === 401) { doLogout(); return null; }
+    if (!r.ok) {
+      const t = await r.text();
+      let detail = t;
+      try { detail = JSON.parse(t).detail || t; } catch {}
+      throw new Error(detail);
+    }
+    return r.json();
+  }
+
+  function dateStr(iso) {
+    if (!iso) return '—';
+    return new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  }
+
+  async function tryLogin() {
+    const email = $('inp-email').value.trim(), password = $('inp-password').value;
+    $('login-error').textContent = '';
+    if (!email || !password) { $('login-error').textContent = 'Completa email y contraseña.'; return; }
+    const btn = $('btn-login');
+    btn.disabled = true; btn.textContent = 'Entrando…';
+    try {
+      const r = await fetch('/client/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || 'Error de autenticación');
+      token = data.token;
+      currentClient = data.client || data.user;
+      localStorage.setItem(TOKEN_KEY, token);
+      showApp();
+    } catch (e) {
+      $('login-error').textContent = e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Entrar →';
+    }
+  }
+
+  async function doLogout() {
+    if (token) {
+      try { await fetch('/client/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch {}
+    }
+    token = null; currentClient = null;
+    localStorage.removeItem(TOKEN_KEY);
+    window.location.href = '/';
+  }
+
+  async function tryRestoreSession() {
+    if (!token) return false;
+    try {
+      const r = await fetch('/client/me', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!r.ok) { token = null; localStorage.removeItem(TOKEN_KEY); return false; }
+      const data = await r.json();
+      currentClient = data.client || data.user;
+      return true;
+    } catch { return false; }
+  }
+
+  async function applyPendingActivations() {
+    let pending;
+    try { pending = JSON.parse(localStorage.getItem(CART_HANDOFF_KEY) || '[]'); } catch { pending = []; }
+    if (!Array.isArray(pending) || !pending.length) return;
+    localStorage.removeItem(CART_HANDOFF_KEY);
+    let activated = 0;
+    for (const type of pending) {
+      try { await api('POST', `/client/automations/${encodeURIComponent(type)}/activate`); activated++; }
+      catch {}
+    }
+    if (activated) toast(`${activated} automatización(es) activada(s)`, 'ok');
+  }
+
+  async function showApp() {
+    $('login-overlay').classList.add('hidden');
+    const name = currentClient ? (currentClient.business_name || currentClient.name || currentClient.email || '—') : '—';
+    $('lbl-business').innerHTML = `<strong>${escHtml(name)}</strong>`;
+    await applyPendingActivations();
+    loadTab(activeTab);
+  }
+
+  function loadTab(name) {
+    activeTab = name;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
+    const c = $('content');
+    c.innerHTML = '<div class="loading">Cargando…</div>';
+    if (name === 'automations') tabAutomations(c);
+    else if (name === 'google') tabGoogle(c);
+  }
+
+  async function tabAutomations(c) {
+    try {
+      const data = await api('GET', '/client/automations');
+      if (!data) return;
+      const available = data.available || [];
+      const active = data.active || [];
+      if (!available.length) {
+        c.innerHTML = '<div class="card"><div class="empty">Las automatizaciones estarán disponibles próximamente.</div></div>';
+        return;
+      }
+      c.innerHTML = `<div class="card">
+        <div class="card-head"><div>
+          <div class="card-title">Mis automatizaciones</div>
+          <div class="card-sub">${available.length} disponible(s)</div>
+        </div></div>
+        <div class="auto-grid" id="auto-grid"></div>
+      </div>`;
+      const grid = $('auto-grid');
+      available.forEach(type => {
+        const rec = active.find(a => a.automation_type === type && a.status === 'active');
+        const isOn = !!rec;
+        const lbl = AUTOMATION_LABELS[type] || { name: type, desc: '' };
+        const div = document.createElement('div');
+        div.className = 'auto-card';
+        div.dataset.type = type;
+        div.innerHTML = `
+          <div class="auto-card-body">
+            <div class="auto-name">${escHtml(lbl.name)}</div>
+            <div class="auto-desc">${escHtml(lbl.desc)}</div>
+          </div>
+          <div class="auto-footer">
+            <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? '● Activo' : '○ Inactivo'}</span>
+            <button class="btn sm ${isOn ? 'ghost' : 'primary'}" data-type="${escHtml(type)}" data-on="${isOn}">
+              ${isOn ? 'Desactivar' : 'Activar'}
+            </button>
+          </div>`;
+        div.querySelector('button').addEventListener('click', handleAutoBtn);
+        grid.appendChild(div);
+      });
+    } catch (e) {
+      c.innerHTML = `<div class="card"><div class="empty">Error cargando datos. Recarga la página.</div></div>`;
+    }
+  }
+
+  async function handleAutoBtn(e) {
+    const btn = e.currentTarget;
+    const type = btn.dataset.type;
+    const isOn = btn.dataset.on === 'true';
+    btn.disabled = true;
+    try {
+      if (isOn) {
+        await api('DELETE', `/client/automations/${encodeURIComponent(type)}`);
+        toast('Automatización desactivada');
+      } else {
+        await api('POST', `/client/automations/${encodeURIComponent(type)}/activate`);
+        toast('Automatización activada', 'ok');
+      }
+      loadTab('automations');
+    } catch (e) {
+      if (e.message && e.message.toLowerCase().includes('google')) {
+        const card = btn.closest('.auto-card');
+        const warn = document.createElement('div');
+        warn.className = 'auto-warn';
+        warn.innerHTML = `Conecta primero tu cuenta de Google. <a class="goto-google">Ir a Conectar Google →</a>`;
+        warn.querySelector('.goto-google').addEventListener('click', () => loadTab('google'));
+        card.appendChild(warn);
+      } else {
+        toast(e.message, 'err');
+      }
+      btn.disabled = false;
+    }
+  }
+
+  const GSVG = `<svg class="google-box-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M21.8 12.2c0-.7-.1-1.4-.2-2H12v3.8h5.5a4.7 4.7 0 0 1-2 3.1v2.6h3.3c1.9-1.8 3-4.4 3-7.5z" fill="#4285F4"/>
+    <path d="M12 22c2.7 0 5-.9 6.7-2.4l-3.3-2.6c-.9.6-2.1 1-3.4 1-2.6 0-4.8-1.8-5.6-4.1H3v2.6A10 10 0 0 0 12 22z" fill="#34A853"/>
+    <path d="M6.4 13.9A6 6 0 0 1 6.1 12c0-.7.1-1.3.3-1.9V7.5H3A10 10 0 0 0 2 12c0 1.6.4 3.1 1 4.5l3.4-2.6z" fill="#FBBC05"/>
+    <path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 12 2 10 10 0 0 0 3 7.5l3.4 2.6C7.2 7.7 9.4 5.9 12 5.9z" fill="#EA4335"/>
+  </svg>`;
+
+  async function connectGoogle() {
+    try {
+      const r = await api('GET', '/client/google/connect');
+      if (r && r.redirect_url) window.location.href = r.redirect_url;
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function tabGoogle(c) {
+    try {
+      const data = await api('GET', '/client/google/status');
+      if (!data) return;
+      if (data.connected) {
+        c.innerHTML = `<div class="card">
+          <div class="card-head">
+            <div><div class="card-title">Google Business Profile</div><div class="card-sub">Cuenta vinculada</div></div>
+            <span class="badge ok">Conectado</span>
+          </div>
+          <div class="google-box">
+            <div class="google-box-head">${GSVG}<div>
+              <div class="google-box-title">✓ Google Business conectado</div>
+              <div class="google-box-sub">Listo para automatizar</div>
+            </div></div>
+            <div class="google-box-meta">
+              Cuenta: <strong>${escHtml(data.google_email || '—')}</strong><br/>
+              Conectado el: ${dateStr(data.connected_at)}
+            </div>
+          </div>
+        </div>`;
+      } else {
+        c.innerHTML = `<div class="card">
+          <div class="card-head">
+            <div><div class="card-title">Google Business Profile</div><div class="card-sub">Sin cuenta vinculada</div></div>
+            <span class="badge neu">No conectado</span>
+          </div>
+          <div class="google-box">
+            <div class="google-box-head">${GSVG}<div>
+              <div class="google-box-title">Conecta tu cuenta de Google</div>
+              <div class="google-box-sub">Necesario para reseñas, publicaciones y más</div>
+            </div></div>
+            <div class="google-box-body">
+              Conecta tu cuenta de Google para que ZeroManual pueda responder reseñas y
+              publicar en tu nombre.<br/><br/>
+              No necesitas crear nada en Google Console. Solo haz clic y autoriza.
+            </div>
+            <div><button class="btn primary" id="btn-connect-google">Conectar Google Business →</button></div>
+          </div>
+        </div>`;
+        $('btn-connect-google').addEventListener('click', connectGoogle);
+      }
+    } catch (e) {
+      c.innerHTML = `<div class="card"><div class="empty">Error cargando datos. Recarga la página.</div></div>`;
+    }
+  }
+
+  function showLogin() {
+    $('view-login').style.display = '';
+    $('view-register').style.display = 'none';
+    $('inp-email').focus();
+  }
+  function showRegister() {
+    $('view-login').style.display = 'none';
+    $('view-register').style.display = '';
+    $('reg-name').focus();
+  }
+
+  async function tryRegister() {
+    const name = $('reg-name').value.trim();
+    const email = $('reg-email').value.trim();
+    const password = $('reg-password').value;
+    $('register-error').textContent = '';
+    if (!name || !email || !password) { $('register-error').textContent = 'Completa todos los campos.'; return; }
+    if (password.length < 8) { $('register-error').textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
+    const btn = $('btn-register');
+    btn.disabled = true; btn.textContent = 'Creando cuenta…';
+    try {
+      const r = await fetch('/client/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password })
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.detail || 'Error al registrar');
+      token = data.token;
+      currentClient = data.client;
+      localStorage.setItem(TOKEN_KEY, token);
+      showApp();
+    } catch (e) {
+      $('register-error').textContent = e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Crear cuenta →';
+    }
+  }
+
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => loadTab(tab.dataset.tab));
+  });
+  $('btn-login').addEventListener('click', tryLogin);
+  $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
+  $('btn-register').addEventListener('click', tryRegister);
+  $('reg-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryRegister(); });
+  $('btn-logout').addEventListener('click', doLogout);
+
+  (async () => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === '1') toast('Google Business conectado correctamente', 'ok');
+    if (params.get('error') === 'oauth_failed') toast('Error al conectar Google. Inténtalo de nuevo.', 'err');
+
+    const ok = await tryRestoreSession();
+    if (ok) showApp();
+    else { $('login-overlay').classList.remove('hidden'); $('inp-email').focus(); }
+  })();
+})();
+</script>
+</body>
+</html>

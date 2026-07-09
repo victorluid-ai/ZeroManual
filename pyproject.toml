@@ -1,0 +1,36 @@
+[project]
+name = "zeromanual"
+version = "0.1.0"
+description = "ZeroManual — web comercial + empresa operada por agentes IA."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.7.0",
+  "python-dotenv>=1.0.1",
+  "anthropic>=0.40.0",
+  "fastapi>=0.115.0",
+  "uvicorn>=0.30.0",
+  "fpdf2>=2.8.0",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+  "apps",
+  "apps.orchestrator",
+  "apps.agents",
+  "apps.agents.tools",
+  "apps.interface",
+  "apps.triggers",
+  "apps.llm",
+  "apps.integrations",
+]

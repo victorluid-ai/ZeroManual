@@ -103,6 +103,19 @@ class ClientRegisterRequest(BaseModel):
     password: str
 
 
+class DraftPushRequest(BaseModel):
+    client_id: str
+    review_id: str | None = None
+    reviewer_name: str | None = None
+    rating: str | None = None
+    source_text: str | None = None
+    suggested_reply: str
+
+
+class DraftResolveRequest(BaseModel):
+    final_reply: str | None = None
+
+
 def get_client_user(authorization: str | None = Header(default=None)) -> dict:
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ")
@@ -110,6 +123,12 @@ def get_client_user(authorization: str | None = Header(default=None)) -> dict:
         if client is not None:
             return client
     raise HTTPException(status_code=401, detail="Autenticación requerida")
+
+
+def verify_webhook_secret(x_webhook_secret: str | None = Header(default=None)) -> None:
+    secret = runtime.settings.webhook_secret
+    if not secret or x_webhook_secret != secret:
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 
 
@@ -478,6 +497,7 @@ def activate_client_automation(
             client_name=client["name"],
             refresh_token=creds["refresh_token"],
             location_id=creds.get("location_id"),
+            automation_type=automation_type,
         )
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"Error al activar en n8n: {exc}")
@@ -497,6 +517,52 @@ def deactivate_client_automation(
             pass  # best-effort; n8n may be offline
     runtime.store.deactivate_automation(client["client_id"], automation_type)
     return {"status": "inactive"}
+
+
+@app.post("/internal/automations/{automation_type}/drafts")
+def push_automation_draft(
+    automation_type: str, body: DraftPushRequest, _: None = Depends(verify_webhook_secret)
+) -> dict:
+    draft = runtime.store.create_draft(
+        client_id=body.client_id,
+        automation_type=automation_type,
+        suggested_reply=body.suggested_reply,
+        review_id=body.review_id,
+        reviewer_name=body.reviewer_name,
+        rating=body.rating,
+        source_text=body.source_text,
+    )
+    return {"status": "ok", "draft": draft}
+
+
+@app.get("/client/automations/{automation_type}/drafts")
+def list_client_drafts(
+    automation_type: str, status: str | None = None, client: dict = Depends(get_client_user)
+) -> dict:
+    drafts = runtime.store.list_drafts(client["client_id"], automation_type, status)
+    return {"drafts": drafts}
+
+
+@app.post("/client/drafts/{draft_id}/approve")
+def approve_client_draft(
+    draft_id: str, body: DraftResolveRequest, client: dict = Depends(get_client_user)
+) -> dict:
+    draft = runtime.store.get_draft(draft_id)
+    if draft is None or draft["client_id"] != client["client_id"]:
+        raise HTTPException(status_code=404, detail="Borrador no encontrado")
+    final_reply = body.final_reply if body.final_reply is not None else draft["suggested_reply"]
+    status = "edited" if final_reply != draft["suggested_reply"] else "approved"
+    updated = runtime.store.resolve_draft(draft_id, status, final_reply)
+    return {"draft": updated}
+
+
+@app.post("/client/drafts/{draft_id}/reject")
+def reject_client_draft(draft_id: str, client: dict = Depends(get_client_user)) -> dict:
+    draft = runtime.store.get_draft(draft_id)
+    if draft is None or draft["client_id"] != client["client_id"]:
+        raise HTTPException(status_code=404, detail="Borrador no encontrado")
+    updated = runtime.store.resolve_draft(draft_id, "rejected", None)
+    return {"draft": updated}
 
 
 @app.post("/client/register")

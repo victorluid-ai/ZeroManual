@@ -198,6 +198,22 @@ class DataStore:
                     UNIQUE (client_id, automation_type),
                     FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
                 );
+
+                CREATE TABLE IF NOT EXISTS automation_drafts (
+                    draft_id         TEXT    PRIMARY KEY,
+                    client_id        TEXT    NOT NULL,
+                    automation_type  TEXT    NOT NULL,
+                    review_id        TEXT,
+                    reviewer_name    TEXT,
+                    rating           TEXT,
+                    source_text      TEXT,
+                    suggested_reply  TEXT    NOT NULL,
+                    final_reply      TEXT,
+                    status           TEXT    NOT NULL DEFAULT 'pending',
+                    created_at       TEXT    NOT NULL,
+                    updated_at       TEXT    NOT NULL,
+                    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
+                );
                 """
             )
             self._apply_migrations(conn)
@@ -264,6 +280,28 @@ class DataStore:
                 """
             )
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (2)")
+
+        if current < 3:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS automation_drafts (
+                    draft_id         TEXT    PRIMARY KEY,
+                    client_id        TEXT    NOT NULL,
+                    automation_type  TEXT    NOT NULL,
+                    review_id        TEXT,
+                    reviewer_name    TEXT,
+                    rating           TEXT,
+                    source_text      TEXT,
+                    suggested_reply  TEXT    NOT NULL,
+                    final_reply      TEXT,
+                    status           TEXT    NOT NULL DEFAULT 'pending',
+                    created_at       TEXT    NOT NULL,
+                    updated_at       TEXT    NOT NULL,
+                    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
+                );
+                """
+            )
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (3)")
 
     def save_pending_approval(
         self,
@@ -832,3 +870,61 @@ class DataStore:
                 (client_id,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    # ---- Automation Drafts (AI-suggested replies) ----
+
+    def create_draft(
+        self,
+        client_id: str,
+        automation_type: str,
+        suggested_reply: str,
+        review_id: str | None = None,
+        reviewer_name: str | None = None,
+        rating: str | None = None,
+        source_text: str | None = None,
+    ) -> dict[str, Any]:
+        draft_id = f"DRF-{secrets.token_hex(6).upper()}"
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO automation_drafts
+                   (draft_id, client_id, automation_type, review_id, reviewer_name, rating,
+                    source_text, suggested_reply, final_reply, status, created_at, updated_at)
+                   VALUES (?,?,?,?,?,?,?,?,NULL,'pending',?,?)""",
+                (
+                    draft_id, client_id, automation_type, review_id, reviewer_name, rating,
+                    source_text, suggested_reply, now, now,
+                ),
+            )
+        return self.get_draft(draft_id)  # type: ignore[return-value]
+
+    def get_draft(self, draft_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM automation_drafts WHERE draft_id = ?", (draft_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_drafts(
+        self, client_id: str, automation_type: str | None = None, status: str | None = None
+    ) -> list[dict[str, Any]]:
+        query = "SELECT * FROM automation_drafts WHERE client_id = ?"
+        params: list[Any] = [client_id]
+        if automation_type is not None:
+            query += " AND automation_type = ?"
+            params.append(automation_type)
+        if status is not None:
+            query += " AND status = ?"
+            params.append(status)
+        query += " ORDER BY created_at DESC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+
+    def resolve_draft(self, draft_id: str, status: str, final_reply: str | None) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE automation_drafts SET status = ?, final_reply = ?, updated_at = ? WHERE draft_id = ?",
+                (status, final_reply, _utc_now(), draft_id),
+            )
+        return self.get_draft(draft_id)

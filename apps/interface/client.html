@@ -222,6 +222,7 @@
   </div>
   <div class="tabs">
     <button class="tab on" data-tab="automations">Mis automatizaciones</button>
+    <button class="tab" data-tab="drafts">Reseñas pendientes</button>
     <button class="tab" data-tab="google">Conectar Google</button>
   </div>
   <div class="content" id="content"></div>
@@ -355,7 +356,72 @@
     const c = $('content');
     c.innerHTML = '<div class="loading">Cargando…</div>';
     if (name === 'automations') tabAutomations(c);
+    else if (name === 'drafts') tabDrafts(c);
     else if (name === 'google') tabGoogle(c);
+  }
+
+  async function tabDrafts(c) {
+    try {
+      const data = await api('GET', '/client/automations/google_reviews/drafts');
+      if (!data) return;
+      const drafts = data.drafts || [];
+      const pending = drafts.filter(d => d.status === 'pending');
+      if (!drafts.length) {
+        c.innerHTML = '<div class="card"><div class="empty">No hay borradores de respuestas todavía.</div></div>';
+        return;
+      }
+      c.innerHTML = `<div class="card">
+        <div class="card-head"><div>
+          <div class="card-title">Respuestas de reseñas pendientes de revisión</div>
+          <div class="card-sub">${pending.length} pendiente(s)</div>
+        </div></div>
+        <div id="drafts-list"></div>
+      </div>`;
+      const list = $('drafts-list');
+      if (!pending.length) {
+        list.innerHTML = '<div class="empty">No hay borradores pendientes.</div>';
+        return;
+      }
+      pending.forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'auto-card';
+        div.style.marginBottom = '12px';
+        div.innerHTML = `
+          <div class="auto-card-body">
+            <div class="auto-name">${escHtml(d.reviewer_name || 'Anónimo')}${d.rating ? ' · ' + escHtml(d.rating) : ''}</div>
+            <div class="auto-desc" style="margin-bottom:8px">${escHtml(d.source_text || '')}</div>
+            <textarea class="draft-text" style="width:100%;min-height:70px;padding:8px;border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:13px;color:var(--fg)">${escHtml(d.suggested_reply)}</textarea>
+          </div>
+          <div class="auto-footer">
+            <span class="auto-status off">○ Pendiente</span>
+            <div style="display:flex;gap:8px">
+              <button class="btn sm danger" data-action="reject">Rechazar</button>
+              <button class="btn sm primary" data-action="approve">Aprobar</button>
+            </div>
+          </div>`;
+        div.querySelector('[data-action="approve"]').addEventListener('click', () => resolveDraft(d.draft_id, 'approve', div));
+        div.querySelector('[data-action="reject"]').addEventListener('click', () => resolveDraft(d.draft_id, 'reject', div));
+        list.appendChild(div);
+      });
+    } catch (e) {
+      c.innerHTML = `<div class="card"><div class="empty">Error cargando borradores. Recarga la página.</div></div>`;
+    }
+  }
+
+  async function resolveDraft(draftId, action, cardEl) {
+    try {
+      if (action === 'approve') {
+        const text = cardEl.querySelector('.draft-text').value;
+        await api('POST', `/client/drafts/${encodeURIComponent(draftId)}/approve`, { final_reply: text });
+        toast('Respuesta aprobada', 'ok');
+      } else {
+        await api('POST', `/client/drafts/${encodeURIComponent(draftId)}/reject`);
+        toast('Respuesta rechazada');
+      }
+      loadTab('drafts');
+    } catch (e) {
+      toast(e.message, 'err');
+    }
   }
 
   async function tabAutomations(c) {

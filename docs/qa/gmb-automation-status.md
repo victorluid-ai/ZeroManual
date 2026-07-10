@@ -1,6 +1,129 @@
 # GMB automation build+test — status
 
-Status: IN_PROGRESS
+Status: DONE
+
+## Attempt 4 — 2026-07-10T11:46:00Z — SUCCESS, all criteria met
+
+### Summary
+
+A human widened this environment's egress allowlist to include
+`n8n.srv1255804.hstgr.cloud` (confirmed: direct `curl` to the real n8n API
+now returns `HTTP_STATUS:200` instead of the 403 CONNECT rejection from
+attempts 1-3). This unblocked the real end-to-end run. Two real bugs were
+found and fixed while running the *actual* activation flow against the
+*actual* n8n API for the first time (the local stand-in used in attempt 1
+didn't enforce n8n's real API schema, so these were invisible until now):
+
+1. **`POST /workflows` rejects unknown top-level fields.** The real n8n API
+   returns `400 "request/body must NOT have additional properties"` for any
+   field beyond `{name, nodes, connections, settings, staticData}`.
+   `duplicate_template` was deep-copying the *entire* `GET /workflows/{id}`
+   response (which includes `activeVersion`, `activeVersionId`,
+   `description`, `isArchived`, `meta`, `pinData`, `shared`, `tags`,
+   `triggerCount`, `versionCounter`, `versionId`, etc.) and only stripping
+   `id`/`createdAt`/`updatedAt`/`active`. Fixed in
+   `apps/integrations/n8n_client.py::duplicate_template` to build a minimal
+   dict with only the accepted fields.
+2. **`staticData` must be a top-level field, not nested inside `settings`.**
+   The old code did `wf["settings"]["staticData"] = {...}`. Verified via a
+   throwaway probe workflow that nesting it in `settings` either gets
+   silently dropped or is itself rejected (`400` when combined with other
+   settings keys) — the real API only persists `staticData` as its own
+   top-level key (confirmed by creating a probe workflow, fetching it back,
+   and seeing the round-tripped value, then deleting the probe). Fixed by
+   moving `staticData` to the top level of the workflow dict.
+3. **n8n rejects activating a second client's duplicate: "There is a
+   conflict with one of the webhooks."** The template's `Approval Webhook`
+   node has a hardcoded `path: "review-approval"` and a fixed `webhookId`.
+   n8n requires webhook paths to be unique across *active* workflows, so the
+   first client's duplicate activates fine but the second client's (using
+   the same hardcoded path) fails — this would have blocked ZeroManual from
+   ever running this automation for more than one client at a time in
+   production. Fixed by adding `N8nClient._uniquify_webhooks`, called from
+   `duplicate_template` for every `n8n-nodes-base.webhook` node: appends
+   `-{client_id.lower()}` to the path and assigns a fresh `uuid4()`
+   `webhookId`. Verified both clients' workflows activate simultaneously
+   with distinct paths (`review-approval-cli-13468fa8` /
+   `review-approval-cli-d697433c`).
+
+All 43 pre-existing tests still pass after both fixes
+(`python3 -m pytest tests/ -q`).
+
+### Success criteria — evidence
+
+1. **Test clients exist.** Registered via the real `POST /client/register`:
+   fixed test client `qa-hourly-test@zeromanual.test` → `CLI-13468FA8`, and a
+   freshly-created client `qa-fresh-signup-attempt4@zeromanual.test` →
+   `CLI-D697433C`. Mocked Google OAuth per the brief: called
+   `DataStore.save_google_creds` directly with fake `refresh_token` /
+   `location_id` for both (real OAuth consent flow intentionally not
+   attempted).
+2. **Real n8n workflow created + activated for both clients**, via the real
+   `apps.interface.api` process (`N8N_API_URL` pointed at
+   `https://n8n.srv1255804.hstgr.cloud/api/v1`, using the real
+   `N8N_API_KEY`) hitting `POST /client/automations/google_reviews/activate`,
+   which calls the real `N8nClient.duplicate_template` — not the n8n-mcp
+   connector standing in for it. Workflow ids: `Avi5ZzL2QbEpPI2T` (kept,
+   renamed `TEST-QA-google_reviews-qa-hourly-test`) and `bhrwWkU3qpynBOt2`
+   (fresh-signup client's, renamed `TEST-QA-google_reviews-fresh-signup`,
+   deleted during cleanup below). Confirmed via `n8n_get_workflow` (mode
+   `structure`) that `Generate AI Draft` fans out to both the original
+   `Build Approval Email` and the new `Push Draft to ZeroManual` node;
+   confirmed via direct `GET /workflows/{id}` that `staticData` (fake
+   refresh_token/location_id/client_name) and per-client webhook paths
+   round-tripped correctly on the real instance.
+3. **Simulated review draft → stored + visible in ZeroManual.** Since n8n
+   cannot reach back into this container (no public inbound URL — noted in
+   every prior attempt), the n8n→ZeroManual leg was simulated exactly as the
+   brief allows ("you can invoke ... with sample data"): POSTed two sample
+   Spanish-language reviews (5-star and 2-star) to
+   `POST /internal/automations/google_reviews/drafts` with the correct
+   `X-Webhook-Secret` header → both created and immediately visible via
+   `GET /client/automations/google_reviews/drafts?status=pending` for
+   `qa-hourly-test`. A request with the wrong secret got `401` as expected.
+4. **Edit/approve/reject from the client app works, storage reflects it.**
+   Approved draft 1 with an edited `final_reply` → `status: "edited"`,
+   `final_reply` stored distinct from `suggested_reply`. Rejected draft 2 →
+   `status: "rejected"`. Cross-tenant isolation confirmed: the fresh-signup
+   client's token got `404 "Borrador no encontrado"` trying to approve
+   `qa-hourly-test`'s draft. Pending list for `qa-hourly-test` correctly
+   dropped to empty afterward.
+5. **Cleanup done.** `n8n_list_workflows` before cleanup showed exactly two
+   `TEST-QA-` workflows (the two created this attempt) and nothing else with
+   that prefix — deleted the fresh-signup one (`bhrwWkU3qpynBOt2`), keeping
+   `Avi5ZzL2QbEpPI2T` (`TEST-QA-google_reviews-qa-hourly-test`) as the final
+   validated result. Template `oju0vufPh9qyRqQs` untouched throughout. No
+   other `TEST-QA-` workflows exist on the instance.
+
+### What was NOT touched
+
+- No real Google OAuth flow attempted (mocked per the brief's explicit
+  decision).
+- The n8n template workflow (`GMB Review Responder (Draft)`,
+  `oju0vufPh9qyRqQs`) and its `Generate AI Draft` node were not modified —
+  only per-client *duplicates* were created/modified, per the brief's
+  smallest-change instruction.
+- No non-`TEST-QA-` workflow on the real instance was read in depth,
+  modified, or deleted.
+- `runtime/zeromanual.db` and any real `.env` were not touched — this run
+  used a disposable scratch SQLite DB
+  (`/tmp/.../scratchpad/zeromanual_qa_attempt4.db`, already deleted) via
+  `ZEROMANUAL_DB_PATH`.
+
+### Secrets note
+
+No secret values were written to any committed file. `N8N_API_KEY` and the
+webhook secret used for this run were only ever exported as env vars for
+the duration of the local server process, never persisted to disk or
+printed into any committed artifact. The webhook secret value itself is not
+recorded here (only that one was generated and used consistently for both
+the push and the client-facing verification calls).
+
+### For any future attempt (should not be needed — Status: DONE)
+
+Per the brief's own protocol, this file now has `Status: DONE`. No further
+code changes, n8n changes, or pushes should happen on any subsequent firing
+of this routine — just confirm this status and exit.
 
 ## Attempt 3 — 2026-07-10T11:35:13Z
 

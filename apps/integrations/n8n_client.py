@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import os
+import uuid
 
 import httpx
 
@@ -61,21 +62,40 @@ class N8nClient:
     ) -> str:
         """Copy a template workflow, inject client credentials, activate it, and return the new workflow ID."""
         tpl = self.get_workflow(template_id)
-        wf = copy.deepcopy(tpl)
-        for key in ("id", "createdAt", "updatedAt", "active"):
-            wf.pop(key, None)
-        wf["name"] = f"{template_id}_{client_id}"
-        wf.setdefault("settings", {})["staticData"] = {
-            "refresh_token": refresh_token,
-            "location_id": location_id,
-            "client_name": client_name,
+        # The n8n create-workflow API rejects any body field it doesn't recognize
+        # (400 "must NOT have additional properties"), so only pass through the
+        # fields it actually accepts rather than the full GET /workflows/{id} shape.
+        wf = {
+            "name": f"{template_id}_{client_id}",
+            "nodes": copy.deepcopy(tpl.get("nodes", [])),
+            "connections": copy.deepcopy(tpl.get("connections", {})),
+            "settings": copy.deepcopy(tpl.get("settings", {})),
+            "staticData": {
+                "refresh_token": refresh_token,
+                "location_id": location_id,
+                "client_name": client_name,
+            },
         }
+        self._uniquify_webhooks(wf, client_id)
         if automation_type == "google_reviews":
             self._inject_draft_push_node(wf, client_id, automation_type)
         created = self.create_workflow(wf)
         wf_id = str(created["id"])
         self.activate_workflow(wf_id)
         return wf_id
+
+    def _uniquify_webhooks(self, wf: dict, client_id: str) -> None:
+        """n8n requires webhook paths/ids to be unique across active workflows. The template's
+        webhook node(s) use a fixed path, so activating a second client's duplicate conflicts
+        with the first ('There is a conflict with one of the webhooks.'). Give each client's
+        copy its own path and a fresh webhookId."""
+        for node in wf.get("nodes", []):
+            if node.get("type") != "n8n-nodes-base.webhook":
+                continue
+            params = node.setdefault("parameters", {})
+            base_path = params.get("path", "webhook")
+            params["path"] = f"{base_path}-{client_id.lower()}"
+            node["webhookId"] = str(uuid.uuid4())
 
     def _inject_draft_push_node(self, wf: dict, client_id: str, automation_type: str) -> None:
         """Add a node that POSTs the AI-generated draft to ZeroManual after 'Generate AI Draft',

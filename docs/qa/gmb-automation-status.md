@@ -2,6 +2,82 @@
 
 Status: IN_PROGRESS
 
+## Attempt 2 — 2026-07-10T11:04:19Z
+
+### Summary
+
+No code changes this attempt. Followed attempt 1's own "next steps" exactly:
+first checked whether the egress blocker to the real n8n instance was still
+present before touching anything else. It is — identical failure mode, same
+host, same 403. Per attempt 1's plan ("if not, re-record the same blocker...
+do not burn time re-building anything... stop for this attempt"), stopping
+here without rebuilding or re-testing the already-verified code path.
+
+### Blocker re-check (still present, identical to attempt 1)
+
+- `curl -sS -w "%{http_code}" -H "X-N8N-API-KEY: ..." "$N8N_API_URL/workflows?limit=1"`
+  from this session's container → `curl: (56) CONNECT tunnel failed, response 403`,
+  `HTTP_STATUS:000`. Same failure class as attempt 1 (proxy-level CONNECT
+  rejection, not an n8n-side error).
+- Confirmed via `$HTTPS_PROXY/__agentproxy/status` → `recentRelayFailures`:
+  `{"kind":"connect_rejected","detail":"gateway answered 403 to CONNECT
+  (policy denial or upstream failure)","host":"n8n.srv1255804.hstgr.cloud:443"}`,
+  timestamped this attempt. Identical to attempt 1's finding. This confirms
+  the sandbox's egress policy — not transient network flakiness — is what's
+  blocking `apps.integrations.n8n_client.N8nClient` (plain httpx from our own
+  code) from reaching the real n8n API.
+- Cross-checked the n8n-mcp connector (the pre-approved channel, separate from
+  this container's proxy) still works fine: `n8n_list_workflows` succeeded,
+  returned the same 22 workflows as before. Confirms the asymmetry noted in
+  attempt 1 still holds — MCP connector can reach the instance, our own
+  container's outbound HTTPS cannot.
+- Also confirms **zero `TEST-QA-` workflows exist on the real instance** right
+  now (same as attempt 1) — nothing to clean up, template `oju0vufPh9qyRqQs`
+  (`GMB Review Responder (Draft)`) unchanged (`updatedAt` moved to
+  `2026-07-09T11:15:15Z`, an n8n-side touch unrelated to us, not the template
+  content itself — not re-verified in depth since the brief says not to touch
+  it and attempt 1 already confirmed its shape).
+
+### No code changes, no n8n changes this attempt
+
+The build from attempt 1 (drafts table, webhook-authenticated endpoints,
+client-side node injection, "Reseñas pendientes" UI tab) is unchanged and
+still believed correct — it was fully exercised against a faithful local
+stand-in in attempt 1 and nothing in this attempt gives reason to revisit
+that design. Not re-running the full local-stand-in test suite this attempt
+since nothing changed that would affect its result and the brief says not to
+re-litigate finished work; `tests/` still passes as of attempt 1's commit
+(no source changes since).
+
+### Next steps for the next attempt (unchanged from attempt 1, still accurate)
+
+1. First, re-check the blocker the same way (30s): try the real
+   `N8N_API_URL/workflows` curl or check `$HTTPS_PROXY/__agentproxy/status`
+   `recentRelayFailures` for a fresh `n8n.srv1255804.hstgr.cloud` entry. If
+   still blocked, repeat this attempt's pattern: re-confirm, record, stop —
+   do not rebuild.
+2. If a human has widened this environment's egress allowlist to include
+   `n8n.srv1255804.hstgr.cloud`, proceed exactly per attempt 1's step 2: run
+   the real `apps.interface.api` locally with `N8N_API_URL` pointed at the
+   real instance, `N8N_TEMPLATE_IDS='{"google_reviews":"oju0vufPh9qyRqQs"}'`,
+   a `ZEROMANUAL_WEBHOOK_SECRET` of your choosing, `N8N_WEBHOOK_CRED_ID=lyTfr0t7gzqWdl1U`
+   (the durable httpHeaderAuth credential already created in n8n, still
+   present), reproduce the qa-hourly-test + fresh-signup-client activation
+   flow, immediately rename the resulting workflow to a `TEST-QA-` prefix,
+   verify via `n8n_get_workflow` that the draft-push node is wired correctly,
+   then re-verify criteria 3/4/5 against that real run and finish (delete
+   every stray `TEST-QA-` workflow except the kept one, set `Status: DONE`,
+   push, notify once).
+3. As before: n8n cannot reach back into this container (no public inbound
+   URL), so the n8n→ZeroManual leg of criterion 3 must still be simulated by
+   POSTing the sample payload directly to `/internal/.../drafts`, per the
+   brief's own wording ("you can invoke ... with sample data").
+4. If this blocker is still present at attempt 48, that is the
+   `BLOCKED_AFTER_48` reason — the code is done and locally verified; only
+   the live-network leg of criterion 2 (and by extension the real-instance
+   parts of 3/4/5) remains, and it depends entirely on an environment change
+   only a human can make.
+
 ## Attempt 1 — 2026-07-10T10:15:53Z
 
 ### What was built this attempt

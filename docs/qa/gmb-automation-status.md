@@ -2,6 +2,70 @@
 
 Status: IN_PROGRESS
 
+## Attempt 3 — 2026-07-10T11:35:13Z
+
+### Summary
+
+No code changes this attempt. Same pattern as attempt 2: re-checked whether
+the egress blocker to the real n8n instance was still present before
+touching anything else. It is — identical failure mode, same host, same 403.
+Stopping here without rebuilding or re-testing the already-verified code
+path, per attempt 1/2's own next-steps plan.
+
+### Blocker re-check (still present, identical to attempts 1 and 2)
+
+- `curl -sS -w "%{http_code}" -H "X-N8N-API-KEY: ..." "$N8N_API_URL/workflows?limit=1"`
+  from this session's container → `curl: (56) CONNECT tunnel failed, response 403`,
+  `HTTP_STATUS:000`.
+- `$HTTPS_PROXY/__agentproxy/status` → `recentRelayFailures`:
+  `{"kind":"connect_rejected","detail":"gateway answered 403 to CONNECT
+  (policy denial or upstream failure)","host":"n8n.srv1255804.hstgr.cloud:443"}`,
+  timestamped `2026-07-10T11:35:13.095Z` (this attempt). Same failure class,
+  proxy-level CONNECT rejection, not n8n-side.
+- Cross-checked the n8n-mcp connector still works: `n8n_list_workflows`
+  succeeded, returned the same 22 workflows as before (asymmetry between the
+  pre-approved MCP channel and this container's own outbound HTTPS still
+  holds).
+- Zero `TEST-QA-` workflows exist on the real instance — nothing to clean up.
+  Template `oju0vufPh9qyRqQs` (`GMB Review Responder (Draft)`) unchanged in
+  shape (not re-verified in depth, per brief's instruction not to touch it).
+
+### No code changes, no n8n changes this attempt
+
+The build from attempt 1 (drafts table, webhook-authenticated endpoints,
+client-side node injection, "Reseñas pendientes" UI tab) is unchanged and
+still believed correct. `tests/` still passes as of attempt 1's commit (no
+source changes since attempt 1).
+
+### Next steps for the next attempt (unchanged from attempts 1/2, still accurate)
+
+1. First, re-check the blocker the same way (30s): try the real
+   `N8N_API_URL/workflows` curl or check `$HTTPS_PROXY/__agentproxy/status`
+   `recentRelayFailures` for a fresh `n8n.srv1255804.hstgr.cloud` entry. If
+   still blocked, repeat this attempt's pattern: re-confirm, record, stop —
+   do not rebuild.
+2. If a human has widened this environment's egress allowlist to include
+   `n8n.srv1255804.hstgr.cloud`, proceed exactly per attempt 1's step 2: run
+   the real `apps.interface.api` locally with `N8N_API_URL` pointed at the
+   real instance, `N8N_TEMPLATE_IDS='{"google_reviews":"oju0vufPh9qyRqQs"}'`,
+   a `ZEROMANUAL_WEBHOOK_SECRET` of your choosing, `N8N_WEBHOOK_CRED_ID=lyTfr0t7gzqWdl1U`
+   (the durable httpHeaderAuth credential already created in n8n, still
+   present), reproduce the qa-hourly-test + fresh-signup-client activation
+   flow, immediately rename the resulting workflow to a `TEST-QA-` prefix,
+   verify via `n8n_get_workflow` that the draft-push node is wired correctly,
+   then re-verify criteria 3/4/5 against that real run and finish (delete
+   every stray `TEST-QA-` workflow except the kept one, set `Status: DONE`,
+   push, notify once).
+3. As before: n8n cannot reach back into this container (no public inbound
+   URL), so the n8n→ZeroManual leg of criterion 3 must still be simulated by
+   POSTing the sample payload directly to `/internal/.../drafts`, per the
+   brief's own wording ("you can invoke ... with sample data").
+4. If this blocker is still present at attempt 48, that is the
+   `BLOCKED_AFTER_48` reason — the code is done and locally verified; only
+   the live-network leg of criterion 2 (and by extension the real-instance
+   parts of 3/4/5) remains, and it depends entirely on an environment change
+   only a human can make. (Attempt count so far: 3/48.)
+
 ## Attempt 2 — 2026-07-10T11:04:19Z
 
 ### Summary

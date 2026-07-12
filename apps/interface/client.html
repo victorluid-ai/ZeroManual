@@ -608,7 +608,13 @@
 
   (async () => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('connected') === '1') toast('Google Business conectado correctamente', 'ok');
+    const activatedType = params.get('activated');
+    if (activatedType) {
+      const lbl = AUTOMATION_LABELS[activatedType] || { name: activatedType };
+      toast(`Automatización activada ✓ — ${lbl.name}`, 'ok');
+    } else if (params.get('connected') === '1') {
+      toast('Google Business conectado correctamente', 'ok');
+    }
     if (params.get('error') === 'oauth_failed') toast('Error al conectar Google. Inténtalo de nuevo.', 'err');
 
     const ok = await tryRestoreSession();

@@ -22,7 +22,7 @@ const T = {
     hero: { eyebrow: "AI automations for local business", h1: "Stop doing the busywork.", sub: "ZeroManual puts the repetitive jobs — replying to reviews, posting reels, sending newsletters — on autopilot. Pick an automation, subscribe, and it just runs.", browse: "Browse automations", how: "See how it works", t1: "Trusted by 2,400+ local businesses", t2: "180k tasks automated / month", t3: "Live in 5 minutes" },
     grid: { title: "Browse automations", sub: "Flat monthly price each. Subscribe in one click — no contracts, cancel anytime.", annual: "Billed annually · 2 months free", kicker: "Marketplace" },
     filters: { all: "All", reviews: "Reviews", social: "Social", email: "Email", messaging: "Messaging" },
-    card: { subscribe: "Subscribe", added: "Added", details: "View details →" },
+    card: { subscribe: "Subscribe", added: "Added", details: "View details →", active: "Active ✓", activating: "Activating…" },
     badge: { popular: "Most popular", new: "New" },
     how: { kicker: "How it works", title: "Live in three steps", sub: "No agencies, no setup projects. Connect your accounts and ZeroManual handles the rest.", s1t: "Pick your automations", s1b: "Choose from the menu above. Mix and match — every one is a flat monthly price.", s2t: "Connect your accounts", s2b: "Link Google, Instagram, or email in a couple of taps. We never post without your rules.", s3t: "It runs 24/7", s3b: "ZeroManual works around the clock and reports back. Adjust or cancel anytime." },
     band: { sub: "No contracts. No setup fees. Cancel anytime from your dashboard.", cta: "Start free →" },
@@ -59,13 +59,19 @@ const T = {
       error: "Incorrect username or password.", registerError: "Could not create account.", passMin: "Minimum 8 characters.",
       switchToRegister: "No account? Register", switchToLogin: "Already have an account? Sign in",
     },
+    subscribe: {
+      sub: "Create your account or sign in — it activates instantly, right after this.",
+      cta: "Subscribe & continue →", ctaLogin: "Sign in & continue →",
+      connecting: "Connecting Google…", activating: "Activating…",
+      error: "Couldn't complete the subscription. Try again.",
+    },
   },
   es: {
     nav: { automations: "Automatizaciones", how: "Cómo funciona", pricing: "Precios", reviews: "Opiniones", cart: "Carrito", account: "Área privada", getStarted: "Empezar" },
     hero: { eyebrow: "Automatizaciones con IA para negocios locales", h1: "Deja de hacer el trabajo repetitivo.", sub: "ZeroManual pone en piloto automático las tareas repetitivas — responder reseñas, publicar reels, enviar newsletters. Elige una automatización, suscríbete y funciona sola.", browse: "Ver automatizaciones", how: "Ver cómo funciona", t1: "Más de 2.400 negocios locales confían", t2: "180k tareas automatizadas / mes", t3: "Listo en 5 minutos" },
     grid: { title: "Explora las automatizaciones", sub: "Precio mensual fijo cada una. Suscríbete con un clic — sin contratos, cancela cuando quieras.", annual: "Facturación anual · 2 meses gratis", kicker: "Catálogo" },
     filters: { all: "Todas", reviews: "Reseñas", social: "Redes", email: "Correo", messaging: "Mensajes" },
-    card: { subscribe: "Suscribirse", added: "Añadido", details: "Ver detalles →" },
+    card: { subscribe: "Suscribirse", added: "Añadido", details: "Ver detalles →", active: "Activa ✓", activating: "Activando…" },
     badge: { popular: "Más popular", new: "Nuevo" },
     how: { kicker: "Cómo funciona", title: "Listo en tres pasos", sub: "Sin agencias ni proyectos de configuración. Conecta tus cuentas y ZeroManual hace el resto.", s1t: "Elige tus automatizaciones", s1b: "Elige del menú de arriba. Combínalas — todas con un precio mensual fijo.", s2t: "Conecta tus cuentas", s2b: "Vincula Google, Instagram o tu correo en un par de toques. Nunca publicamos sin tus reglas.", s3t: "Funciona 24/7", s3b: "ZeroManual trabaja sin parar y te informa. Ajusta o cancela cuando quieras." },
     band: { sub: "Sin contratos. Sin costes de instalación. Cancela cuando quieras desde tu panel.", cta: "Empezar gratis →" },
@@ -101,6 +107,12 @@ const T = {
       submit: "Entrar →", submitting: "Entrando…", registerSubmit: "Crear cuenta →", registering: "Creando…",
       error: "Usuario o contraseña incorrectos.", registerError: "No se pudo crear la cuenta.", passMin: "Mínimo 8 caracteres.",
       switchToRegister: "¿Sin cuenta? Regístrate", switchToLogin: "¿Ya tienes cuenta? Acceder",
+    },
+    subscribe: {
+      sub: "Crea tu cuenta o accede — se activa al instante, justo después de esto.",
+      cta: "Suscribirme y continuar →", ctaLogin: "Entrar y continuar →",
+      connecting: "Conectando Google…", activating: "Activando…",
+      error: "No se pudo completar la suscripción. Inténtalo de nuevo.",
     },
   },
 };
@@ -261,7 +273,136 @@ function LoginModal({ tt, onClose, initialMode = "login" }) {
   );
 }
 
-function ProductCard({ product, lang, t, inCart, annual, onToggleCart, onDetail }) {
+function SubscribeModal({ product, lang, t, onClose, onDone }) {
+  const [mode, setMode] = useState("register");
+  const [identifier, setIdentifier] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [phase, setPhase] = useState("form"); // form | connecting | activating
+  const tl = t.login;
+  const ts = t.subscribe;
+  const automationType = AUTOMATION_TYPE_MAP[product.id];
+  const loc = product[lang];
+  const busy = phase !== "form";
+
+  const switchMode = (m) => { if (!busy) { setMode(m); setError(""); } };
+
+  const afterAuth = async (token) => {
+    localStorage.setItem("mz_client_token", token);
+    try {
+      const statusRes = await fetch("/client/google/status", { headers: { Authorization: "Bearer " + token } });
+      const status = statusRes.ok ? await statusRes.json() : { connected: false };
+      if (status.connected) {
+        setPhase("activating");
+        const actRes = await fetch(`/client/automations/${automationType}/activate`, {
+          method: "POST", headers: { Authorization: "Bearer " + token },
+        });
+        if (!actRes.ok) throw new Error("activate failed");
+        onDone({ activatedId: product.id });
+        return;
+      }
+      setPhase("connecting");
+      await fetch("/client/pending-automation", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+        body: JSON.stringify({ automation_type: automationType }),
+      });
+      const connRes = await fetch("/client/google/connect", { headers: { Authorization: "Bearer " + token } });
+      if (!connRes.ok) throw new Error("connect failed");
+      const conn = await connRes.json();
+      window.location.href = conn.redirect_url;
+    } catch {
+      setError(ts.error);
+      setPhase("form");
+    }
+  };
+
+  const doLogin = async () => {
+    if (!identifier || !password || busy) return;
+    setError("");
+    try {
+      const r = await fetch("/client/login", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: identifier, password }),
+      });
+      if (!r.ok) { setError(tl.error); return; }
+      const d = await r.json();
+      await afterAuth(d.token);
+    } catch { setError(tl.error); }
+  };
+
+  const doRegister = async () => {
+    if (!name || !identifier || !password || busy) return;
+    if (password.length < 8) { setError(tl.passMin); return; }
+    setError("");
+    try {
+      const r = await fetch("/client/register", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email: identifier, password }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setError(d.detail || tl.registerError);
+        return;
+      }
+      const d = await r.json();
+      await afterAuth(d.token);
+    } catch { setError(tl.registerError); }
+  };
+
+  const onKey = (e) => { if (e.key === "Enter") (mode === "login" ? doLogin() : doRegister()); };
+  const isLogin = mode === "login";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(14,17,22,.42)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 900 }} onClick={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
+      <div style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: "32px 28px", width: 340, boxShadow: "0 30px 80px rgba(14,17,22,.3)", position: "relative" }}>
+        {!busy && (
+          <button onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", top: 12, right: 14, background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#9099A6", lineHeight: 1 }}>×</button>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+          <span style={{ width: 40, height: 40, borderRadius: 11, background: "#EEF0FE", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <ProductIcon id={product.id} />
+          </span>
+          <div>
+            <div style={{ fontWeight: 600, fontSize: 15 }}>{loc.name}</div>
+            <div style={{ color: "#6B7280", fontSize: 12.5 }}>{ts.sub}</div>
+          </div>
+        </div>
+        {busy ? (
+          <div style={{ padding: "20px 0", textAlign: "center", color: "#3A4150", fontSize: 14 }}>
+            {phase === "activating" ? ts.activating : ts.connecting}
+          </div>
+        ) : (
+          <>
+            {!isLogin && (
+              <>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#3A4150", marginBottom: 5 }}>{tl.nameLabel}</label>
+                <input className="zm2-input" style={{ width: "100%", padding: "9px 11px", background: "#F8F9FB", border: "1px solid #E1E5EB", borderRadius: 8, font: "inherit", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box" }}
+                  type="text" autoComplete="name" autoFocus={!isLogin} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={onKey} />
+              </>
+            )}
+            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#3A4150", marginBottom: 5 }}>{tl.identLabel}</label>
+            <input className="zm2-input" style={{ width: "100%", padding: "9px 11px", background: "#F8F9FB", border: "1px solid #E1E5EB", borderRadius: 8, font: "inherit", fontSize: 14, outline: "none", marginBottom: 12, boxSizing: "border-box" }}
+              type="text" autoComplete={isLogin ? "username" : "email"} autoFocus={isLogin} value={identifier} onChange={(e) => setIdentifier(e.target.value)} onKeyDown={onKey} />
+            <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#3A4150", marginBottom: 5 }}>{tl.passLabel}</label>
+            <input className="zm2-input" style={{ width: "100%", padding: "9px 11px", background: "#F8F9FB", border: "1px solid #E1E5EB", borderRadius: 8, font: "inherit", fontSize: 14, outline: "none", marginBottom: error ? 8 : 14, boxSizing: "border-box" }}
+              type="password" autoComplete={isLogin ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={onKey} />
+            {error && <div style={{ color: "#E5484D", fontSize: 12, marginBottom: 10, minHeight: 16 }}>{error}</div>}
+            <button className="zm2-pill-primary" disabled={busy} onClick={isLogin ? doLogin : doRegister}
+              style={{ width: "100%", padding: 10, background: "#4F46E5", color: "#fff", border: "none", borderRadius: 8, font: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 14 }}>
+              {isLogin ? ts.ctaLogin : ts.cta}
+            </button>
+            <button onClick={() => switchMode(isLogin ? "register" : "login")} style={{ display: "block", width: "100%", textAlign: "center", fontSize: 12, color: "#9099A6", cursor: "pointer", textDecoration: "underline", background: "none", border: "none", font: "inherit" }}>
+              {isLogin ? tl.switchToRegister : tl.switchToLogin}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProductCard({ product, lang, t, inCart, annual, active, subscribing, onToggleCart, onDetail }) {
   const loc = product[lang];
   const price = annual ? product.price * 10 : product.price;
   return (
@@ -292,9 +433,9 @@ function ProductCard({ product, lang, t, inCart, annual, onToggleCart, onDetail 
         <span style={{ color: "#6B7280", fontSize: 14 }}>{annual ? t.per.yr : t.per.mo}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        <button className="zm2-pill-primary" onClick={() => onToggleCart(product.id)}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14.5, fontWeight: 600, cursor: "pointer", border: "1px solid", ...(inCart ? { background: "#E7F6EF", color: "#047857", borderColor: "#BCE7D1" } : { background: "#4F46E5", color: "#fff", borderColor: "#4F46E5" }) }}>
-          {inCart ? "✓ " + t.card.added : t.card.subscribe}
+        <button className="zm2-pill-primary" disabled={active || subscribing} onClick={() => onToggleCart(product.id)}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14.5, fontWeight: 600, cursor: active || subscribing ? "default" : "pointer", border: "1px solid", ...(active || inCart ? { background: "#E7F6EF", color: "#047857", borderColor: "#BCE7D1" } : { background: "#4F46E5", color: "#fff", borderColor: "#4F46E5" }) }}>
+          {active ? t.card.active : subscribing ? t.card.activating : inCart ? "✓ " + t.card.added : t.card.subscribe}
         </button>
         <button className="zm2-link-muted" onClick={() => onDetail(product.id)} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 13.5, fontWeight: 500, cursor: "pointer", padding: 2 }}>
           {t.card.details}
@@ -451,12 +592,101 @@ function App() {
   const [faqOpen, setFaqOpen] = useState(0);
   const [showLogin, setShowLogin] = useState(false);
   const [loginInitialMode, setLoginInitialMode] = useState("login");
+  const [clientToken, setClientToken] = useState(() => { try { return localStorage.getItem("mz_client_token"); } catch { return null; } });
+  const [googleConnected, setGoogleConnected] = useState(false);
+  const [activeAutomations, setActiveAutomations] = useState([]);
+  const [subscribingId, setSubscribingId] = useState(null);
+  const [subscribeModalId, setSubscribeModalId] = useState(null);
 
   const t = T[lang] || T.es;
 
   useEffect(() => {
     document.body.style.overflow = drawerOpen || detailId ? "hidden" : "";
   }, [drawerOpen, detailId]);
+
+  // Returning logged-in visitor: learn which automations are already active
+  // and whether Google is connected, so the grid can show "Activa" state and
+  // offer the 1-click path without a modal or redirect.
+  useEffect(() => {
+    if (!clientToken) { setGoogleConnected(false); setActiveAutomations([]); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const meRes = await fetch("/client/me", { headers: { Authorization: "Bearer " + clientToken } });
+        if (!meRes.ok) throw new Error("unauthorized");
+        const [autoRes, statusRes] = await Promise.all([
+          fetch("/client/automations", { headers: { Authorization: "Bearer " + clientToken } }),
+          fetch("/client/google/status", { headers: { Authorization: "Bearer " + clientToken } }),
+        ]);
+        if (cancelled) return;
+        if (autoRes.ok) {
+          const d = await autoRes.json();
+          setActiveAutomations((d.active || []).filter((a) => a.status === "active").map((a) => a.automation_type));
+        }
+        if (statusRes.ok) {
+          const d = await statusRes.json();
+          setGoogleConnected(!!d.connected);
+        }
+      } catch {
+        if (!cancelled) {
+          try { localStorage.removeItem("mz_client_token"); } catch {}
+          setClientToken(null);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clientToken]);
+
+  const isAutomationActive = (id) => {
+    const type = AUTOMATION_TYPE_MAP[id];
+    return type ? activeAutomations.includes(type) : false;
+  };
+
+  const activateDirect = async (id) => {
+    const type = AUTOMATION_TYPE_MAP[id];
+    setSubscribingId(id);
+    try {
+      const r = await fetch(`/client/automations/${type}/activate`, {
+        method: "POST", headers: { Authorization: "Bearer " + clientToken },
+      });
+      if (r.ok) setActiveAutomations((a) => (a.includes(type) ? a : [...a, type]));
+    } catch {}
+    finally { setSubscribingId(null); }
+  };
+
+  const startPendingAndConnect = async (id) => {
+    const type = AUTOMATION_TYPE_MAP[id];
+    setSubscribingId(id);
+    try {
+      await fetch("/client/pending-automation", {
+        method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + clientToken },
+        body: JSON.stringify({ automation_type: type }),
+      });
+      const r = await fetch("/client/google/connect", { headers: { Authorization: "Bearer " + clientToken } });
+      const d = await r.json();
+      window.location.href = d.redirect_url;
+    } catch { setSubscribingId(null); }
+  };
+
+  // Dispatches "Suscribirme" clicks by session state: automations without a
+  // real backend type fall back to the legacy multi-item cart; the rest take
+  // the fast path (1 click if logged in + Google connected, otherwise a
+  // single combined modal, per the onboarding UX brief).
+  const handleCardAction = (id) => {
+    const type = AUTOMATION_TYPE_MAP[id];
+    if (!type) { toggleCart(id); return; }
+    if (activeAutomations.includes(type)) return;
+    if (!clientToken) { setSubscribeModalId(id); return; }
+    if (googleConnected) { activateDirect(id); return; }
+    startPendingAndConnect(id);
+  };
+
+  const onSubscribeModalDone = ({ activatedId }) => {
+    const type = AUTOMATION_TYPE_MAP[activatedId];
+    if (type) setActiveAutomations((a) => (a.includes(type) ? a : [...a, type]));
+    setClientToken(localStorage.getItem("mz_client_token"));
+    setSubscribeModalId(null);
+  };
 
   const toggleCart = (id) => setCart((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
   const removeFromCart = (id) => setCart((c) => c.filter((x) => x !== id));
@@ -565,7 +795,7 @@ function App() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(332px,1fr))", gap: 18 }}>
           {cards.map((p) => (
-            <ProductCard key={p.id} product={p} lang={lang} t={t} inCart={cart.includes(p.id)} annual={annual} onToggleCart={toggleCart} onDetail={setDetailId} />
+            <ProductCard key={p.id} product={p} lang={lang} t={t} inCart={cart.includes(p.id)} annual={annual} active={isAutomationActive(p.id)} subscribing={subscribingId === p.id} onToggleCart={handleCardAction} onDetail={setDetailId} />
           ))}
         </div>
       </section>
@@ -670,6 +900,10 @@ function App() {
       </footer>
 
       {showLogin && <LoginModal tt={t} onClose={() => setShowLogin(false)} initialMode={loginInitialMode} />}
+      {subscribeModalId && (
+        <SubscribeModal product={PRODUCTS.find((p) => p.id === subscribeModalId)} lang={lang} t={t}
+          onClose={() => setSubscribeModalId(null)} onDone={onSubscribeModalDone} />
+      )}
       <CartDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} cartIds={cart} lang={lang} t={t} annual={annual} onRemove={removeFromCart} onCheckout={handleCheckout} />
       <DetailModal id={detailId} lang={lang} t={t} inCart={detailId ? cart.includes(detailId) : false} annual={annual} onClose={() => setDetailId(null)} onSubscribe={subscribeFromDetail} />
     </div>

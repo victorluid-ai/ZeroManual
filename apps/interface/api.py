@@ -116,6 +116,10 @@ class DraftResolveRequest(BaseModel):
     final_reply: str | None = None
 
 
+class PendingAutomationRequest(BaseModel):
+    automation_type: str
+
+
 def get_client_user(authorization: str | None = Header(default=None)) -> dict:
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ")
@@ -452,9 +456,23 @@ def google_callback(code: str, state: str) -> RedirectResponse:
             google_email=google_email,
             location_id=None,
         )
-        return RedirectResponse("/client?connected=1")
     except Exception:
         return RedirectResponse("/client?error=oauth_failed")
+
+    # Auto-consume a pending "subscribe" started before the OAuth round trip
+    # (see /client/pending-automation) so activation needs no further click.
+    pending_type = runtime.store.get_pending_automation(client_id)
+    if pending_type:
+        runtime.store.clear_pending_automation(client_id)
+        pending_client = runtime.store.get_client_by_id(client_id)
+        client_name = pending_client["name"] if pending_client else client_id
+        try:
+            _activate_automation_for_client(client_id, client_name, pending_type)
+            return RedirectResponse(f"/client?activated={pending_type}")
+        except Exception:
+            # Google connected fine; activation can be retried manually from /client.
+            return RedirectResponse("/client?connected=1")
+    return RedirectResponse("/client?connected=1")
 
 
 @app.get("/client/google/status")
@@ -477,32 +495,51 @@ def list_client_automations(client: dict = Depends(get_client_user)) -> dict:
     return {"available": available, "active": active}
 
 
-@app.post("/client/automations/{automation_type}/activate")
-def activate_client_automation(
-    automation_type: str, client: dict = Depends(get_client_user)
-) -> dict:
+def _activate_automation_for_client(client_id: str, client_name: str, automation_type: str) -> dict:
+    """Shared by the manual activate endpoint and the post-OAuth auto-activation
+    path. Raises ValueError for user-facing 400s, RuntimeError for 503s."""
     templates = json.loads(os.getenv("N8N_TEMPLATE_IDS", "{}"))
     if automation_type not in templates:
-        raise HTTPException(status_code=400, detail=f"Tipo de automatización desconocido: {automation_type}")
-    creds = runtime.store.get_google_creds(client["client_id"])
+        raise ValueError(f"Tipo de automatización desconocido: {automation_type}")
+    creds = runtime.store.get_google_creds(client_id)
     if not creds:
-        raise HTTPException(status_code=400, detail="Conecta primero tu cuenta de Google Business")
+        raise ValueError("Conecta primero tu cuenta de Google Business")
     template_id = templates[automation_type]
     if not template_id:
-        raise HTTPException(status_code=503, detail="Template no configurado aún")
+        raise RuntimeError("Template no configurado aún")
     try:
         wf_id = _n8n.duplicate_template(
             template_id=template_id,
-            client_id=client["client_id"],
-            client_name=client["name"],
+            client_id=client_id,
+            client_name=client_name,
             refresh_token=creds["refresh_token"],
             location_id=creds.get("location_id"),
             automation_type=automation_type,
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Error al activar en n8n: {exc}")
-    record = runtime.store.activate_automation(client["client_id"], automation_type, wf_id)
+        raise RuntimeError(f"Error al activar en n8n: {exc}") from exc
+    record = runtime.store.activate_automation(client_id, automation_type, wf_id)
     return {"status": "active", "workflow_id": wf_id, "automation": record}
+
+
+@app.post("/client/automations/{automation_type}/activate")
+def activate_client_automation(
+    automation_type: str, client: dict = Depends(get_client_user)
+) -> dict:
+    try:
+        return _activate_automation_for_client(client["client_id"], client["name"], automation_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+
+@app.post("/client/pending-automation")
+def set_pending_automation(
+    req: PendingAutomationRequest, client: dict = Depends(get_client_user)
+) -> dict:
+    runtime.store.set_pending_automation(client["client_id"], req.automation_type)
+    return {"ok": True}
 
 
 @app.delete("/client/automations/{automation_type}")

@@ -161,12 +161,13 @@ class DataStore:
                 );
 
                 CREATE TABLE IF NOT EXISTS clients (
-                    client_id     TEXT    PRIMARY KEY,
-                    name          TEXT    NOT NULL,
-                    email         TEXT    UNIQUE NOT NULL,
-                    password_hash TEXT    NOT NULL,
-                    plan          TEXT    NOT NULL DEFAULT 'starter',
-                    created_at    TEXT    NOT NULL
+                    client_id             TEXT    PRIMARY KEY,
+                    name                  TEXT    NOT NULL,
+                    email                 TEXT    UNIQUE NOT NULL,
+                    password_hash         TEXT    NOT NULL,
+                    plan                  TEXT    NOT NULL DEFAULT 'starter',
+                    created_at            TEXT    NOT NULL,
+                    pending_automation_type TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS client_sessions (
@@ -302,6 +303,12 @@ class DataStore:
                 """
             )
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (3)")
+
+        if current < 4:
+            existing = {r[1] for r in conn.execute("PRAGMA table_info(clients)").fetchall()}
+            if "pending_automation_type" not in existing:
+                conn.execute("ALTER TABLE clients ADD COLUMN pending_automation_type TEXT")
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (4)")
 
     def save_pending_approval(
         self,
@@ -767,6 +774,28 @@ class DataStore:
         with self._connect() as conn:
             conn.execute("DELETE FROM client_sessions WHERE client_id = ?", (client_id,))
             conn.execute("DELETE FROM clients WHERE client_id = ?", (client_id,))
+
+    def set_pending_automation(self, client_id: str, automation_type: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE clients SET pending_automation_type=? WHERE client_id=?",
+                (automation_type, client_id),
+            )
+
+    def get_pending_automation(self, client_id: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT pending_automation_type FROM clients WHERE client_id=?",
+                (client_id,),
+            ).fetchone()
+        return row["pending_automation_type"] if row else None
+
+    def clear_pending_automation(self, client_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE clients SET pending_automation_type=NULL WHERE client_id=?",
+                (client_id,),
+            )
 
     # ---- Client Sessions ----
 

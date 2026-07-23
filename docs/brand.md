@@ -1,42 +1,36 @@
 # Marca ZeroManual
 
-## Una marca, dos capas
+## Una marca, dos sistemas
 
 ```text
-                    ZeroManual (marca única)
+                    ZeroManual (marca)
                            │
          ┌─────────────────┴─────────────────┐
          ▼                                   ▼
-   Web comercial                      Motor operativo
-   apps/web/zeroman/                  apps/agents + orchestrator
-   /  /client                         /admin  /ui
-   Vende servicios                    Gestiona la empresa con IA
+   Web comercial                      OpsCenter (repo aparte)
+   apps/web + /client + /admin slim   agentes, facturas, NL
+   Vende y entrega automatizaciones   Opera varios negocios (tenants)
 ```
 
-## Web comercial (`/`)
+## Web comercial (`/`, `/client`, `/admin`)
 
 - Landing, precios, FAQ, contacto.
-- Registro y login de **clientes** en `/client`.
-- Automatizaciones que el cliente activa (reseñas Google, Instagram, etc.).
+- Registro/login de **clientes** en `/client`.
+- Admin comercial: usuarios del producto + clientes portal + automatizaciones.
+- Sin facturas, sin agentes, sin aprobaciones.
 
-## Operaciones IA (`/admin`, `/ui`)
+## OpsCenter (`:8091`)
 
-- Panel **admin**: facturas, aprobaciones, clientes, agentes, export contable.
-- Consola **ui**: instrucciones en lenguaje natural para agentes internos.
-- Solo para operadores de ZeroManual (tú y tu equipo).
+- Panel ops: facturas, aprobaciones, ledger, agentes, consola NL.
+- Multi-tenant: ZeroManual es el tenant `zeromanual`.
+- Triggers email nativos y export contable.
 
-## Enlace entre ambas
+## Enlace
 
-1. Un cliente se registra en la web → fila en `clients` (SQLite).
-2. Activa una automatización → workflow + agentes de entrega.
-3. Una venta genera eventos → `AgentBillingOps` emite factura PDF.
-4. Handoff → contabilidad ES clasifica el ingreso.
-5. Todo trazado en `runtime/zeromanual.db` y audit log.
+1. Cliente se registra en ZeroManual → fila en `clients`.
+2. Activa automatización → n8n + evento a OpsCenter (`client_onboarding`).
+3. Operaciones financieras se gestionan solo en OpsCenter.
 
-## Variables de entorno
+## Variables
 
-Prefijo oficial: `ZEROMANUAL_*` (el prefijo legacy `MANUALZERO_*` sigue funcionando).
-
-## Repo
-
-La carpeta del repositorio puede seguir llamándose `ManualZero` en disco; la marca pública es **ZeroManual** en todo lo visible al usuario.
+Prefijo `ZEROMANUAL_*`. Puente: `ZEROMANUAL_OPS_URL`, `ZEROMANUAL_OPS_API_KEY`, `ZEROMANUAL_OPS_TENANT_ID`.

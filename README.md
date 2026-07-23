@@ -1,55 +1,43 @@
 # ZeroManual
 
-**ZeroManual** es una empresa de automatizaciones digitales con dos caras conectadas:
+**ZeroManual** es la web comercial y el portal de clientes. La facturación, agentes IA y aprobaciones viven en el repo hermano **OpsCenter**.
 
 | Capa | URL | Para qué |
 |------|-----|----------|
-| **Web comercial** | `http://localhost:8090/` | Vender servicios a clientes (landing, precios, registro) |
-| **Portal cliente** | `/client` | Clientes activan automatizaciones (reseñas Google, etc.) |
-| **Operaciones IA** | `/admin` | Tu empresa gestionada por agentes (facturas, aprobaciones, contabilidad) |
-| **Consola técnica** | `/ui` | Operador: lenguaje natural y eventos directos |
-
-El código en `apps/` es el **motor interno** que opera ZeroManual con agentes autónomos. La web en `apps/web/zeroman/` es la **fachada comercial**. Misma marca, mismo servidor, mismos datos.
-
-## Agentes internos (operaciones)
-
-1. `AgentBillingOps` — facturación, cobros, recordatorios.
-2. `AgentAccountingAssistantES` — contabilidad España.
-3. `AgentClientDeliveryManager` — onboarding y entrega.
-4. `AgentSalesPipeline` — ventas y propuestas.
-5. `AgentGovernanceAndCompliance` — cumplimiento y aprobaciones.
-
-## Estructura
-
-- `apps/web/zeroman/` — sitio comercial ZeroManual.
-- `apps/orchestrator/` — runtime de agentes.
-- `apps/agents/` — lógica de negocio + tools.
-- `apps/interface/` — API, admin, portal cliente.
-- `docs/` — arquitectura, integraciones, operación.
+| **Web comercial** | `http://localhost:8090/` | Vender servicios (landing, precios, registro) |
+| **Portal cliente** | `/client` | Activar automatizaciones (reseñas Google, etc.) |
+| **Admin comercial** | `/admin` | Usuarios del producto, clientes y estado de automatizaciones |
+| **OpsCenter** | `http://localhost:8091` | Facturas, agentes, aprobaciones, contabilidad (repo aparte) |
 
 ## Arranque rápido
 
-1. Copiar `.env.example` a `.env`.
-2. `python -m pip install -e .`
-3. `python -m apps.interface.api`
-4. Abrir **http://localhost:8090** (web comercial).
+1. Copiar `.env.example` a `.env` (incluye `ZEROMANUAL_OPS_URL` / `ZEROMANUAL_OPS_API_KEY`).
+2. `python3 -m pip install -e ".[dev]"`
+3. `python3 -m apps.interface.api`
+4. Abrir **http://localhost:8090**
 
-Puerto configurable: `ZEROMANUAL_INTERFACE_PORT` en `.env`.
+## Puente a OpsCenter
 
-## Triggers autonomos
+Al registrar un cliente o activar una automatización, ZeroManual emite un evento HTTP a OpsCenter (si `ZEROMANUAL_OPS_URL` y `ZEROMANUAL_OPS_API_KEY` están definidos). Los fallos del puente se registran y **no** bloquean el portal.
+
+## Migrar datos ops antiguos
+
+Si tenías facturas/aprobaciones en `runtime/zeromanual.db`, usa el script del repo OpsCenter:
 
 ```bash
-python -m apps.triggers.runner
+cd /path/to/OpsCenter
+python3 scripts/migrate_from_zeromanual.py --source /path/to/zeromanual.db
 ```
 
-Guía: `docs/triggers.md`
+## Tests
+
+```bash
+pytest tests/ -q
+```
 
 ## Documentación
 
-- `docs/brand.md` — web vs operaciones IA
-- `docs/operations.md` — uso diario del panel admin
-- `docs/integrations.md` — PDF, SMTP, export contable
-
-## Nota fiscal
-
-Los borradores contables no sustituyen la validación de un asesor fiscal antes de presentar impuestos.
+- `docs/brand.md` — web vs OpsCenter
+- `docs/architecture.md` — límites de sistema
+- `docs/operations.md` — operación diaria comercial
+- `docs/vps-hostinger.md` — despliegue dos servicios

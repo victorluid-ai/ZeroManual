@@ -218,15 +218,14 @@
 </head>
 <body>
 
-<!-- Login overlay -->
 <div id="login-overlay">
   <div class="login-card">
     <div class="login-brand">
       <div class="login-brand-mark"></div>
       <div class="login-brand-name">Zero<span>Manual</span></div>
     </div>
-    <div class="login-title">Acceder al portal</div>
-    <div class="login-sub">Solo acceso para administradores.</div>
+    <div class="login-title">Admin comercial</div>
+    <div class="login-sub">Usuarios, clientes y automatizaciones. Facturación en OpsCenter.</div>
     <div class="form-group">
       <label for="inp-username">Usuario</label>
       <input id="inp-username" type="text" autocomplete="username" placeholder="admin" />
@@ -240,7 +239,6 @@
   </div>
 </div>
 
-<!-- App shell -->
 <div id="app">
   <div class="topbar">
     <a class="topbar-brand" href="/">
@@ -248,44 +246,27 @@
       <div class="topbar-brand-name">Zero<span>Manual</span></div>
     </a>
     <div class="topbar-divider"></div>
-    <div class="topbar-sub">Panel de administración</div>
+    <div class="topbar-sub">Admin comercial</div>
     <div class="topbar-spacer"></div>
+    <a class="btn ghost sm" id="btn-ops" href="#" target="_blank" rel="noopener">Abrir OpsCenter</a>
     <div class="topbar-user">Sesión: <strong id="lbl-user">—</strong></div>
     <button class="btn ghost sm" id="btn-logout">Salir</button>
   </div>
   <div class="tabs">
-    <button class="tab on" data-tab="ops">Operaciones</button>
-    <button class="tab" data-tab="approvals">Aprobaciones</button>
-    <button class="tab" data-tab="invoices">Facturas</button>
-    <button class="tab" data-tab="accounting">Contabilidad</button>
+    <button class="tab on" data-tab="clients">Clientes</button>
     <button class="tab" data-tab="users">Usuarios</button>
-    <button class="tab" data-tab="clients">Clientes</button>
   </div>
   <div class="content" id="content"></div>
 </div>
 
-<!-- Create user modal -->
 <div class="modal-bg hidden" id="modal-user">
   <div class="modal">
     <div class="modal-title">Nuevo usuario</div>
-    <div class="form-group">
-      <label>Usuario</label>
-      <input id="new-username" type="text" placeholder="nombre" />
-    </div>
-    <div class="form-group">
-      <label>Email</label>
-      <input id="new-email" type="email" placeholder="correo@ejemplo.com" />
-    </div>
-    <div class="form-group">
-      <label>Contraseña</label>
-      <input id="new-password" type="password" placeholder="••••••••" />
-    </div>
-    <div class="form-group">
-      <label>Rol</label>
-      <select id="new-role">
-        <option value="admin">admin</option>
-        <option value="viewer">viewer</option>
-      </select>
+    <div class="form-group"><label>Usuario</label><input id="new-username" type="text" /></div>
+    <div class="form-group"><label>Email</label><input id="new-email" type="email" /></div>
+    <div class="form-group"><label>Contraseña</label><input id="new-password" type="password" /></div>
+    <div class="form-group"><label>Rol</label>
+      <select id="new-role"><option value="admin">admin</option><option value="viewer">viewer</option></select>
     </div>
     <div class="error-msg" id="new-user-error"></div>
     <div class="modal-footer">
@@ -295,20 +276,30 @@
   </div>
 </div>
 
+<div class="modal-bg hidden" id="modal-client">
+  <div class="modal">
+    <div class="modal-title">Nuevo cliente</div>
+    <div class="form-group"><label>Negocio</label><input id="new-client-name" type="text" /></div>
+    <div class="form-group"><label>Email</label><input id="new-client-email" type="email" /></div>
+    <div class="form-group"><label>Contraseña</label><input id="new-client-password" type="password" /></div>
+    <div class="error-msg" id="new-client-error"></div>
+    <div class="modal-footer">
+      <button class="btn ghost" id="modal-client-cancel">Cancelar</button>
+      <button class="btn primary" id="modal-client-confirm">Crear cliente</button>
+    </div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
 <script>
 (function () {
   'use strict';
-
-  // ── State ──────────────────────────────────────────────────────────────
   let token = sessionStorage.getItem('mz_token') || null;
   let currentUser = null;
-  let activeTab = 'ops';
-
-  // ── Utilities ──────────────────────────────────────────────────────────
+  let activeTab = 'clients';
+  let opsUrl = null;
   const $ = id => document.getElementById(id);
-  const qs = sel => document.querySelector(sel);
 
   let toastTimer = null;
   function toast(msg, kind = '') {
@@ -318,11 +309,9 @@
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => { el.className = ''; }, 2800);
   }
-
   function authHeaders() {
     return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
   }
-
   async function api(method, path, body) {
     const opts = { method, headers: authHeaders() };
     if (body !== undefined) opts.body = JSON.stringify(body);
@@ -336,303 +325,64 @@
     }
     return r.json();
   }
-
-  function fmt(val) {
-    if (val == null) return '—';
-    if (typeof val === 'object') return JSON.stringify(val, null, 2);
-    return String(val);
-  }
-
   function dateStr(iso) {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
   }
-
-  function stars(n) {
-    return Array.from({length: 5}, (_, i) => i < n ? '★' : '☆').join('');
+  function escHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  // ── Auth ──────────────────────────────────────────────────────────────
   async function tryLogin() {
     const username = $('inp-username').value.trim();
     const password = $('inp-password').value;
     $('login-error').textContent = '';
-    if (!username || !password) { $('login-error').textContent = 'Completa usuario y contraseña.'; return; }
-    const btn = $('btn-login');
-    btn.disabled = true; btn.textContent = 'Entrando…';
     try {
       const r = await fetch('/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
+      if (!r.ok) throw new Error((await r.json()).detail || 'Error de login');
       const data = await r.json();
-      if (!r.ok) throw new Error(data.detail || 'Error de autenticación');
       token = data.token;
       currentUser = data.user;
       sessionStorage.setItem('mz_token', token);
       showApp();
-    } catch (e) {
-      $('login-error').textContent = e.message;
-    } finally {
-      btn.disabled = false; btn.textContent = 'Entrar →';
-    }
+    } catch (e) { $('login-error').textContent = e.message; }
   }
 
-  async function doLogout() {
-    if (token) {
-      try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch {}
-    }
+  function doLogout() {
+    if (token) fetch('/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
     token = null; currentUser = null;
     sessionStorage.removeItem('mz_token');
-    window.location.href = '/';
+    $('login-overlay').classList.remove('hidden');
   }
 
-  async function tryRestoreSession() {
-    if (!token) return false;
-    try {
-      const r = await fetch('/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (!r.ok) { token = null; sessionStorage.removeItem('mz_token'); return false; }
-      const data = await r.json();
-      currentUser = data.user;
-      return true;
-    } catch { return false; }
-  }
-
-  function showApp() {
+  async function showApp() {
     $('login-overlay').classList.add('hidden');
     $('lbl-user').textContent = currentUser ? currentUser.username : '—';
-    loadTab(activeTab);
+    await loadTab(activeTab);
   }
 
-  // ── Tab routing ────────────────────────────────────────────────────────
-  function loadTab(name) {
+  async function restoreSession() {
+    if (!token) return;
+    try {
+      const r = await fetch('/auth/me', { headers: authHeaders() });
+      if (!r.ok) { doLogout(); return; }
+      const data = await r.json();
+      currentUser = data.user;
+      showApp();
+    } catch { doLogout(); }
+  }
+
+  async function loadTab(name) {
     activeTab = name;
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
     const c = $('content');
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    const fns = { ops: tabOps, approvals: tabApprovals, invoices: tabInvoices, accounting: tabAccounting, users: tabUsers, clients: tabClients };
-    if (fns[name]) fns[name](c);
+    if (name === 'users') await tabUsers(c);
+    else await tabClients(c);
   }
 
-  // ── Tab: Operaciones ──────────────────────────────────────────────────
-  async function tabOps(c) {
-    c.innerHTML = `
-      <div class="card">
-        <div class="card-head"><div><div class="card-title">Comando en lenguaje natural</div><div class="card-sub">Escribe una instrucción y se enrutará al agente correcto.</div></div></div>
-        <div class="nl-box">
-          <input id="nl-input" type="text" placeholder="ej. Crear factura para cliente Acme por €800" />
-          <button class="btn primary" id="nl-send">Enviar →</button>
-        </div>
-        <div class="nl-result" id="nl-result"></div>
-      </div>
-      <div class="card" id="agents-card">
-        <div class="card-head"><div class="card-title">Agentes activos</div></div>
-        <div id="agents-body"><div class="loading">Cargando…</div></div>
-      </div>
-      <div class="card">
-        <div class="card-head"><div><div class="card-title">Acción manual</div><div class="card-sub">Modo avanzado: envía un evento a un agente concreto.</div></div></div>
-        <details>
-          <summary style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);margin-bottom:14px;">Mostrar formulario avanzado</summary>
-          <div class="form-group"><label>Agente</label><select id="me-agent" style="width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:14px;color:var(--fg);outline:none;"></select></div>
-          <div class="form-group"><label>Acción</label><input id="me-action" type="text" placeholder="create_invoice" /></div>
-          <div class="form-group"><label>Datos (JSON)</label><textarea id="me-payload" rows="4" style="width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font-family:'Space Grotesk',ui-monospace,monospace;font-size:13px;color:var(--fg);outline:none;resize:vertical;">{ "amount_eur": 200 }</textarea></div>
-          <button class="btn ghost" id="me-send">Enviar evento →</button>
-          <div class="nl-result" id="me-result"></div>
-        </details>
-      </div>
-    `;
-    $('nl-send').onclick = sendNL;
-    $('nl-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendNL(); });
-    $('me-send').onclick = sendManualEvent;
-    try {
-      const data = await api('GET', '/api/v1/admin/agents');
-      if (!data) return;
-      const agents = data.agents || [];
-      const body = $('agents-body');
-      if (!agents.length) { body.innerHTML = '<div class="empty">No hay agentes registrados.</div>'; return; }
-      body.innerHTML = `<div class="agents-grid">${agents.map(a => `
-        <div class="agent-card">
-          <div class="agent-name">${escHtml(a.name || a.agent_name || '?')}</div>
-          <div class="agent-desc">${escHtml(a.description || a.role || '')}</div>
-        </div>`).join('')}</div>`;
-      const sel = $('me-agent');
-      if (sel) {
-        sel.innerHTML = agents.map(a => {
-          const name = a.agent_name || a.name || '';
-          return `<option value="${escHtml(name)}" title="${escHtml((a.supported_actions || []).join(', '))}">${escHtml(name)}</option>`;
-        }).join('');
-      }
-    } catch (e) { $('agents-body').innerHTML = `<div class="empty">${escHtml(e.message)}</div>`; }
-  }
-
-  async function sendManualEvent() {
-    const result = $('me-result');
-    const agent_name = $('me-agent').value;
-    const action = $('me-action').value.trim();
-    if (!action) { result.className = 'nl-result show'; result.textContent = 'Indica una acción.'; return; }
-    let payload;
-    try { payload = JSON.parse($('me-payload').value || '{}'); }
-    catch (e) { result.className = 'nl-result show'; result.textContent = 'JSON inválido en Datos.'; return; }
-    const btn = $('me-send');
-    btn.disabled = true; btn.textContent = 'Enviando…';
-    result.className = 'nl-result show';
-    result.textContent = 'Procesando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/events', { agent_name, action, payload });
-      if (!data) return;
-      result.textContent = JSON.stringify(data, null, 2);
-      toast('Evento enviado', 'ok');
-    } catch (e) { result.textContent = 'Error: ' + e.message; toast(e.message, 'err'); }
-    finally { btn.disabled = false; btn.textContent = 'Enviar evento →'; }
-  }
-
-  async function sendNL() {
-    const input = $('nl-input');
-    const result = $('nl-result');
-    const msg = input.value.trim();
-    if (!msg) return;
-    result.className = 'nl-result show';
-    result.textContent = 'Procesando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/natural-language', { message: msg });
-      if (!data) return;
-      result.textContent = JSON.stringify(data, null, 2);
-      input.value = '';
-    } catch (e) { result.textContent = 'Error: ' + e.message; }
-  }
-
-  // ── Tab: Aprobaciones ─────────────────────────────────────────────────
-  async function tabApprovals(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', '/api/v1/admin/approvals');
-      if (!data) return;
-      const items = data.pending || [];
-      if (!items.length) {
-        c.innerHTML = '<div class="card"><div class="empty">No hay aprobaciones pendientes.</div></div>';
-        return;
-      }
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div class="card-title">Pendientes de aprobación</div><div class="card-sub">${items.length} elemento(s)</div></div>
-        <div id="approvals-list"></div>
-      </div>`;
-      const list = $('approvals-list');
-      items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'approval-item';
-        div.id = `ap-${item.event_id}`;
-        div.innerHTML = `
-          <div class="approval-header">
-            <div>
-              <strong>${escHtml(item.agent_name || '?')}</strong>
-              <span style="color:var(--fg-3)"> · ${escHtml(item.action || '')}</span>
-              <div class="approval-meta">ID: ${escHtml(item.event_id)} · ${dateStr(item.created_at)}</div>
-            </div>
-            <div class="approval-actions">
-              <button class="btn sm ok-btn" style="background:var(--ok);color:#fff;border:none" data-id="${item.event_id}">✓ Aprobar</button>
-              <button class="btn ghost sm reject-btn" data-id="${item.event_id}">✗ Rechazar</button>
-            </div>
-          </div>
-          <div class="approval-payload">${escHtml(JSON.stringify(item.payload || {}, null, 2))}</div>`;
-        list.appendChild(div);
-      });
-      list.querySelectorAll('.ok-btn').forEach(btn => btn.onclick = () => doApprove(btn.dataset.id));
-      list.querySelectorAll('.reject-btn').forEach(btn => btn.onclick = () => doReject(btn.dataset.id));
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  async function doApprove(id) {
-    try {
-      await api('POST', `/api/v1/admin/approvals/${id}/approve`);
-      toast('Aprobado', 'ok');
-      $(`ap-${id}`)?.remove();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  async function doReject(id) {
-    const reason = prompt('Motivo del rechazo (opcional):') || 'Rechazado por operador.';
-    try {
-      await api('POST', `/api/v1/admin/approvals/${id}/reject`, { reason });
-      toast('Rechazado');
-      $(`ap-${id}`)?.remove();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  // ── Tab: Facturas ─────────────────────────────────────────────────────
-  async function tabInvoices(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', '/api/v1/admin/invoices?limit=100');
-      if (!data) return;
-      const inv = data.invoices || [];
-      if (!inv.length) {
-        c.innerHTML = '<div class="card"><div class="empty">No hay facturas registradas.</div></div>';
-        return;
-      }
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div class="card-title">Facturas</div><div class="card-sub">${inv.length} registros</div></div>
-        <table class="tbl">
-          <thead><tr>
-            <th>Número</th><th>Cliente</th><th>Fecha</th><th>Importe</th><th>Estado</th><th></th>
-          </tr></thead>
-          <tbody>${inv.map(i => `
-            <tr>
-              <td><strong>${escHtml(i.invoice_number || i.invoice_id)}</strong></td>
-              <td>${escHtml(i.client_name || '—')}</td>
-              <td>${dateStr(i.created_at)}</td>
-              <td>${i.amount != null ? `${(+i.amount).toFixed(2)} €` : '—'}</td>
-              <td><span class="badge ${i.status === 'paid' ? 'ok' : i.status === 'overdue' ? 'err' : 'warn'}">${escHtml(i.status || '—')}</span></td>
-              <td>${i.pdf_path ? `<a class="btn ghost sm" href="/api/v1/invoices/${i.invoice_id}/pdf" target="_blank">PDF</a>` : ''}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  // ── Tab: Contabilidad ─────────────────────────────────────────────────
-  async function tabAccounting(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', '/api/v1/admin/ledger?limit=100');
-      if (!data) return;
-      const entries = data.ledger_entries || [];
-      c.innerHTML = `<div class="card">
-        <div class="card-head">
-          <div><div class="card-title">Libro mayor</div><div class="card-sub">${entries.length} asientos</div></div>
-          <button class="btn ghost sm" id="btn-export">Exportar CSV →</button>
-        </div>
-        ${entries.length ? `<table class="tbl">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Importe</th><th>Referencia</th></tr></thead>
-          <tbody>${entries.map(e => `
-            <tr>
-              <td>${dateStr(e.created_at)}</td>
-              <td>${escHtml(e.description || '—')}</td>
-              <td><span class="badge neu">${escHtml(e.entry_type || '—')}</span></td>
-              <td>${e.amount != null ? `${(+e.amount).toFixed(2)} €` : '—'}</td>
-              <td style="font-size:11px;color:var(--fg-3)">${escHtml(e.reference_id || '—')}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>` : '<div class="empty">No hay asientos.</div>'}
-      </div>`;
-      $('btn-export').onclick = doExport;
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  async function doExport() {
-    const btn = $('btn-export');
-    btn.disabled = true; btn.textContent = 'Exportando…';
-    try {
-      const data = await api('POST', '/api/v1/accounting/export');
-      if (!data) return;
-      toast('Export listo', 'ok');
-      window.open(data.download_url, '_blank');
-    } catch (e) { toast(e.message, 'err'); }
-    finally { btn.disabled = false; btn.textContent = 'Exportar CSV →'; }
-  }
-
-  // ── Tab: Usuarios ─────────────────────────────────────────────────────
   async function tabUsers(c) {
     c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
@@ -641,7 +391,7 @@
       const users = data.users || [];
       c.innerHTML = `<div class="card">
         <div class="card-head">
-          <div><div class="card-title">Usuarios del portal</div><div class="card-sub">${users.length} usuario(s)</div></div>
+          <div><div class="card-title">Usuarios admin</div><div class="card-sub">${users.length} usuario(s)</div></div>
           <button class="btn primary sm" id="btn-new-user">+ Nuevo usuario</button>
         </div>
         <table class="tbl">
@@ -649,76 +399,39 @@
           <tbody id="users-tbody">${users.map(u => userRow(u)).join('')}</tbody>
         </table>
       </div>`;
-      $('btn-new-user').onclick = openNewUserModal;
-      bindDeleteButtons();
+      $('btn-new-user').onclick = () => { $('modal-user').classList.remove('hidden'); };
+      document.querySelectorAll('.del-user-btn').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('¿Eliminar usuario?')) return;
+          await api('DELETE', `/api/v1/admin/users/${btn.dataset.id}`);
+          toast('Usuario eliminado'); loadTab('users');
+        };
+      });
     } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
   }
 
   function userRow(u) {
     const isSelf = currentUser && currentUser.user_id === u.user_id;
-    return `<tr id="ur-${u.user_id}">
-      <td><strong>${escHtml(u.username)}</strong>${isSelf ? ' <span class="badge neu" style="font-size:10px">tú</span>' : ''}</td>
+    return `<tr>
+      <td><strong>${escHtml(u.username)}</strong>${isSelf ? ' <span class="badge neu">tú</span>' : ''}</td>
       <td>${escHtml(u.email || '—')}</td>
       <td><span class="badge neu">${escHtml(u.role || '—')}</span></td>
       <td>${dateStr(u.created_at)}</td>
-      <td>${isSelf ? '' : `<button class="btn danger sm del-user-btn" data-id="${u.user_id}" data-name="${escHtml(u.username)}">Eliminar</button>`}</td>
+      <td>${isSelf ? '' : `<button class="btn danger sm del-user-btn" data-id="${u.user_id}">Eliminar</button>`}</td>
     </tr>`;
   }
 
-  function bindDeleteButtons() {
-    document.querySelectorAll('.del-user-btn').forEach(btn => {
-      btn.onclick = () => doDeleteUser(btn.dataset.id, btn.dataset.name);
-    });
-  }
-
-  function openNewUserModal() {
-    $('new-username').value = '';
-    $('new-email').value = '';
-    $('new-password').value = '';
-    $('new-role').value = 'admin';
-    $('new-user-error').textContent = '';
-    $('modal-user').classList.remove('hidden');
-    $('new-username').focus();
-  }
-
-  async function doCreateUser() {
-    const username = $('new-username').value.trim();
-    const email = $('new-email').value.trim();
-    const password = $('new-password').value;
-    const role = $('new-role').value;
-    $('new-user-error').textContent = '';
-    if (!username || !password) { $('new-user-error').textContent = 'Usuario y contraseña son obligatorios.'; return; }
-    const btn = $('modal-confirm');
-    btn.disabled = true; btn.textContent = 'Creando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/users', { username, email, password, role });
-      if (!data) return;
-      $('modal-user').classList.add('hidden');
-      toast('Usuario creado', 'ok');
-      const tbody = $('users-tbody');
-      if (tbody) {
-        tbody.insertAdjacentHTML('beforeend', userRow(data.user));
-        bindDeleteButtons();
-      }
-    } catch (e) { $('new-user-error').textContent = e.message; }
-    finally { btn.disabled = false; btn.textContent = 'Crear usuario'; }
-  }
-
-  async function doDeleteUser(userId, username) {
-    if (!confirm(`¿Eliminar al usuario "${username}"? Esta acción no se puede deshacer.`)) return;
-    try {
-      await api('DELETE', `/api/v1/admin/users/${userId}`);
-      toast('Usuario eliminado');
-      $(`ur-${userId}`)?.remove();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  // ── Tab: Clientes ─────────────────────────────────────────────────────
   async function tabClients(c) {
     c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
       const data = await api('GET', '/api/v1/admin/clients');
       if (!data) return;
+      if (data.ops_url) {
+        opsUrl = data.ops_url;
+        $('btn-ops').href = opsUrl.replace(/\/$/, '') + '/admin';
+      } else {
+        $('btn-ops').href = 'http://localhost:8091/admin';
+      }
       const clients = data.clients || [];
       c.innerHTML = `<div class="card">
         <div class="card-head">
@@ -726,109 +439,67 @@
           <button class="btn primary sm" id="btn-new-client">+ Nuevo cliente</button>
         </div>
         ${clients.length ? `<table class="tbl">
-          <thead><tr><th>Negocio</th><th>Email</th><th>Plan</th><th>Creado</th><th></th></tr></thead>
-          <tbody id="clients-tbody">${clients.map(cl => clientRow(cl)).join('')}</tbody>
-        </table>` : '<div class="empty">No hay clientes todavía. Crea el primero.</div>'}
+          <thead><tr><th>Negocio</th><th>Email</th><th>Google</th><th>Automatizaciones</th><th>Creado</th><th></th></tr></thead>
+          <tbody>${clients.map(cl => clientRow(cl)).join('')}</tbody>
+        </table>` : '<div class="empty">No hay clientes todavía.</div>'}
       </div>`;
-      $('btn-new-client').onclick = openNewClientModal;
-      bindClientDeleteButtons();
+      $('btn-new-client').onclick = () => { $('modal-client').classList.remove('hidden'); };
+      document.querySelectorAll('.del-client-btn').forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm('¿Eliminar cliente?')) return;
+          await api('DELETE', `/api/v1/admin/clients/${btn.dataset.id}`);
+          toast('Cliente eliminado'); loadTab('clients');
+        };
+      });
     } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
   }
 
   function clientRow(cl) {
-    return `<tr id="cr-${cl.client_id}">
+    const autos = (cl.automations || []).filter(a => a.status === 'active').map(a => a.automation_type).join(', ') || '—';
+    const g = cl.google_connected ? (cl.google_email || 'conectado') : 'no';
+    return `<tr>
       <td><strong>${escHtml(cl.name)}</strong></td>
       <td>${escHtml(cl.email)}</td>
-      <td><span class="badge neu">${escHtml(cl.plan || 'starter')}</span></td>
+      <td><span class="badge ${cl.google_connected ? 'ok' : 'neu'}">${escHtml(g)}</span></td>
+      <td>${escHtml(autos)}</td>
       <td>${dateStr(cl.created_at)}</td>
-      <td><button class="btn danger sm del-client-btn" data-id="${cl.client_id}" data-name="${escHtml(cl.name)}">Eliminar</button></td>
+      <td><button class="btn danger sm del-client-btn" data-id="${cl.client_id}">Eliminar</button></td>
     </tr>`;
   }
 
-  function bindClientDeleteButtons() {
-    document.querySelectorAll('.del-client-btn').forEach(btn => {
-      btn.onclick = () => doDeleteClient(btn.dataset.id, btn.dataset.name);
-    });
-  }
-
-  let _newClientModal = null;
-  function openNewClientModal() {
-    if (!_newClientModal) {
-      const div = document.createElement('div');
-      div.className = 'modal-bg';
-      div.id = 'modal-client';
-      div.innerHTML = `<div class="modal">
-        <div class="modal-title">Nuevo cliente</div>
-        <div class="form-group"><label>Nombre del negocio</label><input id="nc-name" type="text" placeholder="Panadería La Lupita" /></div>
-        <div class="form-group"><label>Email</label><input id="nc-email" type="email" placeholder="hola@negocio.com" /></div>
-        <div class="form-group"><label>Contraseña provisional</label><input id="nc-password" type="password" placeholder="••••••••" /></div>
-        <div class="error-msg" id="nc-error"></div>
-        <div class="modal-footer">
-          <button class="btn ghost" id="nc-cancel">Cancelar</button>
-          <button class="btn primary" id="nc-confirm">Crear cliente</button>
-        </div>
-      </div>`;
-      document.body.appendChild(div);
-      _newClientModal = div;
-      $('nc-cancel').onclick = () => div.classList.add('hidden');
-      $('nc-confirm').onclick = doCreateClient;
-      div.addEventListener('click', e => { if (e.target === div) div.classList.add('hidden'); });
-    }
-    $('nc-name').value = ''; $('nc-email').value = ''; $('nc-password').value = ''; $('nc-error').textContent = '';
-    _newClientModal.classList.remove('hidden');
-    $('nc-name').focus();
-  }
-
-  async function doCreateClient() {
-    const name = $('nc-name').value.trim();
-    const email = $('nc-email').value.trim();
-    const password = $('nc-password').value;
-    $('nc-error').textContent = '';
-    if (!name || !email || !password) { $('nc-error').textContent = 'Todos los campos son obligatorios.'; return; }
-    const btn = $('nc-confirm');
-    btn.disabled = true; btn.textContent = 'Creando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/clients', { name, email, password });
-      if (!data) return;
-      _newClientModal.classList.add('hidden');
-      toast('Cliente creado', 'ok');
-      const tbody = $('clients-tbody');
-      if (tbody) { tbody.insertAdjacentHTML('beforeend', clientRow(data.client)); bindClientDeleteButtons(); }
-      else loadTab('clients');
-    } catch (e) { $('nc-error').textContent = e.message; }
-    finally { btn.disabled = false; btn.textContent = 'Crear cliente'; }
-  }
-
-  async function doDeleteClient(clientId, name) {
-    if (!confirm(`¿Eliminar al cliente "${name}"? Se perderán sus automatizaciones.`)) return;
-    try {
-      await api('DELETE', `/api/v1/admin/clients/${clientId}`);
-      toast('Cliente eliminado');
-      $(`cr-${clientId}`)?.remove();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  // ── Escape helper ─────────────────────────────────────────────────────
-  function escHtml(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // ── Boot ──────────────────────────────────────────────────────────────
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => loadTab(tab.dataset.tab));
-  });
-  $('btn-login').addEventListener('click', tryLogin);
+  $('btn-login').onclick = tryLogin;
   $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
-  $('btn-logout').addEventListener('click', doLogout);
-  $('modal-cancel').addEventListener('click', () => $('modal-user').classList.add('hidden'));
-  $('modal-confirm').addEventListener('click', doCreateUser);
-  $('modal-user').addEventListener('click', e => { if (e.target === $('modal-user')) $('modal-user').classList.add('hidden'); });
+  $('btn-logout').onclick = doLogout;
+  document.querySelectorAll('.tab').forEach(t => t.onclick = () => loadTab(t.dataset.tab));
+  $('modal-cancel').onclick = () => $('modal-user').classList.add('hidden');
+  $('modal-confirm').onclick = async () => {
+    try {
+      await api('POST', '/api/v1/admin/users', {
+        username: $('new-username').value.trim(),
+        email: $('new-email').value.trim(),
+        password: $('new-password').value,
+        role: $('new-role').value,
+      });
+      $('modal-user').classList.add('hidden');
+      toast('Usuario creado', 'ok');
+      loadTab('users');
+    } catch (e) { $('new-user-error').textContent = e.message; }
+  };
+  $('modal-client-cancel').onclick = () => $('modal-client').classList.add('hidden');
+  $('modal-client-confirm').onclick = async () => {
+    try {
+      await api('POST', '/api/v1/admin/clients', {
+        name: $('new-client-name').value.trim(),
+        email: $('new-client-email').value.trim(),
+        password: $('new-client-password').value,
+      });
+      $('modal-client').classList.add('hidden');
+      toast('Cliente creado', 'ok');
+      loadTab('clients');
+    } catch (e) { $('new-client-error').textContent = e.message; }
+  };
 
-  (async () => {
-    const ok = await tryRestoreSession();
-    if (ok) showApp();
-    else { $('login-overlay').classList.remove('hidden'); $('inp-username').focus(); }
-  })();
+  restoreSession();
 })();
 </script>
 </body>

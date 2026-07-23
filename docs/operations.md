@@ -1,77 +1,37 @@
-# Operacion diaria ZeroManual
+# Operacion diaria ZeroManual (comercial)
 
 ## Principio
 
-Los agentes son autonomos y viven en ZeroManual. n8n solo dispara eventos externos (email, cron, formularios), no contiene la logica de negocio de los agentes.
+Este repo opera la **web y el portal**. Facturas, agentes y aprobaciones se gestionan en **OpsCenter**.
 
 ## Flujo habitual
 
-1. Escribes una instruccion en lenguaje natural en la consola web.
-2. El sistema interpreta y ejecuta el agente correspondiente.
-3. Si el riesgo es alto, entra en cola de aprobacion.
-4. Apruebas o rechazas desde el panel derecho.
-5. Las facturas emitidas aparecen en **Facturas emitidas**.
+1. Revisas clientes y automatizaciones en `/admin`.
+2. Los clientes activan reseñas Google desde `/client`.
+3. Para facturar o aprobar acciones de agentes, abres OpsCenter (`ZEROMANUAL_OPS_URL`).
 
-## Umbrales y seguridad
+## Seguridad
 
-- `APPROVAL_THRESHOLD_EUR`: importe a partir del cual facturacion/contabilidad escalan.
-- `ZEROMANUAL_WEBHOOK_SECRET`: protege el endpoint que n8n usa para llamar a ZeroManual.
-- `ZEROMANUAL_API_KEY`: **obligatoria**. Si falta o esta vacia, los endpoints `/api/v1/*` responden 401 (fail-closed). No desactives la autenticacion dejando la key vacia.
+- `ZEROMANUAL_WEBHOOK_SECRET`: protege `POST /internal/automations/{type}/drafts`.
+- `ZEROMANUAL_OPS_URL` + `ZEROMANUAL_OPS_API_KEY`: puente hacia OpsCenter (opcional en local).
 
 ## Endpoints principales
 
 | Endpoint | Uso |
 |----------|-----|
-| `POST /api/v1/natural-language` | Instruccion en texto libre |
-| `POST /api/v1/events` | Evento estructurado (avanzado) |
-| `GET /api/v1/approvals` | Pendientes |
-| `POST /api/v1/approvals/{id}/approve` | Aprobar |
-| `POST /api/v1/approvals/{id}/reject` | Rechazar |
-| `GET /api/v1/invoices` | Facturas emitidas |
-| `GET /api/v1/ledger` | Asientos contables |
-| `GET /api/v1/clients/{name}/context` | Memoria + facturas + ledger del cliente |
-| `GET /api/v1/invoices/{id}/pdf` | Descargar PDF de factura |
-| `POST /api/v1/accounting/export` | CSV contable borrador |
-
-Ver [integrations.md](integrations.md) para SMTP, PDF y export.
-
-> Nota: el webhook generico `POST /api/v1/webhooks/n8n` **no existe**. n8n usa `POST /internal/automations/{type}/drafts` con `X-Webhook-Secret`.
+| `POST /client/register` | Alta cliente |
+| `POST /client/login` | Login cliente |
+| `GET /api/v1/admin/clients` | Listado clientes (admin) |
+| `GET /api/v1/admin/users` | Usuarios admin |
+| `POST /internal/automations/{type}/drafts` | Borradores desde n8n |
 
 ## Persistencia
 
-- Base SQLite: `runtime/zeromanual.db` (configurable con `ZEROMANUAL_DB_PATH`)
-- Auditoria JSONL: `runtime/audit-log.jsonl`
-
-## Escalado humano
-
-Aprueba solo si:
-- conoces el cliente y el importe,
-- la accion fiscal/legal es coherente,
-- no hay banderas de compliance (`sensitive_data`, `irreversible_action`).
-
-Rechaza si falta contexto o hay duda legal/fiscal.
-
-## Coste de API (Anthropic)
-
-Un flujo de factura **no deberia** gastar LLM al aprobar: la aprobacion solo ejecuta herramientas locales.
-
-Variables recomendadas en `.env`:
-
-| Variable | Valor recomendado | Efecto |
-|----------|-------------------|--------|
-| `ZEROMANUAL_AI_MODE` | `eco` | Reglas primero; Claude solo si el texto es ambiguo |
-| `CLAUDE_MODEL` | `claude-haiku-4-5` | Modelo barato para JSON cortos |
-| `CLAUDE_MAX_TOKENS` | `256` | Limita salida y coste por llamada |
-| `ZEROMANUAL_AI_MODE` | `off` | Sin llamadas API (solo reglas) |
-
-Modos: `eco` (defecto), `balanced`, `full`, `off`.
-
-Reinicia la API tras cambiar `.env`. Revisa uso en [console.anthropic.com](https://console.anthropic.com/).
-
-**Nota:** el coste de esta sesion en Cursor (agente con `CLAUDE.md` grande) es independiente de ZeroManual.
+- SQLite: `runtime/zeromanual.db`
+- OpsCenter: `runtime/opscenter.db` (otro proceso)
 
 ## Mantenimiento
 
-- Backup semanal de `runtime/zeromanual.db` y `audit-log.jsonl`.
+- Backup semanal de `zeromanual.db`.
 - Rotacion de secretos cada 90 dias.
-- Revision mensual de umbrales de aprobacion.
+- Verificar que el puente OpsCenter responde (`/health` en `:8091`).

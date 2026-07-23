@@ -1,95 +1,66 @@
 # Despliegue en VPS Hostinger
 
-## Objetivo
-
-Ejecutar ZeroManual (agentes + API/UI) en tu VPS junto a n8n, manteniendo agentes autonomos fuera de workflows n8n.
-
-## Arquitectura en VPS
+## Arquitectura
 
 ```text
-Internet -> n8n (5678) -> webhook externo
-Internet -> ZeroManual API (8090) -> agentes + SQLite/Postgres
+Internet -> ZeroManual comercial (:8090)  web + portal + admin slim
+Internet -> OpsCenter (:8091)            agentes + facturas + aprobaciones
+Internet -> n8n (:5678)                  workflows por cliente
 ```
 
-n8n dispara ZeroManual; ZeroManual decide y ejecuta.
+n8n escribe borradores en ZeroManual. ZeroManual emite eventos de negocio a OpsCenter.
 
-## Pasos recomendados
+## Pasos
 
-### 1) Preparar servidor
-
-- Ubuntu 22.04+ en Hostinger VPS
-- Instalar Docker + Docker Compose
-- Abrir puertos: `22`, `443`, `5678` (n8n), `8090` (ZeroManual, o detras de reverse proxy)
-
-### 2) Clonar proyecto
+### 1) ZeroManual
 
 ```bash
-git clone <tu-repo-manualzero> /opt/zeromanual
+git clone <repo-zeromanual> /opt/zeromanual
 cd /opt/zeromanual
 cp .env.example .env
+# Definir ZEROMANUAL_WEBHOOK_SECRET, ZEROMANUAL_OPS_URL, ZEROMANUAL_OPS_API_KEY
+python3 -m pip install -e .
+python3 -m apps.interface.api   # :8090
 ```
 
-Edita `.env` con valores reales (secretos, dominio, umbrales).
-
-### 3) Levantar stack base
+### 2) OpsCenter
 
 ```bash
-docker compose -f infra/docker-compose.yml up -d
+git clone <repo-opscenter> /opt/opscenter
+cd /opt/opscenter
+cp .env.example .env
+# OPSCENTER_API_KEY debe coincidir con ZEROMANUAL_OPS_API_KEY del tenant
+python3 -m pip install -e .
+python3 -m apps.interface.api   # :8091
 ```
 
-### 4) Ejecutar API de agentes
-
-Opcion simple (sin contenedor dedicado):
+### 3) Migrar datos ops (si vienes del monolito)
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-python -m apps.interface.api
+cd /opt/opscenter
+python3 scripts/migrate_from_zeromanual.py --source /opt/zeromanual/runtime/zeromanual.db
 ```
 
-Recomendado produccion: `systemd` o contenedor propio con restart automatico.
+Haz **backup** de la DB antes.
 
-### 5) Configurar n8n como disparador
+### 4) n8n
 
-En n8n crea un workflow con nodo **HTTP Request** hacia el endpoint real de borradores (no existe `/api/v1/webhooks/n8n`):
+Webhook de borradores:
 
-- Method: `POST`
-- URL: `http://<tu-vps>:8090/internal/automations/google_reviews/drafts`
+- `POST http://<vps>:8090/internal/automations/google_reviews/drafts`
 - Header: `X-Webhook-Secret: <ZEROMANUAL_WEBHOOK_SECRET>`
-- Body JSON ejemplo:
 
-```json
-{
-  "client_id": "CLI-...",
-  "reviewer_name": "Ana",
-  "rating": "5",
-  "source_text": "Muy buen servicio",
-  "suggested_reply": "Gracias Ana..."
-}
-```
+### 5) Reverse proxy
 
-Para eventos de negocio (facturas, agentes), apunta a **OpsCenter** (`:8091`) con `X-API-Key` del tenant, no a ZeroManual comercial.
+- `https://app.tudominio.com` → `:8090`
+- `https://ops.tudominio.com` → `:8091`
+- `https://n8n.tudominio.com` → `:5678`
 
-### 5b) API key obligatoria
+## Checklist
 
-`ZEROMANUAL_API_KEY` debe estar definida. Si esta vacia, los endpoints protegidos responden 401 (fail-closed).
-### 6) Reverse proxy (recomendado)
-
-Usa Nginx/Caddy con TLS:
-
-- `https://agents.tudominio.com` -> `localhost:8090`
-- `https://n8n.tudominio.com` -> `localhost:5678`
-
-## Checklist de produccion
-
-- [ ] `.env` con secretos fuertes
+- [ ] `.env` con secretos fuertes en ambos servicios
 - [ ] HTTPS activo
-- [ ] Backup de `runtime/zeromanual.db`
-- [ ] Prueba de instruccion NL + aprobacion + factura emitida
-- [ ] Prueba webhook n8n -> ZeroManual
-- [ ] Logs monitorizados (`audit-log.jsonl`)
-
-## Nota fiscal (Espana)
-
-Los borradores de IVA/impuestos requieren validacion humana antes de presentacion oficial.
+- [ ] Backup de ambas DB
+- [ ] Alta cliente ZM → evento visible en OpsCenter
+- [ ] Activar automatización → workflow n8n + onboarding en OpsCenter
+- [ ] Admin ZM sin pestañas de facturas/agentes

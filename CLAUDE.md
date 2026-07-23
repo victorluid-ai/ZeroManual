@@ -178,34 +178,30 @@ npx @claude-flow/cli@latest doctor --fix
 
 ## ZeroManual — proyecto operativo
 
-Marca unica: **web comercial** (`/` + `/client`) + **empresa gestionada por IA** (`/admin`, `/ui`). Ver `docs/brand.md`.
+Marca unica: **web comercial** en este repo (`/`, `/client`, `/admin` slim).
+**OpsCenter** (repo aparte, `:8091`) opera facturacion/agentes multi-negocio. Ver `docs/brand.md`.
 
 | Capa | URL | Rol |
 |------|-----|-----|
 | Comercial | `/`, `/client` | Vender y entregar automatizaciones a clientes |
-| Operaciones IA | `/admin`, `/ui` | Facturacion, contabilidad, ventas, compliance |
+| Admin comercial | `/admin` | Usuarios producto + clientes portal (sin facturas/agentes) |
+| OpsCenter | `:8091` | Facturacion, contabilidad, ventas, compliance (repo hermano) |
 | Desarrollo | `.claude/agents/` | Evolucionar el codigo con Claude Code |
 
-### Agentes de negocio (runtime Python)
+### Agentes de negocio
 
-- `AgentBillingOps` — facturacion
-- `AgentAccountingAssistantES` — contabilidad Espana
-- `AgentSalesPipeline` — ventas
-- `AgentClientDeliveryManager` — entrega clientes
-- `AgentGovernanceAndCompliance` — cumplimiento
-
-Espejo documental: `.claude/agents/manualzero/`
+Viven en **OpsCenter**, no en este repo. Espejo documental legacy: `.claude/agents/manualzero/`.
 
 ### Comandos operativos
 
 ```bash
 python -m pip install -e .
-python -m apps.interface.api          # http://localhost:8090 (web + API)
-python -m apps.triggers.runner        # triggers email autonomos
+python -m apps.interface.api          # http://localhost:8090 (web + portal + admin slim)
+# OpsCenter (otro repo): python -m apps.interface.api  # :8091
 ```
 
 ### Reglas ZeroManual
 
-- Los agentes de negocio NO viven en n8n; triggers nativos en `apps/triggers/`.
+- Este repo no ejecuta agentes de negocio; emite eventos a OpsCenter vía `OpsCenterBridge`.
 - No sobrescribir `runtime/zeromanual.db` ni `.env`.
-- Cambios en `apps/agents/` deben mantener guardrails de aprobacion humana.
+- Admin ZM no debe reintroducir facturas/aprobaciones/agentes.

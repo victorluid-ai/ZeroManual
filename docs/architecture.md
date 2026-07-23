@@ -1,39 +1,31 @@
-# Arquitectura ZeroManual (Fase 1-2)
+# Arquitectura ZeroManual (comercial)
 
 ## Resumen
 
-ZeroManual usa una arquitectura Claude-first con triggers nativos (email) y un orquestador Python para ejecutar agentes con politicas de riesgo, herramientas auditables y handoffs entre agentes.
+ZeroManual es el producto comercial (landing + portal cliente + admin ligero).
+El runtime multiagente vive en **OpsCenter** (proceso y DB separados).
 
-## Flujo operativo
+## Flujo
 
-1. Consola NL, email o API emiten un evento de negocio.
-2. `apps/orchestrator/runtime.py` enruta el evento al agente objetivo.
-3. El agente ejecuta: plan (reglas o Claude en modo eco) -> riesgo -> ejecutar tool o escalar.
-4. Si `COMPLETED`, el bus de handoffs puede encadenar agentes (ej. factura -> contabilidad).
-5. El resultado se guarda en SQLite y `runtime/audit-log.jsonl`.
+```text
+Cliente → /client → Google OAuth → n8n workflow
+                 ↘ OpsCenterBridge → POST OpsCenter /api/v1/events
+Admin ZM → /admin → users + clients + automations (solo lectura/CRUD comercial)
+```
 
-## Handoffs automaticos
+## Persistencia
 
-| Origen | Accion | Destino | Accion |
-|--------|--------|---------|--------|
-| AgentBillingOps | create_invoice | AgentAccountingAssistantES | classify_transaction |
-| AgentSalesPipeline | draft_proposal | AgentClientDeliveryManager | client_onboarding |
+- SQLite `runtime/zeromanual.db`: `users`, `clients`, sesiones, Google creds, automations, drafts.
+- Las tablas ops históricas pueden coexistir tras migración, pero la API comercial ya no las expone.
 
-## Niveles de autonomia
+## Seguridad
 
-- Nivel A: ejecucion autonoma total.
-- Nivel B: ejecucion autonoma con controles reforzados.
-- Nivel C: bloqueo y solicitud de aprobacion humana.
+- Admin y cliente: Bearer sessions.
+- Webhooks n8n: `X-Webhook-Secret` (`ZEROMANUAL_WEBHOOK_SECRET`).
+- OpsCenter: API key por tenant (`X-API-Key` + `X-Tenant-Id`).
 
-## Integraciones clave
+## Hardening siguiente
 
-- n8n: solo disparador externo hacia `POST /api/v1/webhooks/n8n`.
-- SQLite (`runtime/zeromanual.db`): aprobaciones, facturas y log de eventos.
-- Postgres: opcional en VPS via `docker-compose` para escalar despues.
-- Claude: interpretacion NL (opcional con `ANTHROPIC_API_KEY`).
-
-## Hardening recomendado (siguiente paso)
-
-- Autenticacion por servicio para webhooks internos.
-- Firma de eventos entre n8n y orquestador.
-- Cifrado de datos sensibles y politicas RGPD.
+- Cola de reintentos persistente para el puente OpsCenter.
+- Firma de webhooks n8n.
+- Rate-limit login en SQLite (hoy en memoria si se añade).

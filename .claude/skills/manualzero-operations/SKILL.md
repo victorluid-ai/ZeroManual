@@ -1,25 +1,40 @@
 ---
 name: ZeroManual-operations
-description: Operar ZeroManual via API y consola — eventos, aprobaciones, facturas y triggers. Usar cuando el usuario pida ejecutar agentes de negocio, revisar pendientes o probar facturacion.
+description: Operar ZeroManual comercial (portal/admin) y enlazar con OpsCenter para facturas/agentes.
 ---
 
 # ZeroManual Operations
 
-## Arranque
+## Arranque comercial
 
 ```bash
-python -m apps.interface.api
+python -m apps.interface.api   # :8090
+```
+
+## Arranque OpsCenter (repo hermano)
+
+```bash
+cd /path/to/OpsCenter
+python -m apps.interface.api   # :8091
 python -m apps.triggers.runner
 ```
 
-## API util
+## API comercial util
 
-- `POST /api/v1/natural-language` — instruccion en texto libre
-- `GET /api/v1/approvals` — pendientes
+- `POST /client/register` — alta cliente (emite evento a OpsCenter si el puente está configurado)
+- `GET /api/v1/admin/clients` — clientes + automatizaciones
+- `GET /api/v1/admin/users` — usuarios admin
+- `POST /internal/automations/{type}/drafts` — borradores desde n8n
+
+## API OpsCenter (facturas / agentes)
+
+- `POST /api/v1/natural-language`
+- `GET /api/v1/approvals`
 - `POST /api/v1/approvals/{id}/approve`
 - `GET /api/v1/invoices`
-- `POST /api/v1/triggers/run-once`
+
+Headers: `X-API-Key`, `X-Tenant-Id: zeromanual`.
 
 ## Regla
 
-Agentes de negocio en `apps/agents/`, no confundir con agentes dev de `.claude/agents/`.
+Agentes de negocio en **OpsCenter** (`apps/agents/`), no en este repo. No confundir con agentes dev de `.claude/agents/`.

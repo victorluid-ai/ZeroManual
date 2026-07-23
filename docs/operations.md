@@ -16,6 +16,7 @@ Los agentes son autonomos y viven en ZeroManual. n8n solo dispara eventos extern
 
 - `APPROVAL_THRESHOLD_EUR`: importe a partir del cual facturacion/contabilidad escalan.
 - `ZEROMANUAL_WEBHOOK_SECRET`: protege el endpoint que n8n usa para llamar a ZeroManual.
+- `ZEROMANUAL_API_KEY`: **obligatoria**. Si falta o esta vacia, los endpoints `/api/v1/*` responden 401 (fail-closed). No desactives la autenticacion dejando la key vacia.
 
 ## Endpoints principales
 
@@ -33,7 +34,8 @@ Los agentes son autonomos y viven en ZeroManual. n8n solo dispara eventos extern
 | `POST /api/v1/accounting/export` | CSV contable borrador |
 
 Ver [integrations.md](integrations.md) para SMTP, PDF y export.
-| `POST /api/v1/webhooks/n8n` | Trigger desde n8n |
+
+> Nota: el webhook generico `POST /api/v1/webhooks/n8n` **no existe**. n8n usa `POST /internal/automations/{type}/drafts` con `X-Webhook-Secret`.
 
 ## Persistencia
 

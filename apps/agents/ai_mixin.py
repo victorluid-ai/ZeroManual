@@ -32,6 +32,9 @@ class AgentAIMixin:
         approval_threshold_eur: float,
         default: AgentDecision,
     ) -> AgentDecision:
+        # Deterministic mandatory approval cannot be waived by the LLM.
+        if default.requires_human_approval:
+            return default
         client_context = self._client_context(event)
         ai_decision = self._ai.plan_with_ai(
             agent_key=self._agent_key,
@@ -39,7 +42,11 @@ class AgentAIMixin:
             approval_threshold_eur=approval_threshold_eur,
             client_context=client_context,
         )
-        return ai_decision if ai_decision is not None else default
+        if ai_decision is None:
+            return default
+        if default.requires_human_approval and not ai_decision.requires_human_approval:
+            return default
+        return ai_decision
 
     def _client_context(self, event: Event) -> str:
         if not self._store:

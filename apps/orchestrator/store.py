@@ -597,12 +597,25 @@ class DataStore:
     def purge_pii_older_than(self, days: int) -> dict[str, int | str]:
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
         with self._connect() as conn:
-            result = conn.execute(
+            inv = conn.execute(
                 "UPDATE invoices SET client_nif = NULL, client_email = NULL WHERE created_at < ?",
                 (cutoff,),
             )
-            purged = result.rowcount
-        return {"purged_invoices": purged, "cutoff": cutoff}
+            mem = conn.execute(
+                "UPDATE client_memory SET notes = '[purged]' WHERE updated_at < ?",
+                (cutoff,),
+            )
+            drafts = conn.execute(
+                "UPDATE automation_drafts SET source_text = NULL, suggested_reply = '[purged]'"
+                " WHERE created_at < ? AND status != 'pending'",
+                (cutoff,),
+            )
+        return {
+            "purged_invoices": inv.rowcount,
+            "purged_client_memory": mem.rowcount,
+            "purged_automation_drafts": drafts.rowcount,
+            "cutoff": cutoff,
+        }
 
     def log_event(
         self,
@@ -637,20 +650,26 @@ class DataStore:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             if count == 0:
+                password = secrets.token_urlsafe(12)
                 user_id = f"USR-{secrets.token_hex(4).upper()}"
                 conn.execute(
                     "INSERT INTO users (user_id, username, email, password_hash, role, created_at)"
                     " VALUES (?,?,?,?,?,?)",
-                    (user_id, "admin", "", _hash_password("admin123"), "admin", _utc_now()),
+                    (user_id, "admin", "", _hash_password(password), "admin", _utc_now()),
                 )
-                print("[ZeroManual] Default admin created — username: admin / password: admin123 — CHANGE THIS NOW")  # noqa: T201
+                print(  # noqa: T201
+                    f"[ZeroManual] Default admin created — username: admin / password: {password} — CHANGE THIS NOW"
+                )
 
     def ensure_default_client(self) -> None:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
             if count == 0:
-                self.create_client("Empresa de prueba", "test@empresa.com", "test123")
-                print("[ZeroManual] Cliente de prueba creado — email: test@empresa.com / password: test123 — CAMBIA ESTO")  # noqa: T201
+                password = secrets.token_urlsafe(12)
+                self.create_client("Empresa de prueba", "test@empresa.com", password)
+                print(  # noqa: T201
+                    f"[ZeroManual] Cliente de prueba creado — email: test@empresa.com / password: {password} — CAMBIA ESTO"
+                )
 
     def create_user(self, username: str, email: str, password: str, role: str = "admin") -> dict[str, Any]:
         user_id = f"USR-{secrets.token_hex(4).upper()}"

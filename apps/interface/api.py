@@ -33,6 +33,8 @@ def verify_api_key(
     x_api_key: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
 ) -> None:
+    # Fails closed: an unset ZEROMANUAL_API_KEY must never mean "no auth
+    # required". A valid admin session bearer token is still accepted.
     key = runtime.settings.api_key
     if key and x_api_key == key:
         return
@@ -40,8 +42,7 @@ def verify_api_key(
         token = authorization.removeprefix("Bearer ")
         if runtime.store.get_session_user(token) is not None:
             return
-    if key and x_api_key != key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def get_admin_user(authorization: str | None = Header(default=None)) -> dict:

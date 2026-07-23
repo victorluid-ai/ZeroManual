@@ -52,29 +52,28 @@ Recomendado produccion: `systemd` o contenedor propio con restart automatico.
 
 ### 5) Configurar n8n como disparador
 
-En n8n crea un workflow con nodo **HTTP Request**:
+En n8n crea un workflow con nodo **HTTP Request** hacia el endpoint real de borradores (no existe `/api/v1/webhooks/n8n`):
 
 - Method: `POST`
-- URL: `http://<tu-vps>:8090/api/v1/webhooks/n8n`
-- Header: `x-zeromanual-secret: <ZEROMANUAL_WEBHOOK_SECRET>`
+- URL: `http://<tu-vps>:8090/internal/automations/google_reviews/drafts`
+- Header: `X-Webhook-Secret: <ZEROMANUAL_WEBHOOK_SECRET>`
 - Body JSON ejemplo:
 
 ```json
 {
-  "message": "Crea una factura de 300 euros para cliente Acme"
+  "client_id": "CLI-...",
+  "reviewer_name": "Ana",
+  "rating": "5",
+  "source_text": "Muy buen servicio",
+  "suggested_reply": "Gracias Ana..."
 }
 ```
 
-Alternativa estructurada:
+Para eventos de negocio (facturas, agentes), apunta a **OpsCenter** (`:8091`) con `X-API-Key` del tenant, no a ZeroManual comercial.
 
-```json
-{
-  "agent_name": "AgentBillingOps",
-  "action": "create_invoice",
-  "payload": { "amount_eur": 300, "client_name": "Acme" }
-}
-```
+### 5b) API key obligatoria
 
+`ZEROMANUAL_API_KEY` debe estar definida. Si esta vacia, los endpoints protegidos responden 401 (fail-closed).
 ### 6) Reverse proxy (recomendado)
 
 Usa Nginx/Caddy con TLS:

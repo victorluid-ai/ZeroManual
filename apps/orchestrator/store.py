@@ -653,11 +653,40 @@ class DataStore:
                 print("[ZeroManual] Default admin created — username: admin / password: admin123 — CHANGE THIS NOW")  # noqa: T201
 
     def ensure_default_client(self) -> None:
+        # Keep the outer read short — create_client / save_google_creds open their
+        # own connections; nesting them under one held lock deadlocks SQLite.
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
-            if count == 0:
-                self.create_client("Empresa de prueba", "test@empresa.com", "test123")
-                print("[ZeroManual] Cliente de prueba creado — email: test@empresa.com / password: test123 — CAMBIA ESTO")  # noqa: T201
+            demo = conn.execute(
+                "SELECT client_id FROM clients WHERE email = ?",
+                ("test@empresa.com",),
+            ).fetchone()
+
+        if count == 0 or demo is None:
+            client = self.create_client("Empresa de prueba", "test@empresa.com", "test123")
+            client_id = client["client_id"]
+            created = True
+        else:
+            client_id = demo["client_id"]
+            created = False
+
+        # Seed connected Google Business + active reviews so the commercial home
+        # can show the Google avatar badge and "Activa ✓" out of the box.
+        if self.get_google_creds(client_id) is None:
+            self.save_google_creds(
+                client_id=client_id,
+                refresh_token="dev-refresh-token",
+                access_token="dev-access-token",
+                token_expiry=None,
+                google_email="empresa.prueba@gmail.com",
+                location_id="locations/dev-demo",
+            )
+        auto = self.get_automation(client_id, "google_reviews")
+        if auto is None or auto.get("status") != "active":
+            self.activate_automation(client_id, "google_reviews", "wf-dev-demo")
+
+        if created:
+            print("[ZeroManual] Cliente de prueba creado — email: test@empresa.com / password: test123 — Google + reseñas ya activos")  # noqa: T201
 
     def create_user(self, username: str, email: str, password: str, role: str = "admin") -> dict[str, Any]:
         user_id = f"USR-{secrets.token_hex(4).upper()}"

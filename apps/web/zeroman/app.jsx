@@ -22,8 +22,10 @@ const T = {
     hero: { eyebrow: "AI automations for local business", h1: "Stop doing the busywork.", sub: "ZeroManual puts the repetitive jobs — replying to reviews, posting reels, sending newsletters — on autopilot. Pick an automation, subscribe, and it just runs.", browse: "Browse automations", how: "See how it works", t1: "Trusted by 2,400+ local businesses", t2: "180k tasks automated / month", t3: "Live in 5 minutes" },
     grid: { title: "Browse automations", sub: "Flat monthly price each. Subscribe in one click — no contracts, cancel anytime.", annual: "Billed annually · 2 months free", kicker: "Marketplace" },
     filters: { all: "All", reviews: "Reviews", social: "Social", email: "Email", messaging: "Messaging" },
-    card: { subscribe: "Subscribe", added: "Added", details: "View details →", active: "Active ✓", activating: "Activating…" },
+    card: { subscribe: "Subscribe", added: "Added", details: "View details →", active: "Active ✓", activating: "Activating…", soon: "Coming soon" },
     badge: { popular: "Most popular", new: "New" },
+    mine: { kicker: "Your plan", title: "Your active automations", empty: "No active automations yet.", manage: "Open client portal →", googleOn: "Google Business connected", googleOff: "Connect Google Business" },
+    account: { portal: "Client area", logout: "Log out" },
     how: { kicker: "How it works", title: "Live in three steps", sub: "No agencies, no setup projects. Connect your accounts and ZeroManual handles the rest.", s1t: "Pick your automations", s1b: "Choose from the menu above. Mix and match — every one is a flat monthly price.", s2t: "Connect your accounts", s2b: "Link Google, Instagram, or email in a couple of taps. We never post without your rules.", s3t: "It runs 24/7", s3b: "ZeroManual works around the clock and reports back. Adjust or cancel anytime." },
     band: { sub: "No contracts. No setup fees. Cancel anytime from your dashboard.", cta: "Start free →" },
     footer: "Small automations, big AI. © 2026 ZeroManual.",
@@ -71,8 +73,10 @@ const T = {
     hero: { eyebrow: "Automatizaciones con IA para negocios locales", h1: "Deja de hacer el trabajo repetitivo.", sub: "ZeroManual pone en piloto automático las tareas repetitivas — responder reseñas, publicar reels, enviar newsletters. Elige una automatización, suscríbete y funciona sola.", browse: "Ver automatizaciones", how: "Ver cómo funciona", t1: "Más de 2.400 negocios locales confían", t2: "180k tareas automatizadas / mes", t3: "Listo en 5 minutos" },
     grid: { title: "Explora las automatizaciones", sub: "Precio mensual fijo cada una. Suscríbete con un clic — sin contratos, cancela cuando quieras.", annual: "Facturación anual · 2 meses gratis", kicker: "Catálogo" },
     filters: { all: "Todas", reviews: "Reseñas", social: "Redes", email: "Correo", messaging: "Mensajes" },
-    card: { subscribe: "Suscribirse", added: "Añadido", details: "Ver detalles →", active: "Activa ✓", activating: "Activando…" },
+    card: { subscribe: "Suscribirse", added: "Añadido", details: "Ver detalles →", active: "Activa ✓", activating: "Activando…", soon: "Próximamente" },
     badge: { popular: "Más popular", new: "Nuevo" },
+    mine: { kicker: "Tu plan", title: "Tus automatizaciones activas", empty: "Aún no tienes automatizaciones activas.", manage: "Abrir portal cliente →", googleOn: "Google Business conectado", googleOff: "Conectar Google Business" },
+    account: { portal: "Área cliente", logout: "Salir" },
     how: { kicker: "Cómo funciona", title: "Listo en tres pasos", sub: "Sin agencias ni proyectos de configuración. Conecta tus cuentas y ZeroManual hace el resto.", s1t: "Elige tus automatizaciones", s1b: "Elige del menú de arriba. Combínalas — todas con un precio mensual fijo.", s2t: "Conecta tus cuentas", s2b: "Vincula Google, Instagram o tu correo en un par de toques. Nunca publicamos sin tus reglas.", s3t: "Funciona 24/7", s3b: "ZeroManual trabaja sin parar y te informa. Ajusta o cancela cuando quieras." },
     band: { sub: "Sin contratos. Sin costes de instalación. Cancela cuando quieras desde tu panel.", cta: "Empezar gratis →" },
     footer: "Pequeñas automatizaciones, gran IA. © 2026 ZeroManual.",
@@ -118,22 +122,22 @@ const T = {
 };
 
 const PRODUCTS = [
-  { id: "reviews", cat: "reviews", price: 29, badge: "popular",
+  { id: "reviews", cat: "reviews", price: 29, badge: "popular", available: true,
     en: { name: "Reply to Google Reviews", catLabel: "Reviews", connect: "Google Business Profile", tagline: "On-brand replies to every review, drafted and posted in your voice.", features: ["Replies within minutes, 24/7", "Matches your tone and business", "Flags angry reviews for you"], about: "Every time a customer leaves a review, ZeroManual writes a thoughtful, on-brand reply and posts it for you — usually within minutes. Negative reviews are flagged so you can step in, while the rest are handled automatically.", exInLabel: "Review received · ★★★★★", exIn: "“Best experience ever, the team is amazing. I’ll definitely be back!” — María G.", exOutLabel: "Reply posted", exOut: "Thank you, María! We’re so glad you enjoyed your visit. See you again soon." },
     es: { name: "Responder reseñas de Google", catLabel: "Reseñas", connect: "Perfil de Empresa de Google", tagline: "Respuestas con tu tono para cada reseña, redactadas y publicadas por ti.", features: ["Responde en minutos, 24/7", "Se adapta a tu tono y tu negocio", "Te avisa de las reseñas negativas"], about: "Cada vez que un cliente deja una reseña, ZeroManual redacta una respuesta cuidada y con tu tono, y la publica por ti — normalmente en minutos. Las reseñas negativas se marcan para que intervengas, y el resto se gestionan automáticamente.", exInLabel: "Reseña recibida · ★★★★★", exIn: "«La mejor experiencia, el equipo es increíble. ¡Volveré seguro!» — María G.", exOutLabel: "Respuesta publicada", exOut: "¡Gracias, María! Nos alegra mucho que disfrutaras tu visita. Te esperamos pronto." } },
-  { id: "reels", cat: "social", price: 39, badge: "",
+  { id: "reels", cat: "social", price: 39, badge: "", available: false,
     en: { name: "Post Social Reels", catLabel: "Social", connect: "Instagram & TikTok", tagline: "Turn your photos and clips into scheduled reels for Instagram and TikTok.", features: ["Auto-edits clips to trending formats", "Writes captions and hashtags", "Posts on your schedule"], about: "Drop in your photos and clips and ZeroManual edits them into short-form reels with trending cuts, captions, and hashtags, then posts them on the schedule you choose.", exInLabel: "New content", exIn: "3 photos and 2 clips from Sunday brunch, straight from your gallery", exOutLabel: "Reel posted", exOut: "20-second reel with trending cuts + “Sunday brunch at La Lupita 🍳” #brunch #LaLupita" },
     es: { name: "Publicar reels en redes", catLabel: "Redes", connect: "Instagram y TikTok", tagline: "Convierte tus fotos y clips en reels programados para Instagram y TikTok.", features: ["Edita clips a formatos de tendencia", "Escribe descripciones y hashtags", "Publica según tu calendario"], about: "Sube tus fotos y clips y ZeroManual los edita en reels cortos con cortes de tendencia, descripciones y hashtags, y los publica en el calendario que elijas.", exInLabel: "Contenido nuevo", exIn: "3 fotos y 2 clips del brunch del domingo, directos de tu galería", exOutLabel: "Reel publicado", exOut: "Reel de 20 s con cortes de tendencia + «Domingo de brunch en La Lupita 🍳» #brunch #LaLupita" } },
-  { id: "newsletter", cat: "email", price: 24, badge: "",
+  { id: "newsletter", cat: "email", price: 24, badge: "", available: false,
     en: { name: "Send Newsletters", catLabel: "Email", connect: "Mailchimp or Gmail", tagline: "Recurring email newsletters written from what is new at your business.", features: ["Drafts from your updates and offers", "Branded, mobile-ready emails", "Sends weekly or monthly"], about: "ZeroManual turns your latest offers, events, and updates into a clean, branded newsletter and sends it to your list on a weekly or monthly cadence — no writing required.", exInLabel: "What’s new", exIn: "Summer menu launch and new opening hours", exOutLabel: "Newsletter sent", exOut: "Subject: “The summer menu is here 🌞” — sent to 1,240 subscribers" },
     es: { name: "Enviar newsletters", catLabel: "Correo", connect: "Mailchimp o Gmail", tagline: "Boletines por correo creados a partir de las novedades de tu negocio.", features: ["Redacta desde tus novedades y ofertas", "Correos con tu marca, listos para móvil", "Envía cada semana o cada mes"], about: "ZeroManual convierte tus últimas ofertas, eventos y novedades en un boletín limpio y con tu marca, y lo envía a tu lista cada semana o cada mes — sin escribir nada.", exInLabel: "Novedades", exIn: "Lanzamiento del menú de verano y nuevo horario", exOutLabel: "Newsletter enviada", exOut: "Asunto: «Ya está aquí el menú de verano 🌞» — enviada a 1.240 suscriptores" } },
-  { id: "dms", cat: "messaging", price: 34, badge: "",
+  { id: "dms", cat: "messaging", price: 34, badge: "", available: false,
     en: { name: "Reply to DMs & Comments", catLabel: "Messaging", connect: "Instagram & Facebook", tagline: "Answers Instagram and Facebook messages and comments instantly.", features: ["Answers FAQs, hours and pricing", "Books and routes real leads", "Hands off to you when it matters"], about: "ZeroManual replies to your Instagram and Facebook messages and comments instantly — answering common questions, sharing hours and pricing, and routing real leads straight to you.", exInLabel: "Instagram DM", exIn: "“Do you have a table for 4 this Saturday at 9pm?”", exOutLabel: "Reply sent", exOut: "Hi! Yes, we have a table for Saturday at 9pm. Want me to book it for you? Confirm here 👉" },
     es: { name: "Responder DMs y comentarios", catLabel: "Mensajes", connect: "Instagram y Facebook", tagline: "Responde al instante los mensajes y comentarios de Instagram y Facebook.", features: ["Responde dudas, horarios y precios", "Capta y dirige clientes reales", "Te lo pasa cuando hace falta"], about: "ZeroManual responde al instante tus mensajes y comentarios de Instagram y Facebook — resuelve dudas habituales, comparte horarios y precios, y te dirige los clientes reales directamente.", exInLabel: "DM de Instagram", exIn: "«¿Tenéis mesa para 4 este sábado a las 21:00?»", exOutLabel: "Respuesta enviada", exOut: "¡Hola! Sí, nos queda mesa el sábado a las 21:00. ¿Te la reservo? Confirma aquí 👉" } },
-  { id: "reminders", cat: "messaging", price: 19, badge: "",
+  { id: "reminders", cat: "messaging", price: 19, badge: "", available: false,
     en: { name: "Appointment Reminders", catLabel: "Messaging", connect: "Your calendar + SMS", tagline: "Texts customers reminders so you cut no-shows automatically.", features: ["SMS and email reminders", "One-tap confirm or reschedule", "Syncs with your calendar"], about: "ZeroManual texts and emails your customers ahead of their appointment and lets them confirm or reschedule with one tap, cutting no-shows automatically.", exInLabel: "Upcoming appointment", exIn: "Ana Ruiz — cut & color, tomorrow 10:00", exOutLabel: "SMS sent", exOut: "Hi Ana 👋 a reminder of your appointment tomorrow at 10:00. Reply 1 to confirm or 2 to reschedule." },
     es: { name: "Recordatorios de citas", catLabel: "Mensajes", connect: "Tu calendario + SMS", tagline: "Envía recordatorios por SMS para reducir las ausencias automáticamente.", features: ["Recordatorios por SMS y correo", "Confirmar o reprogramar con un toque", "Se sincroniza con tu calendario"], about: "ZeroManual envía a tus clientes un recordatorio por SMS y correo antes de su cita y les permite confirmar o reprogramar con un solo toque, reduciendo las ausencias automáticamente.", exInLabel: "Cita en tu calendario", exIn: "Ana Ruiz — corte y color, mañana 10:00", exOutLabel: "SMS enviado", exOut: "Hola Ana 👋 te recordamos tu cita de mañana a las 10:00. Responde 1 para confirmar o 2 para cambiarla." } },
-  { id: "requests", cat: "reviews", price: 19, badge: "new",
+  { id: "requests", cat: "reviews", price: 19, badge: "new", available: false,
     en: { name: "Request Reviews", catLabel: "Reviews", connect: "Google + SMS / email", tagline: "Asks happy customers for a Google review at the perfect moment.", features: ["Times requests after a visit", "One-tap review links", "Grows your star rating"], about: "After a visit or purchase, ZeroManual sends your happy customers a one-tap link to leave a Google review at exactly the right moment — steadily growing your rating.", exInLabel: "Visit completed", exIn: "Juan P. — paid his bill 2 hours ago", exOutLabel: "SMS sent", exOut: "Thanks for coming in, Juan! Would you leave us a quick review? One tap: g.page/lalupita" },
     es: { name: "Pedir reseñas", catLabel: "Reseñas", connect: "Google + SMS / correo", tagline: "Pide una reseña en Google a tus clientes felices en el momento ideal.", features: ["Pide la reseña tras la visita", "Enlaces de reseña con un toque", "Sube tu puntuación de estrellas"], about: "Tras una visita o compra, ZeroManual envía a tus clientes felices un enlace de un toque para dejar una reseña en Google justo en el momento adecuado — subiendo tu puntuación poco a poco.", exInLabel: "Visita completada", exIn: "Juan P. — pagó su cuenta hace 2 h", exOutLabel: "SMS enviado", exOut: "¡Gracias por tu visita, Juan! ¿Nos dejas una reseña? Solo un toque: g.page/lalupita" } },
 ];
@@ -163,6 +167,17 @@ function ProductIcon({ id, size = 24 }) {
   const paths = ICON_PATHS[id] || [];
   if (id === "reviews") return <Ico paths={paths} size={size} fill="currentColor" />;
   return <Ico paths={paths} size={size} />;
+}
+
+function GoogleG({ size = 18 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l5.7-5.7C34.2 6.1 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/>
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.1 8 3l5.7-5.7C34.2 6.1 29.4 4 24 4 16.3 4 9.6 8.3 6.3 14.7z"/>
+      <path fill="#4CAF50" d="M24 44c5.2 0 10-2 13.6-5.2l-6.3-5.2C29.3 35.3 26.8 36 24 36c-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.1-4.1 5.5l.1.1 6.3 5.2C39.2 37.3 44 33 44 24c0-1.2-.1-2.3-.4-3.5z"/>
+    </svg>
+  );
 }
 
 function fmtPrice(n) { return "$" + n; }
@@ -405,15 +420,16 @@ function SubscribeModal({ product, lang, t, onClose, onDone }) {
 function ProductCard({ product, lang, t, inCart, annual, active, subscribing, onToggleCart, onDetail }) {
   const loc = product[lang];
   const price = annual ? product.price * 10 : product.price;
+  const soon = product.available === false;
   return (
-    <article className="zm2-card" style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 15 }}>
+    <article className="zm2-card" style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 15, opacity: soon ? 0.72 : 1 }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <span style={{ width: 46, height: 46, borderRadius: 13, background: "#EEF0FE", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ProductIcon id={product.id} />
         </span>
-        {product.badge && (
-          <span style={{ fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 999, whiteSpace: "nowrap", background: product.badge === "new" ? "#E7F6EF" : "#EEF0FE", color: product.badge === "new" ? "#047857" : "#4F46E5" }}>
-            {t.badge[product.badge]}
+        {(soon || product.badge) && (
+          <span style={{ fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 999, whiteSpace: "nowrap", background: soon ? "#F1F3F6" : product.badge === "new" ? "#E7F6EF" : "#EEF0FE", color: soon ? "#6B7280" : product.badge === "new" ? "#047857" : "#4F46E5" }}>
+            {soon ? t.card.soon : t.badge[product.badge]}
           </span>
         )}
       </div>
@@ -433,9 +449,9 @@ function ProductCard({ product, lang, t, inCart, annual, active, subscribing, on
         <span style={{ color: "#6B7280", fontSize: 14 }}>{annual ? t.per.yr : t.per.mo}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        <button className="zm2-pill-primary" disabled={active || subscribing} onClick={() => onToggleCart(product.id)}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14.5, fontWeight: 600, cursor: active || subscribing ? "default" : "pointer", border: "1px solid", ...(active || inCart ? { background: "#E7F6EF", color: "#047857", borderColor: "#BCE7D1" } : { background: "#4F46E5", color: "#fff", borderColor: "#4F46E5" }) }}>
-          {active ? t.card.active : subscribing ? t.card.activating : inCart ? "✓ " + t.card.added : t.card.subscribe}
+        <button className="zm2-pill-primary" disabled={soon || active || subscribing} onClick={() => onToggleCart(product.id)}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14.5, fontWeight: 600, cursor: soon || active || subscribing ? "default" : "pointer", border: "1px solid", ...(soon ? { background: "#F1F3F6", color: "#6B7280", borderColor: "#E6E9EE" } : active || inCart ? { background: "#E7F6EF", color: "#047857", borderColor: "#BCE7D1" } : { background: "#4F46E5", color: "#fff", borderColor: "#4F46E5" }) }}>
+          {soon ? t.card.soon : active ? t.card.active : subscribing ? t.card.activating : inCart ? "✓ " + t.card.added : t.card.subscribe}
         </button>
         <button className="zm2-link-muted" onClick={() => onDetail(product.id)} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 13.5, fontWeight: 500, cursor: "pointer", padding: 2 }}>
           {t.card.details}
@@ -594,6 +610,8 @@ function App() {
   const [loginInitialMode, setLoginInitialMode] = useState("login");
   const [clientToken, setClientToken] = useState(() => { try { return localStorage.getItem("mz_client_token"); } catch { return null; } });
   const [googleConnected, setGoogleConnected] = useState(false);
+  const [googleEmail, setGoogleEmail] = useState(null);
+  const [clientProfile, setClientProfile] = useState(null);
   const [activeAutomations, setActiveAutomations] = useState([]);
   const [subscribingId, setSubscribingId] = useState(null);
   const [subscribeModalId, setSubscribeModalId] = useState(null);
@@ -608,17 +626,25 @@ function App() {
   // and whether Google is connected, so the grid can show "Activa" state and
   // offer the 1-click path without a modal or redirect.
   useEffect(() => {
-    if (!clientToken) { setGoogleConnected(false); setActiveAutomations([]); return; }
+    if (!clientToken) {
+      setGoogleConnected(false);
+      setGoogleEmail(null);
+      setClientProfile(null);
+      setActiveAutomations([]);
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
         const meRes = await fetch("/client/me", { headers: { Authorization: "Bearer " + clientToken } });
         if (!meRes.ok) throw new Error("unauthorized");
+        const me = await meRes.json();
         const [autoRes, statusRes] = await Promise.all([
           fetch("/client/automations", { headers: { Authorization: "Bearer " + clientToken } }),
           fetch("/client/google/status", { headers: { Authorization: "Bearer " + clientToken } }),
         ]);
         if (cancelled) return;
+        setClientProfile(me.client || null);
         if (autoRes.ok) {
           const d = await autoRes.json();
           setActiveAutomations((d.active || []).filter((a) => a.status === "active").map((a) => a.automation_type));
@@ -626,6 +652,7 @@ function App() {
         if (statusRes.ok) {
           const d = await statusRes.json();
           setGoogleConnected(!!d.connected);
+          setGoogleEmail(d.google_email || null);
         }
       } catch {
         if (!cancelled) {
@@ -641,6 +668,8 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     return type ? activeAutomations.includes(type) : false;
   };
+
+  const productByAutomationType = (type) => PRODUCTS.find((p) => AUTOMATION_TYPE_MAP[p.id] === type);
 
   const activateDirect = async (id) => {
     const type = AUTOMATION_TYPE_MAP[id];
@@ -673,6 +702,8 @@ function App() {
   // the fast path (1 click if logged in + Google connected, otherwise a
   // single combined modal, per the onboarding UX brief).
   const handleCardAction = (id) => {
+    const product = PRODUCTS.find((p) => p.id === id);
+    if (product && product.available === false) return;
     const type = AUTOMATION_TYPE_MAP[id];
     if (!type) { toggleCart(id); return; }
     if (activeAutomations.includes(type)) return;
@@ -696,7 +727,16 @@ function App() {
     setDrawerOpen(true);
   };
 
-  const openAccount = () => { setLoginInitialMode("login"); setShowLogin(true); };
+  const openAccount = () => {
+    if (clientToken) { window.location.href = "/client"; return; }
+    setLoginInitialMode("login");
+    setShowLogin(true);
+  };
+
+  const logoutClient = () => {
+    try { localStorage.removeItem("mz_client_token"); } catch {}
+    setClientToken(null);
+  };
 
   // No payment backend exists yet — checkout hands the cart to the real
   // register/activate flow instead of a fake card charge. client.html reads
@@ -742,10 +782,30 @@ function App() {
             <span className="zm-cart-label">{t.nav.cart}</span>
             {cart.length > 0 && <span style={{ minWidth: 20, height: 20, padding: "0 5px", borderRadius: 999, background: "#4F46E5", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{cart.length}</span>}
           </button>
-          <button className="zm2-iconbtn" onClick={openAccount} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E6E9EE", color: "#0E1116", fontSize: 14, fontWeight: 500, padding: "9px 14px", borderRadius: 10, cursor: "pointer" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"></path></svg>
-            <span className="zm-acct-label">{t.nav.account}</span>
-          </button>
+          {clientToken ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button className="zm2-iconbtn" onClick={openAccount} title={googleEmail || (clientProfile && clientProfile.email) || t.account.portal}
+                style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E6E9EE", color: "#0E1116", fontSize: 14, fontWeight: 500, padding: "6px 12px 6px 6px", borderRadius: 999, cursor: "pointer" }}>
+                <span style={{ position: "relative", width: 30, height: 30, borderRadius: "50%", background: "linear-gradient(135deg,#EEF0FE,#E7F6EF)", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: 13, color: "#37317F" }}>
+                  {(clientProfile && clientProfile.name ? clientProfile.name[0] : "C").toUpperCase()}
+                  {googleConnected && (
+                    <span style={{ position: "absolute", right: -2, bottom: -2, width: 16, height: 16, borderRadius: "50%", background: "#fff", border: "1px solid #E6E9EE", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <GoogleG size={11} />
+                    </span>
+                  )}
+                </span>
+                <span className="zm-acct-label" style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {clientProfile ? clientProfile.name : t.account.portal}
+                </span>
+              </button>
+              <button onClick={logoutClient} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 13, cursor: "pointer", padding: "6px 4px" }}>{t.account.logout}</button>
+            </div>
+          ) : (
+            <button className="zm2-iconbtn" onClick={openAccount} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E6E9EE", color: "#0E1116", fontSize: 14, fontWeight: 500, padding: "9px 14px", borderRadius: 10, cursor: "pointer" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"></path></svg>
+              <span className="zm-acct-label">{t.nav.account}</span>
+            </button>
+          )}
           <a href="#zm-grid" className="zm2-cta zm2-arrowhost" style={{ textDecoration: "none", background: "#4F46E5", color: "#fff", fontSize: 14.5, fontWeight: 600, padding: "10px 18px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6 }}>{t.nav.getStarted} <span className="zm2-arrow" style={{ fontSize: 13 }}>→</span></a>
         </div>
       </header>
@@ -768,6 +828,47 @@ function App() {
           </div>
         </section>
       </div>
+
+      {clientToken && (
+        <section id="zm-mine" style={{ maxWidth: 1200, margin: "0 auto", padding: "8px 24px 8px", scrollMarginTop: 80 }}>
+          <div style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 18, padding: "22px 24px", boxShadow: "0 8px 24px rgba(14,17,22,.04)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 16 }}>
+              <div>
+                <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 12.5, letterSpacing: ".14em", textTransform: "uppercase", color: "#4F46E5", margin: "0 0 6px" }}>{t.mine.kicker}</div>
+                <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 24, letterSpacing: "-.02em", margin: 0 }}>{t.mine.title}</h2>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 8, background: googleConnected ? "#E7F6EF" : "#F8F9FB", color: googleConnected ? "#047857" : "#6B7280", border: "1px solid " + (googleConnected ? "#BCE7D1" : "#E6E9EE"), borderRadius: 999, padding: "7px 12px", fontSize: 13, fontWeight: 600 }}>
+                  <GoogleG size={14} />
+                  {googleConnected ? (googleEmail || t.mine.googleOn) : t.mine.googleOff}
+                </span>
+                <a href="/client" style={{ color: "#4F46E5", fontWeight: 600, fontSize: 13.5, textDecoration: "none" }}>{t.mine.manage}</a>
+              </div>
+            </div>
+            {activeAutomations.length === 0 ? (
+              <p style={{ margin: 0, color: "#6B7280", fontSize: 14.5 }}>{t.mine.empty}</p>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12 }}>
+                {activeAutomations.map((type) => {
+                  const p = productByAutomationType(type);
+                  const name = p ? p[lang].name : type;
+                  return (
+                    <div key={type} style={{ display: "flex", alignItems: "center", gap: 12, border: "1px solid #EDEFF3", borderRadius: 14, padding: 14, background: "#F8F9FB" }}>
+                      <span style={{ width: 40, height: 40, borderRadius: 11, background: "#EEF0FE", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                        {p ? <ProductIcon id={p.id} size={20} /> : <GoogleG size={18} />}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, fontSize: 14.5 }}>{name}</div>
+                        <div style={{ fontSize: 12.5, color: "#047857", fontWeight: 600, marginTop: 2 }}>{t.card.active}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <section id="zm-grid" style={{ maxWidth: 1200, margin: "0 auto", padding: "26px 24px 18px", scrollMarginTop: 80 }}>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap", marginBottom: 20 }}>

@@ -1,7 +1,5 @@
-/* ZeroManual — bilingual (ES default / EN) automation marketplace, ported
-   faithfully from the Claude Design source (ZeroManual.dc.html). The fake
-   credit-card checkout step is replaced with the site's real register +
-   activate flow — there is no payment backend to charge against yet. */
+/* ZeroManual — bilingual (ES default / EN) automation marketplace.
+   Subscribe flow: auth → Stripe Checkout (or free/dev grant) → activate / Google OAuth. */
 const { useState, useEffect } = React;
 
 const CART_HANDOFF_KEY = "zm_pending_activations";
@@ -38,8 +36,8 @@ const T = {
       { q: "How much does it cost?", a: "A flat monthly price per automation, from $19/mo. Mix and match, cancel anytime." },
     ] },
     drawer: { checkout: "Checkout", cart: "Your automations" },
-    checkout: { start: "Create account & start free trial", disclaimer: "You won't be charged until your trial ends. Cancel anytime." },
-    cart: { remove: "Remove", total: "Total", checkout: "Checkout →", emptyTitle: "Your cart is empty.", emptySub: "Pick an automation to get started." },
+    checkout: { start: "Create account & start free trial", disclaimer: "Card required for the free trial. You won't be charged until it ends. Cancel anytime." },
+    cart: { remove: "Remove", total: "Total", checkout: "Pay with Stripe →", emptyTitle: "Your cart is empty.", emptySub: "Pick an automation to get started." },
     detail: { what: "What it does", connects: "Connects to", subscribe: "Subscribe", inCart: "In cart — view", example: "See it in action", auto: "Automatic", setup: "Setup", setupVal: "~5 minutes", langsK: "Languages", langsV: "Spanish · English", trialK: "Free trial" },
     per: { mo: "/mo", yr: "/yr" },
     bandTitle: (n) => "Every automation comes with a " + n + "-day free trial.",
@@ -55,9 +53,9 @@ const T = {
       switchToRegister: "No account? Register", switchToLogin: "Already have an account? Sign in",
     },
     subscribe: {
-      sub: "Create your account or sign in — it activates instantly, right after this.",
-      cta: "Subscribe & continue →", ctaLogin: "Sign in & continue →",
-      connecting: "Connecting Google…", activating: "Activating…",
+      sub: "Create your account or sign in — then secure checkout with Stripe.",
+      cta: "Subscribe & pay →", ctaLogin: "Sign in & pay →",
+      connecting: "Connecting Google…", activating: "Activating…", paying: "Opening secure checkout…",
       error: "Couldn't complete the subscription. Try again.",
     },
   },
@@ -82,8 +80,8 @@ const T = {
       { q: "¿Cuánto cuesta?", a: "Precio mensual fijo por automatización, desde 19 $/mes. Combínalas como quieras y cancela cuando quieras." },
     ] },
     drawer: { checkout: "Pago", cart: "Tus automatizaciones" },
-    checkout: { start: "Crear cuenta y empezar prueba gratis", disclaimer: "No se te cobrará hasta que acabe la prueba. Cancela cuando quieras." },
-    cart: { remove: "Quitar", total: "Total", checkout: "Pagar →", emptyTitle: "Tu carrito está vacío.", emptySub: "Elige una automatización para empezar." },
+    checkout: { start: "Crear cuenta y empezar prueba gratis", disclaimer: "Se pide tarjeta para la prueba. No se cobrará hasta que acabe. Cancela cuando quieras." },
+    cart: { remove: "Quitar", total: "Total", checkout: "Pagar con Stripe →", emptyTitle: "Tu carrito está vacío.", emptySub: "Elige una automatización para empezar." },
     detail: { what: "Qué hace", connects: "Se conecta con", subscribe: "Suscribirse", inCart: "En el carrito — ver", example: "Míralo en acción", auto: "Automático", setup: "Configuración", setupVal: "~5 minutos", langsK: "Idiomas", langsV: "Español · Inglés", trialK: "Prueba gratis" },
     per: { mo: "/mes", yr: "/año" },
     bandTitle: (n) => "Cada automatización incluye " + n + " días de prueba gratis.",
@@ -99,9 +97,9 @@ const T = {
       switchToRegister: "¿Sin cuenta? Regístrate", switchToLogin: "¿Ya tienes cuenta? Acceder",
     },
     subscribe: {
-      sub: "Crea tu cuenta o accede — se activa al instante, justo después de esto.",
-      cta: "Suscribirme y continuar →", ctaLogin: "Entrar y continuar →",
-      connecting: "Conectando Google…", activating: "Activando…",
+      sub: "Crea tu cuenta o accede — luego pago seguro con Stripe.",
+      cta: "Suscribirme y pagar →", ctaLogin: "Entrar y pagar →",
+      connecting: "Conectando Google…", activating: "Activando…", paying: "Abriendo pago seguro…",
       error: "No se pudo completar la suscripción. Inténtalo de nuevo.",
     },
   },
@@ -156,6 +154,34 @@ function ProductIcon({ id, size = 24 }) {
 }
 
 function fmtPrice(n) { return "$" + n; }
+
+/** Start Stripe Checkout (or free/dev grant). Returns { redirected, granted }. */
+async function startCheckout(token, automationTypes, annual) {
+  const types = (automationTypes || []).filter(Boolean);
+  if (!types.length) throw new Error("no automation types");
+  const r = await fetch("/client/checkout/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
+    body: JSON.stringify({
+      automation_types: types,
+      billing_interval: annual ? "yearly" : "monthly",
+    }),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.detail || "checkout failed");
+  }
+  const d = await r.json();
+  if (d.checkout_url) {
+    window.location.href = d.checkout_url;
+    return { redirected: true, granted: false, types: d.automation_types || types };
+  }
+  // Stripe keys missing → server grants in free/dev mode (no payment UI).
+  if (d.mode === "free") {
+    console.warn("[ZeroManual] Stripe no configurado: suscripción en modo demo sin cobro.");
+  }
+  return { redirected: false, granted: true, mode: d.mode || "free", types: d.automation_types || types };
+}
 
 function LoginModal({ tt, onClose, initialMode = "login", stayOnPage = false, onLoginSuccess }) {
   const [mode, setMode] = useState(initialMode);
@@ -265,13 +291,13 @@ function LoginModal({ tt, onClose, initialMode = "login", stayOnPage = false, on
   );
 }
 
-function SubscribeModal({ product, lang, t, onClose, onDone }) {
+function SubscribeModal({ product, lang, t, annual, onClose, onDone }) {
   const [mode, setMode] = useState("register");
   const [identifier, setIdentifier] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [phase, setPhase] = useState("form"); // form | connecting | activating
+  const [phase, setPhase] = useState("form"); // form | paying | connecting | activating
   const tl = t.login;
   const ts = t.subscribe;
   const automationType = AUTOMATION_TYPE_MAP[product.id];
@@ -283,6 +309,10 @@ function SubscribeModal({ product, lang, t, onClose, onDone }) {
   const afterAuth = async (token) => {
     localStorage.setItem("mz_client_token", token);
     try {
+      setPhase("paying");
+      const checkout = await startCheckout(token, [automationType], annual);
+      if (checkout.redirected) return;
+
       const statusRes = await fetch("/client/google/status", { headers: { Authorization: "Bearer " + token } });
       const status = statusRes.ok ? await statusRes.json() : { connected: false };
       if (status.connected) {
@@ -362,7 +392,7 @@ function SubscribeModal({ product, lang, t, onClose, onDone }) {
         </div>
         {busy ? (
           <div style={{ padding: "20px 0", textAlign: "center", color: "#3A4150", fontSize: 14 }}>
-            {phase === "activating" ? ts.activating : ts.connecting}
+            {phase === "paying" ? ts.paying : phase === "activating" ? ts.activating : ts.connecting}
           </div>
         ) : (
           <>
@@ -651,11 +681,23 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     setSubscribingId(id);
     try {
+      const checkout = await startCheckout(clientToken, [type], annual);
+      if (checkout.redirected) return;
+      if (checkout.mode === "free") {
+        window.alert(
+          (lang === "es")
+            ? "Stripe no está configurado en el servidor.\nLa suscripción se activa en modo demo sin cobro.\n\nAñade ZEROMANUAL_STRIPE_SECRET_KEY (sk_test_…) en .env para ver el pago real."
+            : "Stripe is not configured on the server.\nSubscription activates in demo mode with no charge.\n\nAdd ZEROMANUAL_STRIPE_SECRET_KEY (sk_test_…) to .env to see real checkout."
+        );
+      }
       const r = await fetch(`/client/automations/${type}/activate`, {
         method: "POST", headers: { Authorization: "Bearer " + clientToken },
       });
       if (r.ok) setActiveAutomations((a) => (a.includes(type) ? a : [...a, type]));
-    } catch {}
+    } catch (err) {
+      console.error("subscribe failed", err);
+      window.alert((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.");
+    }
     finally { setSubscribingId(null); }
   };
 
@@ -663,6 +705,8 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     setSubscribingId(id);
     try {
+      const checkout = await startCheckout(clientToken, [type], annual);
+      if (checkout.redirected) return;
       await fetch("/client/pending-automation", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + clientToken },
         body: JSON.stringify({ automation_type: type }),
@@ -706,23 +750,48 @@ function App() {
     setLoginInitialMode("login"); setLoginStayOnPage(true); setShowLogin(true);
   };
 
-  const onLoginModalSuccess = () => {
-    setClientToken(localStorage.getItem("mz_client_token"));
-    setShowLogin(false);
+  // Cart checkout: require login, then Stripe session for all mapped items.
+  // Defaults to login so existing clients can pay; new users switch to register.
+  const handleCheckout = async () => {
+    const pending = cart.map((id) => AUTOMATION_TYPE_MAP[id]).filter(Boolean);
+    if (!pending.length) return;
+    setDrawerOpen(false);
+    if (!clientToken) {
+      try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
+      setLoginInitialMode("login");
+      setLoginStayOnPage(true);
+      setShowLogin(true);
+      return;
+    }
+    try {
+      const checkout = await startCheckout(clientToken, pending, annual);
+      if (checkout.redirected) return;
+      try { localStorage.removeItem(CART_HANDOFF_KEY); } catch {}
+      setCart([]);
+      // Free/dev: hand off to portal activation after grant.
+      try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
+      window.location.href = "/client";
+    } catch {
+      setLoginInitialMode("login");
+      setLoginStayOnPage(true);
+      setShowLogin(true);
+    }
   };
 
-  // No payment backend exists yet — checkout hands the cart to the real
-  // register/activate flow instead of a fake card charge. client.html reads
-  // CART_HANDOFF_KEY after login and activates each recognized automation for free.
-  // Defaults to login (not register) so existing clients can get straight into
-  // their account; new users still reach registration via the modal's switch link.
-  const handleCheckout = () => {
-    const pending = cart.map((id) => AUTOMATION_TYPE_MAP[id]).filter(Boolean);
-    try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
-    setDrawerOpen(false);
-    setLoginInitialMode("login");
-    setLoginStayOnPage(false);
-    setShowLogin(true);
+  const onLoginModalSuccess = async () => {
+    const token = localStorage.getItem("mz_client_token");
+    setClientToken(token);
+    setShowLogin(false);
+    let pending = [];
+    try { pending = JSON.parse(localStorage.getItem(CART_HANDOFF_KEY) || "[]"); } catch { pending = []; }
+    if (token && pending.length) {
+      try {
+        const checkout = await startCheckout(token, pending, annual);
+        if (checkout.redirected) return;
+        window.location.href = "/client";
+        return;
+      } catch {}
+    }
   };
 
   const cards = PRODUCTS.filter((p) => filter === "all" || p.cat === filter);
@@ -907,7 +976,7 @@ function App() {
       {showLogin && <LoginModal tt={t} onClose={() => setShowLogin(false)} initialMode={loginInitialMode} stayOnPage={loginStayOnPage} onLoginSuccess={onLoginModalSuccess} />}
       {subscribeModalId && (
         <SubscribeModal product={PRODUCTS.find((p) => p.id === subscribeModalId)} lang={lang} t={t}
-          onClose={() => setSubscribeModalId(null)} onDone={onSubscribeModalDone} />
+          annual={annual} onClose={() => setSubscribeModalId(null)} onDone={onSubscribeModalDone} />
       )}
       <CartDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} cartIds={cart} lang={lang} t={t} annual={annual} onRemove={removeFromCart} onCheckout={handleCheckout} />
       <DetailModal id={detailId} lang={lang} t={t} inCart={detailId ? cart.includes(detailId) : false} annual={annual} onClose={() => setDetailId(null)} onSubscribe={subscribeFromDetail} />

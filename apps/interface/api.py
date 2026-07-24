@@ -7,7 +7,6 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -16,6 +15,7 @@ from pydantic import BaseModel
 
 from apps.integrations.google_oauth import GoogleOAuthHelper
 from apps.integrations.n8n_client import N8nClient
+from apps.interface.payments import activate_automation_for_client, register_payment_routes
 from apps.orchestrator.runtime import OrchestratorRuntime
 from apps.zeromanual_env import zm_env
 
@@ -270,7 +270,13 @@ def google_callback(code: str, state: str) -> RedirectResponse:
         pending_client = runtime.store.get_client_by_id(client_id)
         client_name = pending_client["name"] if pending_client else client_id
         try:
-            _activate_automation_for_client(client_id, client_name, pending_type)
+            activate_automation_for_client(
+                store=runtime.store,
+                n8n=_n8n,
+                client_id=client_id,
+                client_name=client_name,
+                automation_type=pending_type,
+            )
             return RedirectResponse(f"/client?activated={pending_type}")
         except Exception:
             return RedirectResponse("/client?connected=1")
@@ -295,40 +301,18 @@ def list_client_automations(client: dict = Depends(get_client_user)) -> dict:
     return {"available": available, "active": active}
 
 
-def _activate_automation_for_client(client_id: str, client_name: str, automation_type: str) -> dict:
-    templates = json.loads(os.getenv("N8N_TEMPLATE_IDS", "{}"))
-    if automation_type not in templates:
-        raise ValueError(f"Tipo de automatización desconocido: {automation_type}")
-    existing = runtime.store.get_automation(client_id, automation_type)
-    if existing and existing.get("status") == "active":
-        return {"status": "active", "workflow_id": existing["n8n_workflow_id"], "automation": existing}
-    creds = runtime.store.get_google_creds(client_id)
-    if not creds:
-        raise ValueError("Conecta primero tu cuenta de Google Business")
-    template_id = templates[automation_type]
-    if not template_id:
-        raise RuntimeError("Template no configurado aún")
-    try:
-        wf_id = _n8n.duplicate_template(
-            template_id=template_id,
-            client_id=client_id,
-            client_name=client_name,
-            refresh_token=creds["refresh_token"],
-            location_id=creds.get("location_id"),
-            automation_type=automation_type,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Error al activar en n8n: {exc}") from exc
-    record = runtime.store.activate_automation(client_id, automation_type, wf_id)
-    return {"status": "active", "workflow_id": wf_id, "automation": record}
-
-
 @app.post("/client/automations/{automation_type}/activate")
 def activate_client_automation(
     automation_type: str, client: dict = Depends(get_client_user)
 ) -> dict:
     try:
-        return _activate_automation_for_client(client["client_id"], client["name"], automation_type)
+        return activate_automation_for_client(
+            store=runtime.store,
+            n8n=_n8n,
+            client_id=client["client_id"],
+            client_name=client["name"],
+            automation_type=automation_type,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -415,6 +399,8 @@ def client_register(req: ClientRegisterRequest) -> dict:
 
 _zeroman_dir = Path(__file__).parent.parent / "web" / "zeroman"
 app.mount("/assets", StaticFiles(directory=str(_zeroman_dir)), name="zeroman-assets")
+
+register_payment_routes(app, runtime=runtime, n8n=_n8n, get_client_user=get_client_user)
 
 
 if __name__ == "__main__":

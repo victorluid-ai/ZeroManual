@@ -1,1 +1,1 @@
-"""Integraciones externas: SMTP, PDF facturas, export contable."""
+"""Integraciones externas: SMTP, PDF facturas, export contable, Stripe."""

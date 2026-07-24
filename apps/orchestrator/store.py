@@ -188,7 +188,25 @@ class DataStore:
                     password_hash         TEXT    NOT NULL,
                     plan                  TEXT    NOT NULL DEFAULT 'starter',
                     created_at            TEXT    NOT NULL,
-                    pending_automation_type TEXT
+                    pending_automation_type TEXT,
+                    stripe_customer_id    TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS client_subscriptions (
+                    subscription_id       TEXT    PRIMARY KEY,
+                    client_id             TEXT    NOT NULL,
+                    automation_type       TEXT    NOT NULL,
+                    status                TEXT    NOT NULL,
+                    billing_interval      TEXT    NOT NULL DEFAULT 'monthly',
+                    provider              TEXT    NOT NULL DEFAULT 'stripe',
+                    stripe_subscription_id TEXT,
+                    stripe_checkout_session_id TEXT,
+                    current_period_end    TEXT,
+                    cancel_at_period_end  INTEGER NOT NULL DEFAULT 0,
+                    created_at            TEXT    NOT NULL,
+                    updated_at            TEXT    NOT NULL,
+                    UNIQUE (client_id, automation_type),
+                    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
                 );
 
                 CREATE TABLE IF NOT EXISTS client_sessions (
@@ -415,6 +433,32 @@ class DataStore:
                 ),
             )
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (5)")
+
+        if current < 6:
+            clients_cols = {r[1] for r in conn.execute("PRAGMA table_info(clients)").fetchall()}
+            if "stripe_customer_id" not in clients_cols:
+                conn.execute("ALTER TABLE clients ADD COLUMN stripe_customer_id TEXT")
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS client_subscriptions (
+                    subscription_id       TEXT    PRIMARY KEY,
+                    client_id             TEXT    NOT NULL,
+                    automation_type       TEXT    NOT NULL,
+                    status                TEXT    NOT NULL,
+                    billing_interval      TEXT    NOT NULL DEFAULT 'monthly',
+                    provider              TEXT    NOT NULL DEFAULT 'stripe',
+                    stripe_subscription_id TEXT,
+                    stripe_checkout_session_id TEXT,
+                    current_period_end    TEXT,
+                    cancel_at_period_end  INTEGER NOT NULL DEFAULT 0,
+                    created_at            TEXT    NOT NULL,
+                    updated_at            TEXT    NOT NULL,
+                    UNIQUE (client_id, automation_type),
+                    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
+                );
+                """
+            )
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (6)")
 
     def save_pending_approval(
         self,
@@ -950,15 +994,23 @@ class DataStore:
     def get_client_by_id(self, client_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT client_id, name, email, plan FROM clients WHERE client_id = ?",
+                "SELECT client_id, name, email, plan, stripe_customer_id FROM clients WHERE client_id = ?",
                 (client_id,),
             ).fetchone()
         return dict(row) if row else None
 
+    def set_stripe_customer_id(self, client_id: str, stripe_customer_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE clients SET stripe_customer_id=? WHERE client_id=?",
+                (stripe_customer_id, client_id),
+            )
+
     def list_clients(self) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT client_id, name, email, plan, created_at FROM clients ORDER BY created_at ASC"
+                "SELECT client_id, name, email, plan, created_at, stripe_customer_id"
+                " FROM clients ORDER BY created_at ASC"
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1089,6 +1141,115 @@ class DataStore:
             rows = conn.execute(
                 "SELECT * FROM client_automations WHERE client_id=? ORDER BY automation_type ASC",
                 (client_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # ---- Client Subscriptions (Stripe) ----
+
+    _ACTIVE_SUB_STATUSES = frozenset({"active", "trialing", "paid"})
+
+    def upsert_subscription(
+        self,
+        *,
+        client_id: str,
+        automation_type: str,
+        status: str,
+        billing_interval: str = "monthly",
+        provider: str = "stripe",
+        stripe_subscription_id: str | None = None,
+        stripe_checkout_session_id: str | None = None,
+        current_period_end: str | None = None,
+        cancel_at_period_end: bool = False,
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT subscription_id FROM client_subscriptions"
+                " WHERE client_id=? AND automation_type=?",
+                (client_id, automation_type),
+            ).fetchone()
+            if existing:
+                sub_id = existing["subscription_id"]
+                conn.execute(
+                    """UPDATE client_subscriptions SET
+                       status=?, billing_interval=?, provider=?,
+                       stripe_subscription_id=COALESCE(?, stripe_subscription_id),
+                       stripe_checkout_session_id=COALESCE(?, stripe_checkout_session_id),
+                       current_period_end=COALESCE(?, current_period_end),
+                       cancel_at_period_end=?, updated_at=?
+                       WHERE subscription_id=?""",
+                    (
+                        status,
+                        billing_interval,
+                        provider,
+                        stripe_subscription_id,
+                        stripe_checkout_session_id,
+                        current_period_end,
+                        1 if cancel_at_period_end else 0,
+                        now,
+                        sub_id,
+                    ),
+                )
+            else:
+                sub_id = f"SUB-{secrets.token_hex(6).upper()}"
+                conn.execute(
+                    """INSERT INTO client_subscriptions
+                       (subscription_id, client_id, automation_type, status, billing_interval,
+                        provider, stripe_subscription_id, stripe_checkout_session_id,
+                        current_period_end, cancel_at_period_end, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        sub_id,
+                        client_id,
+                        automation_type,
+                        status,
+                        billing_interval,
+                        provider,
+                        stripe_subscription_id,
+                        stripe_checkout_session_id,
+                        current_period_end,
+                        1 if cancel_at_period_end else 0,
+                        now,
+                        now,
+                    ),
+                )
+        return self.get_subscription(client_id, automation_type)  # type: ignore[return-value]
+
+    def get_subscription(self, client_id: str, automation_type: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM client_subscriptions WHERE client_id=? AND automation_type=?",
+                (client_id, automation_type),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_client_subscriptions(self, client_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM client_subscriptions WHERE client_id=? ORDER BY automation_type ASC",
+                (client_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def has_active_subscription(self, client_id: str, automation_type: str) -> bool:
+        sub = self.get_subscription(client_id, automation_type)
+        return bool(sub and sub.get("status") in self._ACTIVE_SUB_STATUSES)
+
+    def mark_subscriptions_by_stripe_id(self, stripe_subscription_id: str, status: str) -> int:
+        now = _utc_now()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE client_subscriptions SET status=?, updated_at=?"
+                " WHERE stripe_subscription_id=?",
+                (status, now, stripe_subscription_id),
+            )
+            return int(cur.rowcount)
+
+    def list_subscriptions_by_stripe_id(self, stripe_subscription_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM client_subscriptions WHERE stripe_subscription_id=?",
+                (stripe_subscription_id,),
             ).fetchall()
         return [dict(row) for row in rows]
 

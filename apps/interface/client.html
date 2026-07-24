@@ -483,6 +483,17 @@
         await api('DELETE', `/client/automations/${encodeURIComponent(type)}`);
         toast('Automatización desactivada');
       } else {
+        const checkout = await api('POST', '/client/checkout/session', {
+          automation_types: [type],
+          billing_interval: 'monthly',
+        });
+        if (checkout.checkout_url) {
+          window.location.href = checkout.checkout_url;
+          return;
+        }
+        if (checkout.mode === 'free') {
+          toast('Stripe no configurado — activación en modo demo', 'warn');
+        }
         await api('POST', `/client/automations/${encodeURIComponent(type)}/activate`);
         toast('Automatización activada', 'ok');
       }
@@ -495,6 +506,8 @@
         warn.innerHTML = `Conecta primero tu cuenta de Google. <a class="goto-google">Ir a Conectar Google →</a>`;
         warn.querySelector('.goto-google').addEventListener('click', () => loadTab('google'));
         card.appendChild(warn);
+      } else if (e.message && e.message.toLowerCase().includes('suscripci')) {
+        toast(e.message, 'err');
       } else {
         toast(e.message, 'err');
       }
@@ -618,10 +631,25 @@
     if (activatedType) {
       const lbl = AUTOMATION_LABELS[activatedType] || { name: activatedType };
       toast(`Automatización activada ✓ — ${lbl.name}`, 'ok');
+    } else if (params.get('checkout') === 'paid') {
+      toast('Pago recibido. Completa la conexión de Google para activar.', 'ok');
     } else if (params.get('connected') === '1') {
       toast('Google Business conectado correctamente', 'ok');
     }
+    if (params.get('checkout') === 'error') toast('No se pudo confirmar el pago. Inténtalo de nuevo.', 'err');
     if (params.get('error') === 'oauth_failed') toast('Error al conectar Google. Inténtalo de nuevo.', 'err');
+
+    if (params.get('connect') === 'google' && localStorage.getItem('mz_client_token')) {
+      try {
+        const r = await fetch('/client/google/connect', {
+          headers: { Authorization: 'Bearer ' + localStorage.getItem('mz_client_token') },
+        });
+        if (r.ok) {
+          const d = await r.json();
+          if (d.redirect_url) { window.location.href = d.redirect_url; return; }
+        }
+      } catch {}
+    }
 
     const ok = await tryRestoreSession();
     if (ok) showApp();

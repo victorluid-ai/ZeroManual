@@ -8,47 +8,21 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from apps.common.tax_id import is_valid_nif
-from apps.integrations.accounting_export import AccountingExporter
-from apps.zeromanual_env import zm_env
 from apps.integrations.google_oauth import GoogleOAuthHelper
 from apps.integrations.n8n_client import N8nClient
-from apps.integrations.settings import CompanySettings, load_integration_settings
-from apps.interface.nl import NaturalLanguageInterpreter
-from apps.orchestrator.models import DEFAULT_ENTITY_ID
 from apps.orchestrator.runtime import OrchestratorRuntime
-from apps.triggers.config import load_trigger_settings
-from apps.triggers.dispatcher import TriggerDispatcher
+from apps.zeromanual_env import zm_env
 
-app = FastAPI(title="ZeroManual Platform API", version="0.1.0")
+app = FastAPI(title="ZeroManual Web API", version="0.2.0")
 runtime = OrchestratorRuntime()
-nl_interpreter = NaturalLanguageInterpreter()
 _n8n = N8nClient()
 _google_oauth = GoogleOAuthHelper()
-
-
-def verify_api_key(
-    x_api_key: str | None = Header(default=None),
-    authorization: str | None = Header(default=None),
-) -> None:
-    # Fails closed: an unset ZEROMANUAL_API_KEY must never mean "no auth
-    # required" (that was a real vulnerability — see the audit). A valid
-    # admin session bearer token is still accepted as an alternative.
-    key = runtime.settings.api_key
-    if key and x_api_key == key:
-        return
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.removeprefix("Bearer ")
-        if runtime.store.get_session_user(token) is not None:
-            return
-    raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def get_admin_user(authorization: str | None = Header(default=None)) -> dict:
@@ -60,33 +34,19 @@ def get_admin_user(authorization: str | None = Header(default=None)) -> dict:
     raise HTTPException(status_code=401, detail="Autenticación requerida")
 
 
-class EventRequest(BaseModel):
-    agent_name: str
-    action: str
-    payload: dict[str, Any] = Field(default_factory=dict)
-    source: str = "zeromanual_ui"
-    event_id: str | None = None
-    entity_id: str = DEFAULT_ENTITY_ID
+def get_client_user(authorization: str | None = Header(default=None)) -> dict:
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.removeprefix("Bearer ")
+        client = runtime.store.get_client_session(token)
+        if client is not None:
+            return client
+    raise HTTPException(status_code=401, detail="Autenticación requerida")
 
 
-class ApproveRequest(BaseModel):
-    approved_by: str = "owner"
-
-
-class RejectRequest(BaseModel):
-    rejected_by: str = "owner"
-    reason: str = "Rejected by operator."
-
-
-class NaturalLanguageRequest(BaseModel):
-    message: str
-    source: str = "zeromanual_nl"
-    event_id: str | None = None
-    entity_id: str = DEFAULT_ENTITY_ID
-
-
-class PurgePIIRequest(BaseModel):
-    older_than_days: int = 365
+def verify_webhook_secret(x_webhook_secret: str | None = Header(default=None)) -> None:
+    secret = runtime.settings.webhook_secret
+    if not secret or x_webhook_secret != secret:
+        raise HTTPException(status_code=401, detail="Invalid webhook secret")
 
 
 class LoginRequest(BaseModel):
@@ -129,42 +89,7 @@ class PendingAutomationRequest(BaseModel):
     automation_type: str
 
 
-class CreateBusinessEntityRequest(BaseModel):
-    entity_type: str  # "persona_fisica" | "empresa"
-    name: str
-    tax_id: str
-    address: str = ""
-    default_vat_rate: float = 21.0
-    invoice_series: str
-
-
-class UpdateBusinessEntityRequest(BaseModel):
-    entity_type: str | None = None
-    name: str | None = None
-    tax_id: str | None = None
-    address: str | None = None
-    default_vat_rate: float | None = None
-    invoice_series: str | None = None
-
-
-def get_client_user(authorization: str | None = Header(default=None)) -> dict:
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.removeprefix("Bearer ")
-        client = runtime.store.get_client_session(token)
-        if client is not None:
-            return client
-    raise HTTPException(status_code=401, detail="Autenticación requerida")
-
-
-def verify_webhook_secret(x_webhook_secret: str | None = Header(default=None)) -> None:
-    secret = runtime.settings.webhook_secret
-    if not secret or x_webhook_secret != secret:
-        raise HTTPException(status_code=401, detail="Invalid webhook secret")
-
-
 # ---- Simple in-memory login rate limiting ----
-# Single-process/personal-scale mitigation for brute-force login attempts;
-# not meant to survive a restart or scale across multiple workers.
 _LOGIN_ATTEMPTS: dict[str, list[float]] = defaultdict(list)
 _LOGIN_MAX_ATTEMPTS = 5
 _LOGIN_WINDOW_SECONDS = 300.0
@@ -194,168 +119,9 @@ def _clear_login_attempts(key: str) -> None:
     _LOGIN_ATTEMPTS.pop(key, None)
 
 
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
-
-
-@app.get("/api/v1/agents")
-def list_agents() -> dict[str, Any]:
-    return {"agents": runtime.list_agents()}
-
-
-@app.post("/api/v1/events")
-def submit_event(event: EventRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    event_data = event.model_dump()
-    if not event_data["event_id"]:
-        event_data["event_id"] = str(uuid4())
-    return runtime.process_event(event_data)
-
-
-@app.post("/api/v1/natural-language")
-def submit_natural_language(req: NaturalLanguageRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    interpreted = nl_interpreter.interpret(req.message)
-    event_data = {
-        "event_id": req.event_id or str(uuid4()),
-        "source": req.source,
-        "agent_name": interpreted["agent_name"],
-        "action": interpreted["action"],
-        "payload": interpreted.get("payload", {}),
-        "entity_id": req.entity_id,
-    }
-    result = runtime.process_event(event_data)
-    return {
-        "message": req.message,
-        "interpreted_event": event_data,
-        "result": result,
-    }
-
-
-@app.get("/api/v1/approvals")
-def list_approvals(_: None = Depends(verify_api_key)) -> dict[str, Any]:
-    return {"pending": runtime.list_pending_approvals()}
-
-
-@app.get("/api/v1/invoices")
-def list_invoices(
-    limit: int = 50, entity_id: str | None = None, _: None = Depends(verify_api_key)
-) -> dict[str, Any]:
-    return {"invoices": runtime.list_invoices(limit=limit, entity_id=entity_id)}
-
-
-@app.get("/api/v1/ledger")
-def list_ledger(
-    limit: int = 50, entity_id: str | None = None, _: None = Depends(verify_api_key)
-) -> dict[str, Any]:
-    return {"ledger_entries": runtime.store.list_ledger_entries(limit=limit, entity_id=entity_id)}
-
-
-@app.get("/api/v1/clients/{client_name}/context")
-def client_context(client_name: str, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    return runtime.get_client_context(client_name)
-
-
-@app.get("/api/v1/invoices/{invoice_id}/pdf")
-def download_invoice_pdf(invoice_id: str, _: None = Depends(verify_api_key)) -> FileResponse:
-    invoice = runtime.store.get_invoice(invoice_id)
-    if invoice is None or not invoice.get("pdf_path"):
-        raise HTTPException(status_code=404, detail="PDF no disponible para esta factura")
-    pdf_path = Path(str(invoice["pdf_path"]))
-    if not pdf_path.is_file():
-        raise HTTPException(status_code=404, detail="Archivo PDF no encontrado en disco")
-    filename = f"{invoice.get('invoice_number') or invoice_id}.pdf".replace("/", "-")
-    return FileResponse(path=pdf_path, media_type="application/pdf", filename=filename)
-
-
-@app.post("/api/v1/accounting/export")
-def export_accounting(
-    entity_id: str = DEFAULT_ENTITY_ID, _: None = Depends(verify_api_key)
-) -> dict[str, Any]:
-    settings = load_integration_settings()
-    entity = runtime.store.get_business_entity(entity_id)
-    company = (
-        CompanySettings(
-            name=entity["name"],
-            nif=entity["tax_id"],
-            address=entity["address"],
-            default_vat_rate=entity["default_vat_rate"],
-            invoice_series=entity["invoice_series"],
-        )
-        if entity is not None
-        else settings.company
-    )
-    exporter = AccountingExporter(company, settings.exports_dir)
-    export_path = exporter.export_csv(
-        invoices=runtime.list_invoices(limit=500, entity_id=entity_id),
-        ledger_entries=runtime.store.list_ledger_entries(limit=500, entity_id=entity_id),
-    )
-    return {
-        "status": "ok",
-        "export_path": str(export_path),
-        "download_url": f"/api/v1/accounting/export/{export_path.name}",
-        "rows_hint": "CSV separado por ; (UTF-8 BOM) para Excel/asesoria",
-    }
-
-
-@app.get("/api/v1/accounting/export/{filename}")
-def download_accounting_export(filename: str, _: None = Depends(verify_api_key)) -> FileResponse:
-    settings = load_integration_settings()
-    safe_name = Path(filename).name
-    export_path = Path(settings.exports_dir) / safe_name
-    if not export_path.is_file():
-        raise HTTPException(status_code=404, detail="Export no encontrado")
-    return FileResponse(
-        path=export_path,
-        media_type="text/csv",
-        filename=safe_name,
-    )
-
-
-
-@app.get("/api/v1/triggers/status")
-def triggers_status() -> dict[str, Any]:
-    trigger_settings = load_trigger_settings()
-    return {
-        "email_enabled": trigger_settings.email.enabled,
-        "email_folder": trigger_settings.email.imap_folder,
-        "poll_interval_seconds": trigger_settings.email.poll_interval_seconds,
-        "recent_activity": runtime.store.list_recent_triggers(limit=15),
-    }
-
-
-@app.post("/api/v1/triggers/run-once")
-def triggers_run_once(_: None = Depends(verify_api_key)) -> dict[str, Any]:
-    dispatcher = TriggerDispatcher(runtime=runtime)
-    outcomes = dispatcher.run_cycle()
-    return {"processed": len(outcomes), "outcomes": outcomes}
-
-
-@app.post("/api/v1/maintenance/purge-pii")
-def purge_pii(body: PurgePIIRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    result = runtime.store.purge_pii_older_than(body.older_than_days)
-    return {"status": "ok", **result}
-
-
-def _assert_known_operator(operator_id: str) -> None:
-    ops = runtime.settings.operators
-    if ops and operator_id not in ops:
-        raise HTTPException(
-            status_code=403,
-            detail=f"Unknown operator '{operator_id}'. Add to ZEROMANUAL_OPERATORS in .env.",
-        )
-
-
-@app.post("/api/v1/approvals/{event_id}/approve")
-def approve(event_id: str, body: ApproveRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    _assert_known_operator(body.approved_by)
-    return runtime.approve(event_id=event_id, approved_by=body.approved_by)
-
-
-@app.post("/api/v1/approvals/{event_id}/reject")
-def reject(event_id: str, body: RejectRequest, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    _assert_known_operator(body.rejected_by)
-    return runtime.reject(event_id=event_id, rejected_by=body.rejected_by, reason=body.reason)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -364,19 +130,11 @@ def zeroman_site() -> str:
     return page.read_text(encoding="utf-8")
 
 
-@app.get("/ui", response_class=HTMLResponse)
-def ui_console() -> str:
-    page = Path(__file__).with_name("ui.html")
-    return page.read_text(encoding="utf-8")
-
-
 @app.get("/admin", response_class=HTMLResponse)
 def admin_portal() -> str:
     page = Path(__file__).with_name("admin.html")
     return page.read_text(encoding="utf-8")
 
-
-# ---- Auth ----
 
 @app.post("/auth/login")
 def login(req: LoginRequest, request: Request) -> dict:
@@ -403,65 +161,6 @@ def me(user: dict = Depends(get_admin_user)) -> dict:
     return {"user": user}
 
 
-# ---- Admin portal API (Bearer token auth) ----
-
-@app.get("/api/v1/admin/agents")
-def admin_list_agents(user: dict = Depends(get_admin_user)) -> dict:
-    return {"agents": runtime.list_agents()}
-
-
-@app.get("/api/v1/admin/approvals")
-def admin_list_approvals(user: dict = Depends(get_admin_user)) -> dict:
-    return {"pending": runtime.list_pending_approvals()}
-
-
-@app.post("/api/v1/admin/approvals/{event_id}/approve")
-def admin_approve(event_id: str, user: dict = Depends(get_admin_user)) -> dict:
-    return runtime.approve(event_id=event_id, approved_by=user["username"])
-
-
-@app.post("/api/v1/admin/approvals/{event_id}/reject")
-def admin_reject(event_id: str, body: RejectRequest, user: dict = Depends(get_admin_user)) -> dict:
-    return runtime.reject(event_id=event_id, rejected_by=user["username"], reason=body.reason)
-
-
-@app.get("/api/v1/admin/invoices")
-def admin_list_invoices(
-    limit: int = 50, entity_id: str | None = None, user: dict = Depends(get_admin_user)
-) -> dict:
-    return {"invoices": runtime.list_invoices(limit=limit, entity_id=entity_id)}
-
-
-@app.get("/api/v1/admin/ledger")
-def admin_list_ledger(
-    limit: int = 50, entity_id: str | None = None, user: dict = Depends(get_admin_user)
-) -> dict:
-    return {"ledger_entries": runtime.store.list_ledger_entries(limit=limit, entity_id=entity_id)}
-
-
-@app.post("/api/v1/admin/events")
-def admin_submit_event(event: EventRequest, user: dict = Depends(get_admin_user)) -> dict:
-    event_data = event.model_dump()
-    if not event_data["event_id"]:
-        event_data["event_id"] = str(uuid4())
-    return runtime.process_event(event_data)
-
-
-@app.post("/api/v1/admin/natural-language")
-def admin_nl(req: NaturalLanguageRequest, user: dict = Depends(get_admin_user)) -> dict:
-    interpreted = nl_interpreter.interpret(req.message)
-    event_data = {
-        "event_id": req.event_id or str(uuid4()),
-        "source": req.source,
-        "agent_name": interpreted["agent_name"],
-        "action": interpreted["action"],
-        "payload": interpreted.get("payload", {}),
-        "entity_id": req.entity_id,
-    }
-    result = runtime.process_event(event_data)
-    return {"message": req.message, "interpreted_event": event_data, "result": result}
-
-
 @app.get("/api/v1/admin/users")
 def admin_list_users(user: dict = Depends(get_admin_user)) -> dict:
     return {"users": runtime.store.list_users()}
@@ -473,7 +172,7 @@ def admin_create_user(req: CreateUserRequest, user: dict = Depends(get_admin_use
         new_user = runtime.store.create_user(req.username, req.email, req.password, req.role)
         return {"user": new_user}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @app.delete("/api/v1/admin/users/{user_id}")
@@ -484,7 +183,25 @@ def admin_delete_user(user_id: str, user: dict = Depends(get_admin_user)) -> dic
     return {"ok": True}
 
 
-# ---- Client portal page ----
+@app.get("/api/v1/admin/clients")
+def admin_list_clients(user: dict = Depends(get_admin_user)) -> dict:
+    return {"clients": runtime.store.list_clients()}
+
+
+@app.post("/api/v1/admin/clients")
+def admin_create_client(req: ClientRegisterRequest, user: dict = Depends(get_admin_user)) -> dict:
+    try:
+        client = runtime.store.create_client(req.name, req.email, req.password)
+        return {"client": client}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
+@app.delete("/api/v1/admin/clients/{client_id}")
+def admin_delete_client(client_id: str, user: dict = Depends(get_admin_user)) -> dict:
+    runtime.store.delete_client(client_id)
+    return {"ok": True}
+
 
 @app.get("/client", response_class=HTMLResponse)
 def client_portal() -> str:
@@ -493,8 +210,6 @@ def client_portal() -> str:
         return "<html><body><h1>Portal Cliente</h1><p>En construcción.</p></body></html>"
     return page.read_text(encoding="utf-8")
 
-
-# ---- Client auth ----
 
 @app.post("/client/login")
 def client_login(req: ClientLoginRequest, request: Request) -> dict:
@@ -520,8 +235,6 @@ def client_logout(authorization: str | None = Header(default=None)) -> dict:
 def client_me(client: dict = Depends(get_client_user)) -> dict:
     return {"client": client}
 
-
-# ---- Google OAuth ----
 
 @app.get("/client/google/connect")
 def google_connect(client: dict = Depends(get_client_user)) -> dict:
@@ -551,8 +264,6 @@ def google_callback(code: str, state: str) -> RedirectResponse:
         logging.getLogger(__name__).exception("Google OAuth callback failed: %s", exc)
         return RedirectResponse("/client?error=oauth_failed")
 
-    # Auto-consume a pending "subscribe" started before the OAuth round trip
-    # (see /client/pending-automation) so activation needs no further click.
     pending_type = runtime.store.get_pending_automation(client_id)
     if pending_type:
         runtime.store.clear_pending_automation(client_id)
@@ -562,7 +273,6 @@ def google_callback(code: str, state: str) -> RedirectResponse:
             _activate_automation_for_client(client_id, client_name, pending_type)
             return RedirectResponse(f"/client?activated={pending_type}")
         except Exception:
-            # Google connected fine; activation can be retried manually from /client.
             return RedirectResponse("/client?connected=1")
     return RedirectResponse("/client?connected=1")
 
@@ -578,8 +288,6 @@ def google_status(client: dict = Depends(get_client_user)) -> dict:
     }
 
 
-# ---- Client automations ----
-
 @app.get("/client/automations")
 def list_client_automations(client: dict = Depends(get_client_user)) -> dict:
     available = list(json.loads(os.getenv("N8N_TEMPLATE_IDS", "{}")).keys())
@@ -588,16 +296,11 @@ def list_client_automations(client: dict = Depends(get_client_user)) -> dict:
 
 
 def _activate_automation_for_client(client_id: str, client_name: str, automation_type: str) -> dict:
-    """Shared by the manual activate endpoint and the post-OAuth auto-activation
-    path. Raises ValueError for user-facing 400s, RuntimeError for 503s."""
     templates = json.loads(os.getenv("N8N_TEMPLATE_IDS", "{}"))
     if automation_type not in templates:
         raise ValueError(f"Tipo de automatización desconocido: {automation_type}")
     existing = runtime.store.get_automation(client_id, automation_type)
     if existing and existing.get("status") == "active":
-        # Idempotent: a stale UI state or double-click would otherwise duplicate
-        # the n8n workflow and fail activation (webhook path collides with the
-        # already-active copy — n8n rejects with "conflict with one of the webhooks").
         return {"status": "active", "workflow_id": existing["n8n_workflow_id"], "automation": existing}
     creds = runtime.store.get_google_creds(client_id)
     if not creds:
@@ -627,9 +330,9 @@ def activate_client_automation(
     try:
         return _activate_automation_for_client(client["client_id"], client["name"], automation_type)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @app.post("/client/pending-automation")
@@ -649,7 +352,7 @@ def deactivate_client_automation(
         try:
             _n8n.delete_workflow(automation["n8n_workflow_id"])
         except Exception:
-            pass  # best-effort; n8n may be offline
+            pass
     runtime.store.deactivate_automation(client["client_id"], automation_type)
     return {"status": "inactive"}
 
@@ -707,76 +410,7 @@ def client_register(req: ClientRegisterRequest) -> dict:
         token = runtime.store.create_client_session(client["client_id"])
         return {"token": token, "client": client}
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-# ---- Admin: client management ----
-
-@app.get("/api/v1/admin/clients")
-def admin_list_clients(user: dict = Depends(get_admin_user)) -> dict:
-    return {"clients": runtime.store.list_clients()}
-
-
-@app.post("/api/v1/admin/clients")
-def admin_create_client(req: ClientRegisterRequest, user: dict = Depends(get_admin_user)) -> dict:
-    try:
-        client = runtime.store.create_client(req.name, req.email, req.password)
-        return {"client": client}
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.delete("/api/v1/admin/clients/{client_id}")
-def admin_delete_client(client_id: str, user: dict = Depends(get_admin_user)) -> dict:
-    runtime.store.delete_client(client_id)
-    return {"ok": True}
-
-
-# ---- Admin: business entities (empresas / persona fisica que facturan) ----
-
-_VALID_ENTITY_TYPES = {"persona_fisica", "empresa"}
-
-
-@app.get("/api/v1/admin/companies")
-def admin_list_companies(user: dict = Depends(get_admin_user)) -> dict:
-    return {"companies": runtime.store.list_business_entities()}
-
-
-@app.post("/api/v1/admin/companies")
-def admin_create_company(req: CreateBusinessEntityRequest, user: dict = Depends(get_admin_user)) -> dict:
-    if req.entity_type not in _VALID_ENTITY_TYPES:
-        raise HTTPException(status_code=400, detail=f"entity_type debe ser uno de {sorted(_VALID_ENTITY_TYPES)}")
-    if req.tax_id and not is_valid_nif(req.tax_id):
-        raise HTTPException(
-            status_code=400,
-            detail=f"NIF/CIF no valido: '{req.tax_id}'. Formatos aceptados: DNI (12345678A), CIF (B1234567X), NIE (X1234567A).",
-        )
-    entity = runtime.store.create_business_entity(
-        entity_type=req.entity_type,
-        name=req.name,
-        tax_id=req.tax_id,
-        address=req.address,
-        default_vat_rate=req.default_vat_rate,
-        invoice_series=req.invoice_series,
-    )
-    return {"company": entity}
-
-
-@app.put("/api/v1/admin/companies/{entity_id}")
-def admin_update_company(
-    entity_id: str, req: UpdateBusinessEntityRequest, user: dict = Depends(get_admin_user)
-) -> dict:
-    if runtime.store.get_business_entity(entity_id) is None:
-        raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    if req.entity_type is not None and req.entity_type not in _VALID_ENTITY_TYPES:
-        raise HTTPException(status_code=400, detail=f"entity_type debe ser uno de {sorted(_VALID_ENTITY_TYPES)}")
-    if req.tax_id and not is_valid_nif(req.tax_id):
-        raise HTTPException(
-            status_code=400,
-            detail=f"NIF/CIF no valido: '{req.tax_id}'. Formatos aceptados: DNI (12345678A), CIF (B1234567X), NIE (X1234567A).",
-        )
-    entity = runtime.store.update_business_entity(entity_id, **req.model_dump(exclude_none=True))
-    return {"company": entity}
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 _zeroman_dir = Path(__file__).parent.parent / "web" / "zeroman"

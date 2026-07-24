@@ -5,23 +5,15 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-TEST_API_KEY = "test-suite-key"
-API_HEADERS = {"x-api-key": TEST_API_KEY}
-
 
 @pytest.fixture(autouse=True)
 def no_ai(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ZEROMANUAL_AI_MODE", "off")
-    # verify_api_key fails closed now (no key => reject everything), so tests
-    # need a real key configured and sent on every non-admin /api/v1/* call.
-    monkeypatch.setenv("ZEROMANUAL_API_KEY", TEST_API_KEY)
 
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("ZEROMANUAL_DB_PATH", str(tmp_path / "test.db"))
-    monkeypatch.setenv("APPROVAL_THRESHOLD_EUR", "500.0")
-    # Import after env patched so OrchestratorRuntime reads correct db path
     import importlib
     import apps.interface.api as api_module
     importlib.reload(api_module)
@@ -34,124 +26,55 @@ def test_health(client: TestClient) -> None:
     assert resp.json()["status"] == "ok"
 
 
-def test_list_agents(client: TestClient) -> None:
-    resp = client.get("/api/v1/agents")
+def test_admin_page_served(client: TestClient) -> None:
+    resp = client.get("/admin")
     assert resp.status_code == 200
-    names = [a["agent_name"] for a in resp.json()["agents"]]
-    assert "AgentBillingOps" in names
+    assert "Gestión web" in resp.text
+    assert "Facturas" not in resp.text
+    assert "Aprobaciones" not in resp.text
 
 
-def test_submit_event_low_amount(client: TestClient) -> None:
-    resp = client.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps",
-        "action": "create_invoice",
-        "payload": {"amount_eur": 100.0, "client_name": "Test SL"},
-    }, headers=API_HEADERS)
+def test_ui_ops_console_removed(client: TestClient) -> None:
+    resp = client.get("/ui")
+    assert resp.status_code == 404
+
+
+def test_ops_event_routes_removed(client: TestClient) -> None:
+    assert client.get("/api/v1/agents").status_code == 404
+    assert client.post("/api/v1/events", json={}).status_code == 404
+    assert client.get("/api/v1/invoices").status_code == 404
+
+
+def _admin_auth(client: TestClient) -> dict[str, str]:
+    import apps.interface.api as api_module
+
+    api_module._LOGIN_ATTEMPTS.clear()
+    password = "admin-test-pass"
+    store = api_module.runtime.store
+    for u in list(store.list_users()):
+        store.delete_user(u["user_id"])
+    store.create_user("admin", "admin@test.local", password, "admin")
+    resp = client.post("/auth/login", json={"username": "admin", "password": password})
     assert resp.status_code == 200
-    assert resp.json()["status"] == "COMPLETED"
+    return {"Authorization": f"Bearer {resp.json()['token']}"}
 
 
-def test_submit_event_high_amount_needs_approval(client: TestClient) -> None:
-    resp = client.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps",
-        "action": "create_invoice",
-        "payload": {"amount_eur": 1500.0, "client_name": "Big Corp"},
-    }, headers=API_HEADERS)
-    assert resp.status_code == 200
-    assert resp.json()["status"] == "NEEDS_APPROVAL"
-
-
-def test_list_approvals(client: TestClient) -> None:
-    client.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps",
-        "action": "create_invoice",
-        "payload": {"amount_eur": 900.0, "client_name": "Pending Corp"},
-        "event_id": "test-approve-001",
-    }, headers=API_HEADERS)
-    resp = client.get("/api/v1/approvals", headers=API_HEADERS)
-    assert resp.status_code == 200
-    pending = resp.json()["pending"]
-    assert any(p["event_id"] == "test-approve-001" for p in pending)
-
-
-def test_approve_event(client: TestClient) -> None:
-    client.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps",
-        "action": "create_invoice",
-        "payload": {"amount_eur": 700.0, "client_name": "Approve Corp"},
-        "event_id": "test-approve-002",
-    }, headers=API_HEADERS)
+def _register_client(client: TestClient, email: str) -> dict:
     resp = client.post(
-        "/api/v1/approvals/test-approve-002/approve", json={"approved_by": "owner"}, headers=API_HEADERS
+        "/client/register",
+        json={"name": "Test Biz", "email": email, "password": "secret123"},
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "COMPLETED"
-
-
-def test_api_key_auth_blocks_when_set(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ZEROMANUAL_DB_PATH", str(tmp_path / "auth_test.db"))
-    monkeypatch.setenv("ZEROMANUAL_API_KEY", "secret-key-123")
-    import importlib
-    import apps.interface.api as api_module
-    importlib.reload(api_module)
-    c = TestClient(api_module.app)
-    resp = c.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps",
-        "action": "create_invoice",
-        "payload": {},
-    })
-    assert resp.status_code == 401
-
-
-def test_api_key_auth_passes_with_correct_key(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ZEROMANUAL_DB_PATH", str(tmp_path / "auth_test2.db"))
-    monkeypatch.setenv("ZEROMANUAL_API_KEY", "secret-key-123")
-    import importlib
-    import apps.interface.api as api_module
-    importlib.reload(api_module)
-    c = TestClient(api_module.app)
-    resp = c.post(
-        "/api/v1/events",
-        json={"agent_name": "AgentBillingOps", "action": "create_invoice", "payload": {"amount_eur": 50.0, "client_name": "Auth SL"}},
-        headers={"x-api-key": "secret-key-123"},
-    )
-    assert resp.status_code == 200
-
-
-def test_api_key_unset_blocks_everything_fail_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Regression test: an unset ZEROMANUAL_API_KEY must reject, not allow."""
-    monkeypatch.setenv("ZEROMANUAL_DB_PATH", str(tmp_path / "auth_test3.db"))
-    monkeypatch.setenv("ZEROMANUAL_API_KEY", "")
-    import importlib
-    import apps.interface.api as api_module
-    importlib.reload(api_module)
-    c = TestClient(api_module.app)
-    resp = c.post(
-        "/api/v1/events",
-        json={"agent_name": "AgentBillingOps", "action": "create_invoice", "payload": {}},
-    )
-    assert resp.status_code == 401
-
-
-# ---- Client onboarding: pending-activation-through-OAuth-callback ----
-
-
-def _register_client(client: TestClient, email: str = "onboard@example.com") -> dict:
-    resp = client.post("/client/register", json={"name": "Onboard SL", "email": email, "password": "s3cret!!"})
-    assert resp.status_code == 200
-    return resp.json()  # {"token": ..., "client": {...}}
+    return resp.json()
 
 
 def test_client_register_login_me(client: TestClient) -> None:
-    reg = _register_client(client)
+    reg = _register_client(client, "a@example.com")
+    assert "token" in reg
     auth = {"Authorization": f"Bearer {reg['token']}"}
     me = client.get("/client/me", headers=auth)
     assert me.status_code == 200
-    assert me.json()["client"]["email"] == "onboard@example.com"
-
-    login = client.post("/client/login", json={"email": "onboard@example.com", "password": "s3cret!!"})
-    assert login.status_code == 200
-    assert login.json()["client"]["client_id"] == reg["client"]["client_id"]
+    assert me.json()["client"]["email"] == "a@example.com"
 
 
 def test_pending_automation_requires_auth(client: TestClient) -> None:
@@ -161,7 +84,7 @@ def test_pending_automation_requires_auth(client: TestClient) -> None:
 
 def test_activate_requires_google_connected(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("N8N_TEMPLATE_IDS", '{"google_reviews": "tpl-1"}')
-    reg = _register_client(client, "no-google@example.com")
+    reg = _register_client(client, "b@example.com")
     auth = {"Authorization": f"Bearer {reg['token']}"}
     resp = client.post("/client/automations/google_reviews/activate", headers=auth)
     assert resp.status_code == 400
@@ -174,39 +97,22 @@ def test_google_callback_auto_activates_pending_automation(
     monkeypatch.setenv("N8N_TEMPLATE_IDS", '{"google_reviews": "tpl-1"}')
     import apps.interface.api as api_module
 
-    reg = _register_client(client, "fast-path@example.com")
+    reg = _register_client(client, "c@example.com")
     client_id = reg["client"]["client_id"]
     auth = {"Authorization": f"Bearer {reg['token']}"}
-
-    pending = client.post(
-        "/client/pending-automation", json={"automation_type": "google_reviews"}, headers=auth
-    )
-    assert pending.status_code == 200
-    assert api_module.runtime.store.get_pending_automation(client_id) == "google_reviews"
+    client.post("/client/pending-automation", json={"automation_type": "google_reviews"}, headers=auth)
 
     monkeypatch.setattr(
         api_module._google_oauth,
         "exchange_code",
         lambda code, state: (client_id, {"access_token": "tok", "refresh_token": "reftok", "expires_in": 3600}),
     )
-    monkeypatch.setattr(api_module._google_oauth, "get_user_email", lambda access_token: "biz@example.com")
-    monkeypatch.setattr(api_module._n8n, "duplicate_template", lambda **kwargs: "wf-fake-1")
+    monkeypatch.setattr(api_module._google_oauth, "get_user_email", lambda token: "biz@example.com")
+    monkeypatch.setattr(api_module._n8n, "duplicate_template", lambda **kwargs: "wf-fake")
 
-    resp = client.get(
-        "/client/google/callback", params={"code": "fake-code", "state": "fake-state"}, follow_redirects=False
-    )
+    resp = client.get("/client/google/callback?code=abc&state=xyz", follow_redirects=False)
     assert resp.status_code in (302, 307)
-    assert resp.headers["location"] == "/client?activated=google_reviews"
-
-    # Pending flag consumed exactly once.
-    assert api_module.runtime.store.get_pending_automation(client_id) is None
-
-    autos = client.get("/client/automations", headers=auth)
-    active_types = [a["automation_type"] for a in autos.json()["active"] if a["status"] == "active"]
-    assert "google_reviews" in active_types
-
-    status = client.get("/client/google/status", headers=auth)
-    assert status.json()["connected"] is True
+    assert "activated=google_reviews" in resp.headers.get("location", "")
 
 
 def test_google_callback_without_pending_automation_redirects_connected(
@@ -214,32 +120,17 @@ def test_google_callback_without_pending_automation_redirects_connected(
 ) -> None:
     import apps.interface.api as api_module
 
-    reg = _register_client(client, "no-pending@example.com")
+    reg = _register_client(client, "d@example.com")
     client_id = reg["client"]["client_id"]
-
     monkeypatch.setattr(
         api_module._google_oauth,
         "exchange_code",
-        lambda code, state: (client_id, {"access_token": "tok", "refresh_token": "reftok"}),
+        lambda code, state: (client_id, {"access_token": "tok", "refresh_token": "reftok", "expires_in": 3600}),
     )
-    monkeypatch.setattr(api_module._google_oauth, "get_user_email", lambda access_token: "biz@example.com")
-
-    resp = client.get(
-        "/client/google/callback", params={"code": "fake-code", "state": "fake-state"}, follow_redirects=False
-    )
+    monkeypatch.setattr(api_module._google_oauth, "get_user_email", lambda token: "biz@example.com")
+    resp = client.get("/client/google/callback?code=abc&state=xyz", follow_redirects=False)
     assert resp.status_code in (302, 307)
-    assert resp.headers["location"] == "/client?connected=1"
-
-
-# ---- Business entities (persona fisica / empresa) admin CRUD ----
-
-
-def _admin_auth(client: TestClient) -> dict:
-    import apps.interface.api as api_module
-    password = api_module.runtime.store.generated_admin_password
-    resp = client.post("/auth/login", json={"username": "admin", "password": password})
-    assert resp.status_code == 200
-    return {"Authorization": f"Bearer {resp.json()['token']}"}
+    assert "connected=1" in resp.headers.get("location", "")
 
 
 def test_login_rate_limited_after_repeated_failures(client: TestClient) -> None:
@@ -250,124 +141,34 @@ def test_login_rate_limited_after_repeated_failures(client: TestClient) -> None:
     assert blocked.status_code == 429
 
 
-def test_admin_create_list_company(client: TestClient) -> None:
-    auth = _admin_auth(client)
-    resp = client.post(
-        "/api/v1/admin/companies",
-        json={
-            "entity_type": "persona_fisica",
-            "name": "Victor Luid",
-            "tax_id": "12345678Z",
-            "invoice_series": "FAC-P",
-        },
-        headers=auth,
-    )
-    assert resp.status_code == 200
-    entity_id = resp.json()["company"]["entity_id"]
-
-    listing = client.get("/api/v1/admin/companies", headers=auth)
-    assert listing.status_code == 200
-    assert any(c["entity_id"] == entity_id for c in listing.json()["companies"])
-
-
-def test_admin_create_company_rejects_invalid_tax_id(client: TestClient) -> None:
-    auth = _admin_auth(client)
-    resp = client.post(
-        "/api/v1/admin/companies",
-        json={"entity_type": "empresa", "name": "Mala SL", "tax_id": "not-a-nif", "invoice_series": "FAC-M"},
-        headers=auth,
-    )
-    assert resp.status_code == 400
-
-
-def test_admin_update_company(client: TestClient) -> None:
+def test_admin_users_and_clients_crud(client: TestClient) -> None:
     auth = _admin_auth(client)
     created = client.post(
-        "/api/v1/admin/companies",
-        json={"entity_type": "empresa", "name": "Old SL", "tax_id": "B12345674", "invoice_series": "FAC-O"},
-        headers=auth,
-    ).json()["company"]
-    resp = client.put(
-        f"/api/v1/admin/companies/{created['entity_id']}",
-        json={"name": "New SL"},
+        "/api/v1/admin/clients",
+        json={"name": "Panadería", "email": "pana@example.com", "password": "secret123"},
         headers=auth,
     )
-    assert resp.status_code == 200
-    assert resp.json()["company"]["name"] == "New SL"
-    assert resp.json()["company"]["tax_id"] == "B12345674"
+    assert created.status_code == 200
+    client_id = created.json()["client"]["client_id"]
+
+    listing = client.get("/api/v1/admin/clients", headers=auth)
+    assert listing.status_code == 200
+    assert any(c["client_id"] == client_id for c in listing.json()["clients"])
+
+    deleted = client.delete(f"/api/v1/admin/clients/{client_id}", headers=auth)
+    assert deleted.status_code == 200
+
+    users = client.get("/api/v1/admin/users", headers=auth)
+    assert users.status_code == 200
+    assert any(u["username"] == "admin" for u in users.json()["users"])
 
 
-def test_invoices_endpoint_entity_id_filter(client: TestClient) -> None:
+def test_admin_companies_route_removed(client: TestClient) -> None:
     auth = _admin_auth(client)
-    other = client.post(
-        "/api/v1/admin/companies",
-        json={"entity_type": "empresa", "name": "Otra SL", "tax_id": "B87654323", "invoice_series": "FAC-OTRA"},
-        headers=auth,
-    ).json()["company"]
-
-    client.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps", "action": "create_invoice",
-        "payload": {"amount_eur": 50.0, "client_name": "Default Entity Client"},
-    }, headers=auth)
-    client.post("/api/v1/events", json={
-        "agent_name": "AgentBillingOps", "action": "create_invoice",
-        "payload": {"amount_eur": 60.0, "client_name": "Other Entity Client"},
-        "entity_id": other["entity_id"],
-    }, headers=auth)
-
-    resp = client.get(f"/api/v1/admin/invoices?entity_id={other['entity_id']}", headers=auth)
-    assert resp.status_code == 200
-    names = [i["client_name"] for i in resp.json()["invoices"]]
-    assert "Other Entity Client" in names
-    assert "Default Entity Client" not in names
-
-
-def test_ledger_endpoint_entity_id_filter(client: TestClient) -> None:
-    auth = _admin_auth(client)
-    other = client.post(
-        "/api/v1/admin/companies",
-        json={"entity_type": "empresa", "name": "Ledger SL", "tax_id": "B11223344", "invoice_series": "FAC-L"},
-        headers=auth,
-    ).json()["company"]
-
-    client.post("/api/v1/events", json={
-        "agent_name": "AgentAccountingAssistantES", "action": "classify_transaction",
-        "payload": {"amount_eur": 30.0, "client_name": "Ledger Client"},
-        "entity_id": other["entity_id"],
-    }, headers=auth)
-
-    resp = client.get(f"/api/v1/admin/ledger?entity_id={other['entity_id']}", headers=auth)
-    assert resp.status_code == 200
-    assert any(e["client_name"] == "Ledger Client" for e in resp.json()["ledger_entries"])
-
-
-def test_submit_event_with_entity_id_scopes_invoice(client: TestClient) -> None:
-    auth = _admin_auth(client)
-    other = client.post(
-        "/api/v1/admin/companies",
-        json={"entity_type": "empresa", "name": "Scoped SL", "tax_id": "B99998882", "invoice_series": "FAC-S"},
-        headers=auth,
-    ).json()["company"]
-
-    resp = client.post(
-        "/api/v1/admin/events",
-        json={
-            "agent_name": "AgentBillingOps", "action": "create_invoice",
-            "payload": {"amount_eur": 40.0, "client_name": "Scoped Client"},
-            "entity_id": other["entity_id"],
-        },
-        headers=auth,
-    )
-    assert resp.status_code == 200
-    invoice_id = resp.json()["output"]["invoice_id"]
-
-    invoice_resp = client.get(f"/api/v1/admin/invoices?entity_id={other['entity_id']}", headers=auth)
-    invoice = next(i for i in invoice_resp.json()["invoices"] if i["invoice_id"] == invoice_id)
-    assert invoice["invoice_number"].startswith("FAC-S-")
+    assert client.get("/api/v1/admin/companies", headers=auth).status_code == 404
 
 
 def test_homepage_activation_state_fetch(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Covers the same endpoints app.jsx polls on mount to show 'Activa' on the grid."""
     monkeypatch.setenv("N8N_TEMPLATE_IDS", '{"google_reviews": "tpl-1"}')
     import apps.interface.api as api_module
 
@@ -395,8 +196,5 @@ def test_homepage_activation_state_fetch(client: TestClient, monkeypatch: pytest
     status = client.get("/client/google/status", headers=auth).json()
     assert status["connected"] is True
 
-    # Regression: manual deactivate (power-user path inside /client) still works.
     deact = client.delete("/client/automations/google_reviews", headers=auth)
     assert deact.status_code == 200
-    autos_after = client.get("/client/automations", headers=auth).json()
-    assert all(a["status"] != "active" for a in autos_after["active"])

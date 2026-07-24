@@ -6,18 +6,11 @@
 |------|-----|----------|
 | **Web comercial** | `http://localhost:8090/` | Vender servicios a clientes (landing, precios, registro) |
 | **Portal cliente** | `/client` | Clientes activan automatizaciones (reseñas Google, etc.) |
-| **Operaciones IA** | `/admin` | Tu empresa gestionada por agentes (facturas, aprobaciones, contabilidad) |
-| **Consola técnica** | `/ui` | Operador: lenguaje natural y eventos directos |
+| **Admin web** | `/admin` | Usuarios admin y altas/bajas de clientes del portal |
 
-El código en `apps/` es el **motor interno** que opera ZeroManual con agentes autónomos. La web en `apps/web/zeroman/` es la **fachada comercial**. Misma marca, mismo servidor, mismos datos.
+Facturación, agentes IA, contabilidad y aprobaciones viven en el repo hermano **OpsCenter** (puerto `8091` por defecto).
 
-## Agentes internos (operaciones)
-
-1. `AgentBillingOps` — facturación, cobros, recordatorios.
-2. `AgentAccountingAssistantES` — contabilidad España.
-3. `AgentClientDeliveryManager` — onboarding y entrega.
-4. `AgentSalesPipeline` — ventas y propuestas.
-5. `AgentGovernanceAndCompliance` — cumplimiento y aprobaciones.
+La web en `apps/web/zeroman/` es la **fachada comercial**. El admin de este repo solo gestiona la web.
 
 ## Estructura
 

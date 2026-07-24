@@ -3,48 +3,30 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ZeroManual · Admin</title>
+  <title>ZeroManual · Admin web</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='none' stroke='%230e1116' stroke-width='2'/><circle cx='16' cy='16' r='8' fill='%234f46e5'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:       #f6f7f9;
-      --bg-2:     #eff1f4;
-      --bg-3:     #e9edf3;
-      --line:     #e6e9ee;
-      --fg:       #0e1116;
-      --fg-2:     #3a4150;
-      --fg-3:     #6b7280;
-      --accent:   #4f46e5;
-      --accent-h: #4338ca;
-      --ok:       #047857;
-      --warn:     #b7791f;
-      --err:      #e5484d;
-      --r:        14px;
-      --r-sm:     10px;
-      --shadow:   0 1px 2px rgba(14,17,22,0.04), 0 8px 24px rgba(14,17,22,0.06);
-      --font:     'IBM Plex Sans', system-ui, sans-serif;
-      --display:  'Space Grotesk', system-ui, sans-serif;
+      --bg: #f6f7f9; --bg-2: #eff1f4; --line: #e6e9ee; --fg: #0e1116;
+      --fg-2: #3a4150; --fg-3: #6b7280; --accent: #4f46e5; --accent-h: #4338ca;
+      --ok: #047857; --err: #e5484d; --r: 14px; --r-sm: 10px;
+      --shadow: 0 1px 2px rgba(14,17,22,0.04), 0 8px 24px rgba(14,17,22,0.06);
+      --font: 'IBM Plex Sans', system-ui, sans-serif;
+      --display: 'Space Grotesk', system-ui, sans-serif;
     }
-    .login-brand-name, .topbar-brand-name, .login-title, .card-title, .modal-title, .agent-name { font-family: var(--display); }
-    .login-title { font-size: 22px; letter-spacing: -.01em; }
+    .login-brand-name, .topbar-brand-name, .login-title, .card-title, .modal-title { font-family: var(--display); }
     .btn { font-weight: 600; }
-
     html, body { height: 100%; }
     body { font-family: var(--font); background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.5; }
-
-    /* ── Login overlay ── */
     #login-overlay {
       position: fixed; inset: 0; background: var(--bg);
-      display: flex; align-items: center; justify-content: center;
-      z-index: 100; transition: opacity .2s;
+      display: flex; align-items: center; justify-content: center; z-index: 100;
     }
     #login-overlay.hidden { opacity: 0; pointer-events: none; }
-
     .login-card {
       background: #fff; border: 1px solid var(--line); border-radius: var(--r);
       box-shadow: var(--shadow); padding: 40px 36px; width: 340px;
@@ -55,46 +37,35 @@
       position: relative; display: inline-block; flex-shrink: 0;
     }
     .login-brand-mark::after {
-      content: ""; position: absolute; inset: 5px;
-      background: var(--accent); border-radius: 50%;
+      content: ""; position: absolute; inset: 5px; background: var(--accent); border-radius: 50%;
       animation: pulse 2.4s ease-in-out infinite;
     }
-    .login-brand-name { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
+    .login-brand-name { font-size: 17px; font-weight: 600; }
     .login-brand-name span { font-weight: 300; }
     .login-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
     .login-sub { color: var(--fg-3); margin-bottom: 24px; font-size: 13px; }
-
     .form-group { margin-bottom: 14px; }
     .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--fg-2); margin-bottom: 5px; }
     .form-group input, .form-group select {
-      width: 100%; padding: 9px 11px;
-      background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm);
-      font: inherit; font-size: 14px; color: var(--fg); outline: none;
-      transition: border-color .15s;
+      width: 100%; padding: 9px 11px; background: var(--bg); border: 1px solid var(--line);
+      border-radius: var(--r-sm); font: inherit; font-size: 14px; color: var(--fg); outline: none;
     }
     .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
-
     .btn {
-      display: inline-flex; align-items: center; gap: 6px;
-      padding: 9px 16px; border-radius: var(--r-sm); border: 1px solid transparent;
-      font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none;
-      transition: background .15s, border-color .15s, color .15s; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px;
+      border-radius: var(--r-sm); border: 1px solid transparent; font: inherit; font-size: 13px;
+      cursor: pointer; text-decoration: none; white-space: nowrap;
     }
     .btn.primary { background: var(--accent); color: #fff; }
     .btn.primary:hover { background: var(--accent-h); }
     .btn.ghost { background: transparent; border-color: var(--line); color: var(--fg-2); }
-    .btn.ghost:hover { background: var(--bg-2); }
     .btn.danger { background: transparent; border-color: var(--err); color: var(--err); }
     .btn.danger:hover { background: var(--err); color: #fff; }
     .btn.sm { padding: 5px 10px; font-size: 12px; }
     .btn.full { width: 100%; justify-content: center; margin-top: 8px; }
     .btn:disabled { opacity: .45; cursor: not-allowed; }
-
     .error-msg { color: var(--err); font-size: 12px; margin-top: 8px; min-height: 16px; }
-
-    /* ── App shell ── */
     #app { display: flex; flex-direction: column; height: 100%; }
-
     .topbar {
       background: #fff; border-bottom: 1px solid var(--line);
       display: flex; align-items: center; padding: 0 20px; height: 52px; gap: 16px; flex-shrink: 0;
@@ -105,102 +76,55 @@
       position: relative; display: inline-block; flex-shrink: 0;
     }
     .topbar-brand-mark::after {
-      content: ""; position: absolute; inset: 4px;
-      background: var(--accent); border-radius: 50%;
+      content: ""; position: absolute; inset: 4px; background: var(--accent); border-radius: 50%;
       animation: pulse 2.4s ease-in-out infinite;
     }
     @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.55); opacity: 0.7; } }
-    .topbar-brand-name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+    .topbar-brand-name { font-size: 15px; font-weight: 600; }
     .topbar-brand-name span { font-weight: 300; }
     .topbar-divider { width: 1px; height: 18px; background: var(--line); }
     .topbar-sub { font-size: 12px; color: var(--fg-3); }
     .topbar-spacer { flex: 1; }
     .topbar-user { font-size: 12px; color: var(--fg-3); }
     .topbar-user strong { color: var(--fg-2); }
-
-    /* ── Tabs ── */
     .tabs { display: flex; padding: 0 20px; background: #fff; border-bottom: 1px solid var(--line); gap: 2px; flex-shrink: 0; }
     .tab {
       padding: 11px 14px; font-size: 13px; font-weight: 500; color: var(--fg-3);
       border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent;
-      transition: color .15s, border-color .15s; font-family: inherit;
+      font-family: inherit;
     }
     .tab:hover { color: var(--fg); }
     .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
-
-    /* ── Content ── */
     .content { flex: 1; overflow-y: auto; padding: 24px 20px; }
-
-    /* ── Cards / panels ── */
     .card {
       background: #fff; border: 1px solid var(--line); border-radius: var(--r);
       padding: 20px; margin-bottom: 16px;
     }
     .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .card-title { font-size: 13px; font-weight: 600; color: var(--fg); }
+    .card-title { font-size: 13px; font-weight: 600; }
     .card-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
-
-    /* ── Table ── */
     .tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-    .tbl th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--fg-3); padding: 0 10px 8px; border-bottom: 1px solid var(--line); }
+    .tbl th {
+      text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .04em;
+      text-transform: uppercase; color: var(--fg-3); padding: 0 10px 8px; border-bottom: 1px solid var(--line);
+    }
     .tbl td { padding: 10px; border-bottom: 1px solid var(--bg-2); vertical-align: middle; }
     .tbl tr:last-child td { border-bottom: none; }
-    .tbl tr:hover td { background: var(--bg); }
-
-    /* ── Status badges ── */
     .badge {
       display: inline-block; padding: 2px 7px; border-radius: 20px;
-      font-size: 11px; font-weight: 500; line-height: 1.5;
+      font-size: 11px; font-weight: 500; background: var(--bg-2); color: var(--fg-3);
     }
-    .badge.ok { background: #e3f3eb; color: #1f6e49; }
-    .badge.warn { background: #faf0da; color: #8a6516; }
-    .badge.err { background: #fbe7e4; color: #9e2f22; }
-    .badge.neu { background: var(--bg-2); color: var(--fg-3); }
-
-    /* ── Agents grid ── */
-    .agents-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-    .agent-card {
-      background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
-      padding: 14px; transition: border-color .15s;
-    }
-    .agent-card:hover { border-color: var(--accent); }
-    .agent-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
-    .agent-desc { font-size: 12px; color: var(--fg-3); line-height: 1.4; }
-
-    /* ── NL box ── */
-    .nl-box { display: flex; gap: 8px; margin-bottom: 16px; }
-    .nl-box input { flex: 1; padding: 9px 11px; background: var(--bg); border: 1px solid var(--line); border-radius: var(--r-sm); font: inherit; font-size: 14px; color: var(--fg); outline: none; }
-    .nl-box input:focus { border-color: var(--accent); }
-    .nl-result { font-size: 13px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--r-sm); padding: 12px; white-space: pre-wrap; font-family: 'JetBrains Mono', monospace; display: none; }
-    .nl-result.show { display: block; }
-
-    /* ── Approval item ── */
-    .approval-item { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 14px; margin-bottom: 8px; background: var(--bg); }
-    .approval-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-    .approval-meta { font-size: 11px; color: var(--fg-3); margin-top: 4px; }
-    .approval-payload { font-size: 12px; background: var(--bg-2); border-radius: var(--r-sm); padding: 8px; margin-top: 8px; font-family: monospace; white-space: pre-wrap; max-height: 120px; overflow-y: auto; }
-    .approval-actions { display: flex; gap: 6px; flex-shrink: 0; }
-
-    /* ── Empty state ── */
     .empty { text-align: center; padding: 48px 16px; color: var(--fg-3); font-size: 13px; }
-    .empty svg { width: 36px; height: 36px; margin-bottom: 10px; opacity: .4; }
-
-    /* ── Loading ── */
     .loading { text-align: center; padding: 32px; color: var(--fg-3); font-size: 13px; }
-
-    /* ── Toast ── */
     #toast {
-      position: fixed; bottom: 24px; right: 24px;
-      background: var(--fg); color: var(--bg); border-radius: var(--r-sm);
-      padding: 10px 16px; font-size: 13px; font-weight: 500;
+      position: fixed; bottom: 24px; right: 24px; background: var(--fg); color: var(--bg);
+      border-radius: var(--r-sm); padding: 10px 16px; font-size: 13px; font-weight: 500;
       transform: translateY(16px); opacity: 0; transition: transform .2s, opacity .2s;
       pointer-events: none; z-index: 200;
     }
     #toast.show { transform: translateY(0); opacity: 1; }
     #toast.ok { background: var(--ok); }
     #toast.err { background: var(--err); }
-
-    /* ── Modal ── */
     .modal-bg {
       position: fixed; inset: 0; background: rgba(0,0,0,.25);
       display: flex; align-items: center; justify-content: center; z-index: 150;
@@ -209,24 +133,22 @@
     .modal { background: #fff; border-radius: var(--r); padding: 28px 24px; width: 340px; box-shadow: var(--shadow); }
     .modal-title { font-size: 15px; font-weight: 600; margin-bottom: 18px; }
     .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+    .hint {
+      margin-bottom: 16px; padding: 12px 14px; background: var(--bg-2); border: 1px solid var(--line);
+      border-radius: var(--r-sm); font-size: 12px; color: var(--fg-2);
+    }
   </style>
 </head>
 <body>
 
-<!-- Login overlay -->
 <div id="login-overlay">
   <div class="login-card">
     <div class="login-brand">
       <div class="login-brand-mark"></div>
       <div class="login-brand-name">Zero<span>Manual</span></div>
     </div>
-    <div class="login-title">Acceder al portal</div>
-    <div class="login-sub">Solo acceso para administradores.</div>
+    <div class="login-title">Admin web</div>
+    <div class="login-sub">Usuarios y clientes del portal. Facturación y agentes están en OpsCenter.</div>
     <div class="form-group">
       <label for="inp-username">Usuario</label>
       <input id="inp-username" type="text" autocomplete="username" placeholder="admin" />
@@ -240,7 +162,6 @@
   </div>
 </div>
 
-<!-- App shell -->
 <div id="app">
   <div class="topbar">
     <a class="topbar-brand" href="/">
@@ -248,28 +169,21 @@
       <div class="topbar-brand-name">Zero<span>Manual</span></div>
     </a>
     <div class="topbar-divider"></div>
-    <div class="topbar-sub">Panel de administración</div>
+    <div class="topbar-sub">Gestión web</div>
     <div class="topbar-spacer"></div>
-    <select id="entity-selector" title="Empresa/entidad activa" style="padding:6px 9px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:12px;color:var(--fg-2);outline:none;max-width:220px;"></select>
     <div class="topbar-user">Sesión: <strong id="lbl-user">—</strong></div>
     <button class="btn ghost sm" id="btn-logout">Salir</button>
   </div>
   <div class="tabs">
-    <button class="tab on" data-tab="ops">Operaciones</button>
-    <button class="tab" data-tab="approvals">Aprobaciones</button>
-    <button class="tab" data-tab="invoices">Facturas</button>
-    <button class="tab" data-tab="accounting">Contabilidad</button>
-    <button class="tab" data-tab="users">Usuarios</button>
-    <button class="tab" data-tab="clients">Clientes</button>
-    <button class="tab" data-tab="companies">Empresas</button>
+    <button class="tab on" data-tab="clients">Clientes</button>
+    <button class="tab" data-tab="users">Usuarios admin</button>
   </div>
   <div class="content" id="content"></div>
 </div>
 
-<!-- Create user modal -->
 <div class="modal-bg hidden" id="modal-user">
   <div class="modal">
-    <div class="modal-title">Nuevo usuario</div>
+    <div class="modal-title">Nuevo usuario admin</div>
     <div class="form-group">
       <label>Usuario</label>
       <input id="new-username" type="text" placeholder="nombre" />
@@ -303,17 +217,11 @@
 (function () {
   'use strict';
 
-  // ── State ──────────────────────────────────────────────────────────────
   let token = sessionStorage.getItem('mz_token') || null;
   let currentUser = null;
-  let activeTab = 'ops';
-  let activeEntityId = null;
-  let entities = [];
+  let activeTab = 'clients';
 
-  // ── Utilities ──────────────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
-  const qs = sel => document.querySelector(sel);
-
   let toastTimer = null;
   function toast(msg, kind = '') {
     const el = $('toast');
@@ -341,27 +249,21 @@
     return r.json();
   }
 
-  function fmt(val) {
-    if (val == null) return '—';
-    if (typeof val === 'object') return JSON.stringify(val, null, 2);
-    return String(val);
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
-  function dateStr(iso) {
-    if (!iso) return '—';
-    return new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
+  function dateStr(v) {
+    if (!v) return '—';
+    try { return new Date(v).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }); }
+    catch { return String(v); }
   }
 
-  function stars(n) {
-    return Array.from({length: 5}, (_, i) => i < n ? '★' : '☆').join('');
-  }
-
-  // ── Auth ──────────────────────────────────────────────────────────────
-  async function tryLogin() {
+  async function doLogin() {
     const username = $('inp-username').value.trim();
     const password = $('inp-password').value;
-    $('login-error').textContent = '';
     if (!username || !password) { $('login-error').textContent = 'Completa usuario y contraseña.'; return; }
+    $('login-error').textContent = '';
     const btn = $('btn-login');
     btn.disabled = true; btn.textContent = 'Entrando…';
     try {
@@ -371,10 +273,10 @@
         body: JSON.stringify({ username, password })
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.detail || 'Error de autenticación');
+      if (!r.ok) throw new Error(data.detail || 'Error de login');
       token = data.token;
-      currentUser = data.user;
       sessionStorage.setItem('mz_token', token);
+      currentUser = data.user;
       showApp();
     } catch (e) {
       $('login-error').textContent = e.message;
@@ -383,321 +285,69 @@
     }
   }
 
-  async function doLogout() {
-    if (token) {
-      try { await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } }); } catch {}
-    }
+  function doLogout() {
+    if (token) fetch('/auth/logout', { method: 'POST', headers: authHeaders() }).catch(() => {});
     token = null; currentUser = null;
     sessionStorage.removeItem('mz_token');
-    window.location.href = '/';
+    $('login-overlay').classList.remove('hidden');
   }
 
-  async function tryRestoreSession() {
-    if (!token) return false;
+  async function restoreSession() {
+    if (!token) return;
     try {
-      const r = await fetch('/auth/me', { headers: { 'Authorization': `Bearer ${token}` } });
-      if (!r.ok) { token = null; sessionStorage.removeItem('mz_token'); return false; }
-      const data = await r.json();
+      const data = await api('GET', '/auth/me');
+      if (!data) return;
       currentUser = data.user;
-      return true;
-    } catch { return false; }
+      showApp();
+    } catch {
+      doLogout();
+    }
   }
 
-  async function showApp() {
+  function showApp() {
     $('login-overlay').classList.add('hidden');
     $('lbl-user').textContent = currentUser ? currentUser.username : '—';
-    await loadEntitySelector();
     loadTab(activeTab);
   }
 
-  // ── Entity (empresa/persona física) selector ──────────────────────────
-  async function loadEntitySelector() {
-    try {
-      const data = await api('GET', '/api/v1/admin/companies');
-      if (!data) return;
-      entities = data.companies || [];
-      const sel = $('entity-selector');
-      if (!entities.length) { sel.innerHTML = '<option value="">Sin empresas</option>'; return; }
-      sel.innerHTML = entities.map(e => `<option value="${escHtml(e.entity_id)}">${escHtml(e.name)}${e.is_default ? ' ★' : ''}</option>`).join('');
-      const defaultEntity = entities.find(e => e.is_default) || entities[0];
-      activeEntityId = defaultEntity.entity_id;
-      sel.value = activeEntityId;
-      sel.onchange = () => { activeEntityId = sel.value; loadTab(activeTab); };
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  // ── Tab routing ────────────────────────────────────────────────────────
   function loadTab(name) {
     activeTab = name;
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
     const c = $('content');
     c.innerHTML = '<div class="loading">Cargando…</div>';
-    const fns = { ops: tabOps, approvals: tabApprovals, invoices: tabInvoices, accounting: tabAccounting, users: tabUsers, clients: tabClients, companies: tabCompanies };
-    if (fns[name]) fns[name](c);
+    if (name === 'users') tabUsers(c);
+    else tabClients(c);
   }
 
-  // ── Tab: Operaciones ──────────────────────────────────────────────────
-  async function tabOps(c) {
-    c.innerHTML = `
-      <div class="card">
-        <div class="card-head"><div><div class="card-title">Comando en lenguaje natural</div><div class="card-sub">Escribe una instrucción y se enrutará al agente correcto.</div></div></div>
-        <div class="nl-box">
-          <input id="nl-input" type="text" placeholder="ej. Crear factura para cliente Acme por €800" />
-          <button class="btn primary" id="nl-send">Enviar →</button>
-        </div>
-        <div class="nl-result" id="nl-result"></div>
-      </div>
-      <div class="card" id="agents-card">
-        <div class="card-head"><div class="card-title">Agentes activos</div></div>
-        <div id="agents-body"><div class="loading">Cargando…</div></div>
-      </div>
-      <div class="card">
-        <div class="card-head"><div><div class="card-title">Acción manual</div><div class="card-sub">Modo avanzado: envía un evento a un agente concreto.</div></div></div>
-        <details>
-          <summary style="cursor:pointer;font-size:13px;font-weight:500;color:var(--accent);margin-bottom:14px;">Mostrar formulario avanzado</summary>
-          <div class="form-group"><label>Agente</label><select id="me-agent" style="width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:14px;color:var(--fg);outline:none;"></select></div>
-          <div class="form-group"><label>Acción</label><input id="me-action" type="text" placeholder="create_invoice" /></div>
-          <div class="form-group"><label>Datos (JSON)</label><textarea id="me-payload" rows="4" style="width:100%;padding:9px 11px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font-family:'Space Grotesk',ui-monospace,monospace;font-size:13px;color:var(--fg);outline:none;resize:vertical;">{ "amount_eur": 200 }</textarea></div>
-          <button class="btn ghost" id="me-send">Enviar evento →</button>
-          <div class="nl-result" id="me-result"></div>
-        </details>
-      </div>
-    `;
-    $('nl-send').onclick = sendNL;
-    $('nl-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendNL(); });
-    $('me-send').onclick = sendManualEvent;
-    try {
-      const data = await api('GET', '/api/v1/admin/agents');
-      if (!data) return;
-      const agents = data.agents || [];
-      const body = $('agents-body');
-      if (!agents.length) { body.innerHTML = '<div class="empty">No hay agentes registrados.</div>'; return; }
-      body.innerHTML = `<div class="agents-grid">${agents.map(a => `
-        <div class="agent-card">
-          <div class="agent-name">${escHtml(a.name || a.agent_name || '?')}</div>
-          <div class="agent-desc">${escHtml(a.description || a.role || '')}</div>
-        </div>`).join('')}</div>`;
-      const sel = $('me-agent');
-      if (sel) {
-        sel.innerHTML = agents.map(a => {
-          const name = a.agent_name || a.name || '';
-          return `<option value="${escHtml(name)}" title="${escHtml((a.supported_actions || []).join(', '))}">${escHtml(name)}</option>`;
-        }).join('');
-      }
-    } catch (e) { $('agents-body').innerHTML = `<div class="empty">${escHtml(e.message)}</div>`; }
-  }
-
-  async function sendManualEvent() {
-    const result = $('me-result');
-    const agent_name = $('me-agent').value;
-    const action = $('me-action').value.trim();
-    if (!action) { result.className = 'nl-result show'; result.textContent = 'Indica una acción.'; return; }
-    let payload;
-    try { payload = JSON.parse($('me-payload').value || '{}'); }
-    catch (e) { result.className = 'nl-result show'; result.textContent = 'JSON inválido en Datos.'; return; }
-    const btn = $('me-send');
-    btn.disabled = true; btn.textContent = 'Enviando…';
-    result.className = 'nl-result show';
-    result.textContent = 'Procesando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/events', { agent_name, action, payload, entity_id: activeEntityId });
-      if (!data) return;
-      result.textContent = JSON.stringify(data, null, 2);
-      toast('Evento enviado', 'ok');
-    } catch (e) { result.textContent = 'Error: ' + e.message; toast(e.message, 'err'); }
-    finally { btn.disabled = false; btn.textContent = 'Enviar evento →'; }
-  }
-
-  async function sendNL() {
-    const input = $('nl-input');
-    const result = $('nl-result');
-    const msg = input.value.trim();
-    if (!msg) return;
-    result.className = 'nl-result show';
-    result.textContent = 'Procesando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/natural-language', { message: msg, entity_id: activeEntityId });
-      if (!data) return;
-      result.textContent = JSON.stringify(data, null, 2);
-      input.value = '';
-    } catch (e) { result.textContent = 'Error: ' + e.message; }
-  }
-
-  // ── Tab: Aprobaciones ─────────────────────────────────────────────────
-  async function tabApprovals(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', '/api/v1/admin/approvals');
-      if (!data) return;
-      const items = data.pending || [];
-      if (!items.length) {
-        c.innerHTML = '<div class="card"><div class="empty">No hay aprobaciones pendientes.</div></div>';
-        return;
-      }
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div class="card-title">Pendientes de aprobación</div><div class="card-sub">${items.length} elemento(s)</div></div>
-        <div id="approvals-list"></div>
-      </div>`;
-      const list = $('approvals-list');
-      items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'approval-item';
-        div.id = `ap-${item.event_id}`;
-        div.innerHTML = `
-          <div class="approval-header">
-            <div>
-              <strong>${escHtml(item.agent_name || '?')}</strong>
-              <span style="color:var(--fg-3)"> · ${escHtml(item.action || '')}</span>
-              <div class="approval-meta">ID: ${escHtml(item.event_id)} · ${dateStr(item.created_at)}</div>
-            </div>
-            <div class="approval-actions">
-              <button class="btn sm ok-btn" style="background:var(--ok);color:#fff;border:none" data-id="${item.event_id}">✓ Aprobar</button>
-              <button class="btn ghost sm reject-btn" data-id="${item.event_id}">✗ Rechazar</button>
-            </div>
-          </div>
-          <div class="approval-payload">${escHtml(JSON.stringify(item.payload || {}, null, 2))}</div>`;
-        list.appendChild(div);
-      });
-      list.querySelectorAll('.ok-btn').forEach(btn => btn.onclick = () => doApprove(btn.dataset.id));
-      list.querySelectorAll('.reject-btn').forEach(btn => btn.onclick = () => doReject(btn.dataset.id));
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  async function doApprove(id) {
-    try {
-      await api('POST', `/api/v1/admin/approvals/${id}/approve`);
-      toast('Aprobado', 'ok');
-      $(`ap-${id}`)?.remove();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  async function doReject(id) {
-    const reason = prompt('Motivo del rechazo (opcional):') || 'Rechazado por operador.';
-    try {
-      await api('POST', `/api/v1/admin/approvals/${id}/reject`, { reason });
-      toast('Rechazado');
-      $(`ap-${id}`)?.remove();
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  // ── Tab: Facturas ─────────────────────────────────────────────────────
-  async function tabInvoices(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', `/api/v1/admin/invoices?limit=100&entity_id=${encodeURIComponent(activeEntityId || '')}`);
-      if (!data) return;
-      const inv = data.invoices || [];
-      if (!inv.length) {
-        c.innerHTML = '<div class="card"><div class="empty">No hay facturas registradas.</div></div>';
-        return;
-      }
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div class="card-title">Facturas</div><div class="card-sub">${inv.length} registros</div></div>
-        <table class="tbl">
-          <thead><tr>
-            <th>Número</th><th>Cliente</th><th>Fecha</th><th>Importe</th><th>Estado</th><th></th>
-          </tr></thead>
-          <tbody>${inv.map(i => `
-            <tr>
-              <td><strong>${escHtml(i.invoice_number || i.invoice_id)}</strong></td>
-              <td>${escHtml(i.client_name || '—')}</td>
-              <td>${dateStr(i.created_at)}</td>
-              <td>${i.amount != null ? `${(+i.amount).toFixed(2)} €` : '—'}</td>
-              <td><span class="badge ${i.status === 'paid' ? 'ok' : i.status === 'overdue' ? 'err' : 'warn'}">${escHtml(i.status || '—')}</span></td>
-              <td>${i.pdf_path ? `<button class="btn ghost sm pdf-btn" data-id="${i.invoice_id}">PDF</button>` : ''}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-      document.querySelectorAll('.pdf-btn').forEach(btn => { btn.onclick = () => openInvoicePdf(btn.dataset.id); });
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  async function openInvoicePdf(invoiceId) {
-    try {
-      const r = await fetch(`/api/v1/invoices/${invoiceId}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
-      if (!r.ok) throw new Error('No se pudo abrir el PDF');
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (e) { toast(e.message, 'err'); }
-  }
-
-  // ── Tab: Contabilidad ─────────────────────────────────────────────────
-  async function tabAccounting(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', `/api/v1/admin/ledger?limit=100&entity_id=${encodeURIComponent(activeEntityId || '')}`);
-      if (!data) return;
-      const entries = data.ledger_entries || [];
-      c.innerHTML = `<div class="card">
-        <div class="card-head">
-          <div><div class="card-title">Libro mayor</div><div class="card-sub">${entries.length} asientos</div></div>
-          <button class="btn ghost sm" id="btn-export">Exportar CSV →</button>
-        </div>
-        ${entries.length ? `<table class="tbl">
-          <thead><tr><th>Fecha</th><th>Descripción</th><th>Tipo</th><th>Importe</th><th>Referencia</th></tr></thead>
-          <tbody>${entries.map(e => `
-            <tr>
-              <td>${dateStr(e.created_at)}</td>
-              <td>${escHtml(e.description || '—')}</td>
-              <td><span class="badge neu">${escHtml(e.entry_type || '—')}</span></td>
-              <td>${e.amount != null ? `${(+e.amount).toFixed(2)} €` : '—'}</td>
-              <td style="font-size:11px;color:var(--fg-3)">${escHtml(e.reference_id || '—')}</td>
-            </tr>`).join('')}
-          </tbody>
-        </table>` : '<div class="empty">No hay asientos.</div>'}
-      </div>`;
-      $('btn-export').onclick = doExport;
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  async function doExport() {
-    const btn = $('btn-export');
-    btn.disabled = true; btn.textContent = 'Exportando…';
-    try {
-      const data = await api('POST', `/api/v1/accounting/export?entity_id=${encodeURIComponent(activeEntityId || '')}`);
-      if (!data) return;
-      toast('Export listo', 'ok');
-      const r = await fetch(data.download_url, { headers: { 'Authorization': `Bearer ${token}` } });
-      if (!r.ok) throw new Error('No se pudo descargar el export');
-      const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (e) { toast(e.message, 'err'); }
-    finally { btn.disabled = false; btn.textContent = 'Exportar CSV →'; }
-  }
-
-  // ── Tab: Usuarios ─────────────────────────────────────────────────────
   async function tabUsers(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
       const data = await api('GET', '/api/v1/admin/users');
       if (!data) return;
       const users = data.users || [];
-      c.innerHTML = `<div class="card">
+      c.innerHTML = `<div class="hint">Usuarios con acceso a este panel de gestión web (no es OpsCenter).</div>
+        <div class="card">
         <div class="card-head">
-          <div><div class="card-title">Usuarios del portal</div><div class="card-sub">${users.length} usuario(s)</div></div>
+          <div><div class="card-title">Usuarios admin</div><div class="card-sub">${users.length} usuario(s)</div></div>
           <button class="btn primary sm" id="btn-new-user">+ Nuevo usuario</button>
         </div>
-        <table class="tbl">
+        ${users.length ? `<table class="tbl">
           <thead><tr><th>Usuario</th><th>Email</th><th>Rol</th><th>Creado</th><th></th></tr></thead>
           <tbody id="users-tbody">${users.map(u => userRow(u)).join('')}</tbody>
-        </table>
+        </table>` : '<div class="empty">No hay usuarios.</div>'}
       </div>`;
       $('btn-new-user').onclick = openNewUserModal;
       bindDeleteButtons();
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
+    } catch (e) {
+      c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`;
+    }
   }
 
   function userRow(u) {
-    const isSelf = currentUser && currentUser.user_id === u.user_id;
+    const isSelf = currentUser && u.user_id === currentUser.user_id;
     return `<tr id="ur-${u.user_id}">
-      <td><strong>${escHtml(u.username)}</strong>${isSelf ? ' <span class="badge neu" style="font-size:10px">tú</span>' : ''}</td>
+      <td><strong>${escHtml(u.username)}</strong></td>
       <td>${escHtml(u.email || '—')}</td>
-      <td><span class="badge neu">${escHtml(u.role || '—')}</span></td>
+      <td><span class="badge">${escHtml(u.role || '—')}</span></td>
       <td>${dateStr(u.created_at)}</td>
       <td>${isSelf ? '' : `<button class="btn danger sm del-user-btn" data-id="${u.user_id}" data-name="${escHtml(u.username)}">Eliminar</button>`}</td>
     </tr>`;
@@ -733,17 +383,13 @@
       if (!data) return;
       $('modal-user').classList.add('hidden');
       toast('Usuario creado', 'ok');
-      const tbody = $('users-tbody');
-      if (tbody) {
-        tbody.insertAdjacentHTML('beforeend', userRow(data.user));
-        bindDeleteButtons();
-      }
+      loadTab('users');
     } catch (e) { $('new-user-error').textContent = e.message; }
     finally { btn.disabled = false; btn.textContent = 'Crear usuario'; }
   }
 
   async function doDeleteUser(userId, username) {
-    if (!confirm(`¿Eliminar al usuario "${username}"? Esta acción no se puede deshacer.`)) return;
+    if (!confirm(`¿Eliminar al usuario "${username}"?`)) return;
     try {
       await api('DELETE', `/api/v1/admin/users/${userId}`);
       toast('Usuario eliminado');
@@ -751,14 +397,13 @@
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  // ── Tab: Clientes ─────────────────────────────────────────────────────
   async function tabClients(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
       const data = await api('GET', '/api/v1/admin/clients');
       if (!data) return;
       const clients = data.clients || [];
-      c.innerHTML = `<div class="card">
+      c.innerHTML = `<div class="hint">Altas y bajas de clientes del portal (/client). Facturación y agentes: proyecto OpsCenter.</div>
+        <div class="card">
         <div class="card-head">
           <div><div class="card-title">Clientes del portal</div><div class="card-sub">${clients.length} cliente(s)</div></div>
           <button class="btn primary sm" id="btn-new-client">+ Nuevo cliente</button>
@@ -770,14 +415,16 @@
       </div>`;
       $('btn-new-client').onclick = openNewClientModal;
       bindClientDeleteButtons();
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
+    } catch (e) {
+      c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`;
+    }
   }
 
   function clientRow(cl) {
     return `<tr id="cr-${cl.client_id}">
       <td><strong>${escHtml(cl.name)}</strong></td>
       <td>${escHtml(cl.email)}</td>
-      <td><span class="badge neu">${escHtml(cl.plan || 'starter')}</span></td>
+      <td><span class="badge">${escHtml(cl.plan || 'starter')}</span></td>
       <td>${dateStr(cl.created_at)}</td>
       <td><button class="btn danger sm del-client-btn" data-id="${cl.client_id}" data-name="${escHtml(cl.name)}">Eliminar</button></td>
     </tr>`;
@@ -830,9 +477,7 @@
       if (!data) return;
       _newClientModal.classList.add('hidden');
       toast('Cliente creado', 'ok');
-      const tbody = $('clients-tbody');
-      if (tbody) { tbody.insertAdjacentHTML('beforeend', clientRow(data.client)); bindClientDeleteButtons(); }
-      else loadTab('clients');
+      loadTab('clients');
     } catch (e) { $('nc-error').textContent = e.message; }
     finally { btn.disabled = false; btn.textContent = 'Crear cliente'; }
   }
@@ -846,180 +491,16 @@
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  // ── Tab: Empresas (persona física / empresa que facturan) ─────────────
-  async function tabCompanies(c) {
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    try {
-      const data = await api('GET', '/api/v1/admin/companies');
-      if (!data) return;
-      const companies = data.companies || [];
-      _companiesCache = companies;
-      c.innerHTML = `<div class="card">
-        <div class="card-head">
-          <div><div class="card-title">Empresas / entidades emisoras</div><div class="card-sub">${companies.length} entidad(es) — cada una con su propia numeración de factura</div></div>
-          <button class="btn primary sm" id="btn-new-company">+ Nueva entidad</button>
-        </div>
-        ${companies.length ? `<table class="tbl">
-          <thead><tr><th>Nombre / razón social</th><th>Tipo</th><th>NIF/CIF</th><th>Serie</th><th>IVA</th><th>Creado</th><th></th></tr></thead>
-          <tbody id="companies-tbody">${companies.map(e => companyRow(e)).join('')}</tbody>
-        </table>` : '<div class="empty">No hay entidades todavía. Crea la primera.</div>'}
-      </div>`;
-      $('btn-new-company').onclick = () => openCompanyModal(null);
-      bindCompanyEditButtons();
-    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
-  }
-
-  function companyRow(en) {
-    const typeLabel = en.entity_type === 'persona_fisica' ? 'Persona física' : 'Empresa';
-    return `<tr id="co-${en.entity_id}">
-      <td><strong>${escHtml(en.name)}</strong>${en.is_default ? ' <span class="badge neu" style="font-size:10px">por defecto</span>' : ''}</td>
-      <td><span class="badge neu">${escHtml(typeLabel)}</span></td>
-      <td>${escHtml(en.tax_id || '—')}</td>
-      <td>${escHtml(en.invoice_series)}</td>
-      <td>${en.default_vat_rate}%</td>
-      <td>${dateStr(en.created_at)}</td>
-      <td><button class="btn ghost sm edit-company-btn" data-id="${en.entity_id}">Editar</button></td>
-    </tr>`;
-  }
-
-  function bindCompanyEditButtons() {
-    document.querySelectorAll('.edit-company-btn').forEach(btn => {
-      btn.onclick = () => openCompanyModal(entities_full_by_id(btn.dataset.id));
-    });
-  }
-
-  let _companiesCache = [];
-  function entities_full_by_id(id) {
-    return _companiesCache.find(e => e.entity_id === id) || null;
-  }
-
-  let _companyModal = null;
-  function openCompanyModal(existing) {
-    if (!_companyModal) {
-      const div = document.createElement('div');
-      div.className = 'modal-bg';
-      div.id = 'modal-company';
-      div.innerHTML = `<div class="modal">
-        <div class="modal-title" id="co-modal-title">Nueva entidad</div>
-        <div class="form-group">
-          <label>Tipo</label>
-          <select id="co-type">
-            <option value="persona_fisica">Persona física</option>
-            <option value="empresa">Empresa</option>
-          </select>
-        </div>
-        <div class="form-group"><label id="co-name-label">Nombre / razón social</label><input id="co-name" type="text" placeholder="Victor Luid" /></div>
-        <div class="form-group"><label id="co-tax-label">DNI / NIE</label><input id="co-tax-id" type="text" placeholder="12345678A" /></div>
-        <div class="form-group"><label>Dirección</label><input id="co-address" type="text" placeholder="Calle Ejemplo 1, Madrid" /></div>
-        <div class="form-group">
-          <label>IVA por defecto</label>
-          <select id="co-vat"><option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option></select>
-        </div>
-        <div class="form-group"><label>Serie de factura</label><input id="co-series" type="text" placeholder="FAC-P" /></div>
-        <div class="error-msg" id="co-error"></div>
-        <div class="modal-footer">
-          <button class="btn ghost" id="co-cancel">Cancelar</button>
-          <button class="btn primary" id="co-confirm">Crear entidad</button>
-        </div>
-      </div>`;
-      document.body.appendChild(div);
-      _companyModal = div;
-      $('co-cancel').onclick = () => div.classList.add('hidden');
-      $('co-type').onchange = updateCompanyLabels;
-      div.addEventListener('click', e => { if (e.target === div) div.classList.add('hidden'); });
-    }
-    const editing = !!existing;
-    $('co-modal-title').textContent = editing ? 'Editar entidad' : 'Nueva entidad';
-    $('co-confirm').textContent = editing ? 'Guardar cambios' : 'Crear entidad';
-    $('co-confirm').onclick = () => editing ? doUpdateCompany(existing.entity_id) : doCreateCompany();
-    $('co-type').value = existing ? existing.entity_type : 'persona_fisica';
-    $('co-name').value = existing ? existing.name : '';
-    $('co-tax-id').value = existing ? existing.tax_id : '';
-    $('co-address').value = existing ? existing.address : '';
-    $('co-vat').value = existing ? String(existing.default_vat_rate) : '21';
-    $('co-series').value = existing ? existing.invoice_series : '';
-    $('co-error').textContent = '';
-    updateCompanyLabels();
-    _companyModal.classList.remove('hidden');
-    $('co-name').focus();
-  }
-
-  function updateCompanyLabels() {
-    const isCompany = $('co-type').value === 'empresa';
-    $('co-name-label').textContent = isCompany ? 'Razón social' : 'Nombre completo';
-    $('co-tax-label').textContent = isCompany ? 'CIF' : 'DNI / NIE';
-    $('co-tax-id').placeholder = isCompany ? 'B12345678' : '12345678A';
-  }
-
-  async function doCreateCompany() {
-    const body = {
-      entity_type: $('co-type').value,
-      name: $('co-name').value.trim(),
-      tax_id: $('co-tax-id').value.trim(),
-      address: $('co-address').value.trim(),
-      default_vat_rate: parseFloat($('co-vat').value),
-      invoice_series: $('co-series').value.trim(),
-    };
-    $('co-error').textContent = '';
-    if (!body.name || !body.invoice_series) { $('co-error').textContent = 'Nombre y serie de factura son obligatorios.'; return; }
-    const btn = $('co-confirm');
-    btn.disabled = true; btn.textContent = 'Creando…';
-    try {
-      const data = await api('POST', '/api/v1/admin/companies', body);
-      if (!data) return;
-      _companyModal.classList.add('hidden');
-      toast('Entidad creada', 'ok');
-      loadEntitySelector();
-      loadTab('companies');
-    } catch (e) { $('co-error').textContent = e.message; }
-    finally { btn.disabled = false; btn.textContent = 'Crear entidad'; }
-  }
-
-  async function doUpdateCompany(entityId) {
-    const body = {
-      entity_type: $('co-type').value,
-      name: $('co-name').value.trim(),
-      tax_id: $('co-tax-id').value.trim(),
-      address: $('co-address').value.trim(),
-      default_vat_rate: parseFloat($('co-vat').value),
-      invoice_series: $('co-series').value.trim(),
-    };
-    $('co-error').textContent = '';
-    if (!body.name || !body.invoice_series) { $('co-error').textContent = 'Nombre y serie de factura son obligatorios.'; return; }
-    const btn = $('co-confirm');
-    btn.disabled = true; btn.textContent = 'Guardando…';
-    try {
-      const data = await api('PUT', `/api/v1/admin/companies/${entityId}`, body);
-      if (!data) return;
-      _companyModal.classList.add('hidden');
-      toast('Entidad actualizada', 'ok');
-      loadEntitySelector();
-      loadTab('companies');
-    } catch (e) { $('co-error').textContent = e.message; }
-    finally { btn.disabled = false; btn.textContent = 'Guardar cambios'; }
-  }
-
-  // ── Escape helper ─────────────────────────────────────────────────────
-  function escHtml(s) {
-    return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  // ── Boot ──────────────────────────────────────────────────────────────
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => loadTab(tab.dataset.tab));
+  $('btn-login').onclick = doLogin;
+  $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+  $('btn-logout').onclick = doLogout;
+  $('modal-cancel').onclick = () => $('modal-user').classList.add('hidden');
+  $('modal-confirm').onclick = doCreateUser;
+  document.querySelectorAll('.tab').forEach(t => {
+    t.onclick = () => loadTab(t.dataset.tab);
   });
-  $('btn-login').addEventListener('click', tryLogin);
-  $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
-  $('btn-logout').addEventListener('click', doLogout);
-  $('modal-cancel').addEventListener('click', () => $('modal-user').classList.add('hidden'));
-  $('modal-confirm').addEventListener('click', doCreateUser);
-  $('modal-user').addEventListener('click', e => { if (e.target === $('modal-user')) $('modal-user').classList.add('hidden'); });
 
-  (async () => {
-    const ok = await tryRestoreSession();
-    if (ok) showApp();
-    else { $('login-overlay').classList.remove('hidden'); $('inp-username').focus(); }
-  })();
+  restoreSession();
 })();
 </script>
 </body>

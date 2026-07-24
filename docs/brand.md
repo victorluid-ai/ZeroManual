@@ -19,19 +19,21 @@
 - Registro y login de **clientes** en `/client`.
 - Automatizaciones que el cliente activa (reseñas Google, Instagram, etc.).
 
-## Operaciones IA (`/admin`, `/ui`)
+## Admin web (`/admin`)
 
-- Panel **admin**: facturas, aprobaciones, clientes, agentes, export contable.
-- Consola **ui**: instrucciones en lenguaje natural para agentes internos.
-- Solo para operadores de ZeroManual (tú y tu equipo).
+- Altas/bajas de **clientes del portal** y usuarios admin del producto.
+- Sin facturas, agentes ni contabilidad (eso está en **OpsCenter**).
+
+## OpsCenter (repo aparte)
+
+- Panel ops: facturas, agentes, empresas fiscales, aprobaciones, consola NL.
+- Pensado como centro de operaciones multi-negocio.
 
 ## Enlace entre ambas
 
-1. Un cliente se registra en la web → fila en `clients` (SQLite).
-2. Activa una automatización → workflow + agentes de entrega.
-3. Una venta genera eventos → `AgentBillingOps` emite factura PDF.
-4. Handoff → contabilidad ES clasifica el ingreso.
-5. Todo trazado en `runtime/zeromanual.db` y audit log.
+1. Un cliente se registra en la web → fila en `clients` (SQLite de ZeroManual).
+2. Activa una automatización → workflow n8n del cliente.
+3. La facturación/operaciones de negocio se gestionan en OpsCenter.
 
 ## Variables de entorno
 

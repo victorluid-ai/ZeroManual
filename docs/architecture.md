@@ -27,7 +27,7 @@ ZeroManual usa una arquitectura Claude-first con triggers nativos (email) y un o
 
 ## Integraciones clave
 
-- n8n: solo disparador externo hacia `POST /api/v1/webhooks/n8n`.
+- n8n: dispara hacia ZeroManual solo a través de `POST /internal/automations/{automation_type}/drafts` (autenticado con `X-Webhook-Secret`), usado hoy por el workflow de reseñas de Google. No existe un webhook genérico `/api/v1/webhooks/n8n`.
 - SQLite (`runtime/zeromanual.db`): aprobaciones, facturas y log de eventos.
 - Postgres: opcional en VPS via `docker-compose` para escalar despues.
 - Claude: interpretacion NL (opcional con `ANTHROPIC_API_KEY`).

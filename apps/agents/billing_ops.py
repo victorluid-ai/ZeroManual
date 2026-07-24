@@ -51,42 +51,39 @@ class AgentBillingOps(BaseAutonomousAgent, AgentAIMixin):
                     "client_email": event.payload.get("client_email"),
                     "client_nif": event.payload.get("client_nif"),
                     "concept": event.payload.get("concept"),
+                    "entity_id": event.entity_id,
                 },
             )
 
         if event.action == "send_reminder":
             invoice_id = event.payload.get("invoice_id")
-            if invoice_id:
-                return self._run_tool(
-                    "send_invoice_email",
-                    {
-                        "invoice_id": str(invoice_id),
-                        "to_email": event.payload.get("client_email"),
-                    },
-                )
+            if not invoice_id:
+                raise ValueError("send_reminder requiere 'invoice_id' en el payload.")
+            return self._run_tool(
+                "send_invoice_email",
+                {
+                    "invoice_id": str(invoice_id),
+                    "to_email": event.payload.get("client_email"),
+                },
+            )
 
         if event.action == "mark_paid":
             invoice_id = event.payload.get("invoice_id")
-            if invoice_id:
-                return self._run_tool("mark_invoice_paid", {"invoice_id": str(invoice_id)})
-        return None
+            if not invoice_id:
+                raise ValueError("mark_paid requiere 'invoice_id' en el payload.")
+            return self._run_tool("mark_invoice_paid", {"invoice_id": str(invoice_id)})
+
+        raise ValueError(f"Accion no soportada por AgentBillingOps: '{event.action}'.")
 
     def execute(self, event: Event, decision: AgentDecision) -> dict[str, Any]:
         # Aprobar/ejecutar NUNCA necesita LLM: accion ya decidida
         deterministic = self._execute_deterministic(event)
         if deterministic is not None:
             return deterministic
-
-        client = str(
-            event.payload.get("client_name") or event.payload.get("client") or "cliente"
-        )
-        amount_raw = event.payload.get("amount_eur")
-        amount: float | None = float(amount_raw) if amount_raw is not None else None
-        amount_txt = f" por {amount} EUR" if amount is not None else ""
+        # Only reached with no store/tools attached (e.g. a dry run without
+        # persistence) — nothing was actually issued, so say so plainly
+        # instead of fabricating an invoice_id/status.
         return {
-            "invoice_id": f"INV-{event.event_id[:8].upper()}",
-            "status": "issued",
-            "client_name": client,
-            "amount_eur": str(amount) if amount is not None else "",
-            "message": f"Factura emitida para {client}{amount_txt}.",
+            "status": "skipped",
+            "message": "Sin almacenamiento conectado: no se ha emitido ninguna factura real.",
         }

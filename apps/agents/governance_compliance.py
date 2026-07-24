@@ -48,6 +48,7 @@ class AgentGovernanceAndCompliance(BaseAutonomousAgent, AgentAIMixin):
                 "check_type": check_type,
                 "outcome": outcome,
                 "details": str(event.payload),
+                "entity_id": event.entity_id,
             },
         )
         if result:

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from apps.integrations.settings import load_integration_settings
+from apps.orchestrator.models import DEFAULT_ENTITY_ID
 
 
 def _utc_now() -> str:
@@ -40,8 +41,8 @@ class DataStore:
         self._path = Path(db_path)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
-        self.ensure_default_admin()
-        self.ensure_default_client()
+        self.generated_admin_password = self.ensure_default_admin()
+        self.generated_client_password = self.ensure_default_client()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._path)
@@ -63,7 +64,8 @@ class DataStore:
                     action TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     decision_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    entity_id TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS invoices (
@@ -82,7 +84,20 @@ class DataStore:
                     vat_rate REAL,
                     vat_amount_eur REAL,
                     total_eur REAL,
-                    email_sent_at TEXT
+                    email_sent_at TEXT,
+                    entity_id TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS business_entities (
+                    entity_id        TEXT    PRIMARY KEY,
+                    entity_type      TEXT    NOT NULL,
+                    name             TEXT    NOT NULL,
+                    tax_id           TEXT    NOT NULL DEFAULT '',
+                    address          TEXT    NOT NULL DEFAULT '',
+                    default_vat_rate REAL    NOT NULL DEFAULT 21,
+                    invoice_series   TEXT    NOT NULL,
+                    is_default       INTEGER NOT NULL DEFAULT 0,
+                    created_at       TEXT    NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS event_log (
@@ -113,9 +128,11 @@ class DataStore:
                 );
 
                 CREATE TABLE IF NOT EXISTS client_memory (
-                    client_name TEXT PRIMARY KEY,
+                    entity_id TEXT NOT NULL,
+                    client_name TEXT NOT NULL,
                     notes TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
+                    updated_at TEXT NOT NULL,
+                    PRIMARY KEY (entity_id, client_name)
                 );
 
                 CREATE TABLE IF NOT EXISTS ledger_entries (
@@ -126,7 +143,8 @@ class DataStore:
                     category TEXT NOT NULL,
                     reference TEXT,
                     status TEXT NOT NULL,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    entity_id TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS compliance_checks (
@@ -135,12 +153,15 @@ class DataStore:
                     check_type TEXT NOT NULL,
                     outcome TEXT NOT NULL,
                     details TEXT,
-                    created_at TEXT NOT NULL
+                    created_at TEXT NOT NULL,
+                    entity_id TEXT
                 );
 
                 CREATE TABLE IF NOT EXISTS invoice_sequence (
-                    year INTEGER PRIMARY KEY,
-                    last_number INTEGER NOT NULL
+                    entity_id TEXT NOT NULL,
+                    year INTEGER NOT NULL,
+                    last_number INTEGER NOT NULL,
+                    PRIMARY KEY (entity_id, year)
                 );
 
                 CREATE TABLE IF NOT EXISTS users (
@@ -310,6 +331,91 @@ class DataStore:
                 conn.execute("ALTER TABLE clients ADD COLUMN pending_automation_type TEXT")
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (4)")
 
+        if current < 5:
+            # Simple additive columns: ADD COLUMN + backfill for pre-existing DBs.
+            # Fresh DBs already have entity_id via the inline schema above, so the
+            # guard makes this a no-op for them.
+            for table in ("invoices", "ledger_entries", "compliance_checks", "pending_approvals"):
+                existing = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                if "entity_id" not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN entity_id TEXT")
+                conn.execute(
+                    f"UPDATE {table} SET entity_id = ? WHERE entity_id IS NULL",
+                    (DEFAULT_ENTITY_ID,),
+                )
+
+            # invoice_sequence: PK (year) -> PK (entity_id, year). SQLite can't
+            # ALTER a primary key, so rebuild: new table, copy, drop, rename.
+            existing = {r[1] for r in conn.execute("PRAGMA table_info(invoice_sequence)").fetchall()}
+            if "entity_id" not in existing:
+                conn.executescript(
+                    """
+                    CREATE TABLE invoice_sequence_new (
+                        entity_id   TEXT NOT NULL,
+                        year        INTEGER NOT NULL,
+                        last_number INTEGER NOT NULL,
+                        PRIMARY KEY (entity_id, year)
+                    );
+                    """
+                )
+                conn.execute(
+                    "INSERT INTO invoice_sequence_new (entity_id, year, last_number)"
+                    " SELECT ?, year, last_number FROM invoice_sequence",
+                    (DEFAULT_ENTITY_ID,),
+                )
+                conn.executescript(
+                    "DROP TABLE invoice_sequence;"
+                    "ALTER TABLE invoice_sequence_new RENAME TO invoice_sequence;"
+                )
+
+            # client_memory: PK (client_name) -> PK (entity_id, client_name), same
+            # rebuild dance — a client name collision across two entities would
+            # otherwise silently overwrite notes belonging to a different business.
+            existing = {r[1] for r in conn.execute("PRAGMA table_info(client_memory)").fetchall()}
+            if "entity_id" not in existing:
+                conn.executescript(
+                    """
+                    CREATE TABLE client_memory_new (
+                        entity_id   TEXT NOT NULL,
+                        client_name TEXT NOT NULL,
+                        notes       TEXT NOT NULL,
+                        updated_at  TEXT NOT NULL,
+                        PRIMARY KEY (entity_id, client_name)
+                    );
+                    """
+                )
+                conn.execute(
+                    "INSERT INTO client_memory_new (entity_id, client_name, notes, updated_at)"
+                    " SELECT ?, client_name, notes, updated_at FROM client_memory",
+                    (DEFAULT_ENTITY_ID,),
+                )
+                conn.executescript(
+                    "DROP TABLE client_memory;"
+                    "ALTER TABLE client_memory_new RENAME TO client_memory;"
+                )
+
+            # Seed the default entity from today's single global CompanySettings
+            # (.env) so pre-existing invoices/ledger rows have a real fiscal
+            # profile to point at, not just an opaque id.
+            settings = load_integration_settings()
+            conn.execute(
+                "INSERT OR IGNORE INTO business_entities"
+                " (entity_id, entity_type, name, tax_id, address, default_vat_rate,"
+                "  invoice_series, is_default, created_at)"
+                " VALUES (?,?,?,?,?,?,?,1,?)",
+                (
+                    DEFAULT_ENTITY_ID,
+                    "empresa",
+                    settings.company.name,
+                    settings.company.nif,
+                    settings.company.address,
+                    settings.company.default_vat_rate,
+                    settings.company.invoice_series,
+                    _utc_now(),
+                ),
+            )
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (5)")
+
     def save_pending_approval(
         self,
         event_id: str,
@@ -317,13 +423,14 @@ class DataStore:
         action: str,
         payload: dict[str, Any],
         decision: dict[str, Any],
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO pending_approvals
-                (event_id, agent_name, action, payload_json, decision_json, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (event_id, agent_name, action, payload_json, decision_json, created_at, entity_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     event_id,
@@ -332,6 +439,7 @@ class DataStore:
                     json.dumps(payload),
                     json.dumps(decision),
                     _utc_now(),
+                    entity_id,
                 ),
             )
 
@@ -353,6 +461,7 @@ class DataStore:
                     "action": row["action"],
                     "payload": json.loads(row["payload_json"]),
                     "decision": json.loads(row["decision_json"]),
+                    "entity_id": row["entity_id"] or DEFAULT_ENTITY_ID,
                 }
             )
         return result
@@ -370,29 +479,31 @@ class DataStore:
             "action": row["action"],
             "payload": json.loads(row["payload_json"]),
             "decision": json.loads(row["decision_json"]),
+            "entity_id": row["entity_id"] or DEFAULT_ENTITY_ID,
         }
 
-    def next_invoice_number(self) -> str:
-        settings = load_integration_settings()
+    def next_invoice_number(self, entity_id: str = DEFAULT_ENTITY_ID) -> str:
+        entity = self.get_business_entity(entity_id)
+        series = entity["invoice_series"] if entity else load_integration_settings().company.invoice_series
         year = datetime.now(timezone.utc).year
-        series = settings.company.invoice_series
         conn = self._connect()
         try:
             conn.execute("BEGIN EXCLUSIVE")
             row = conn.execute(
-                "SELECT last_number FROM invoice_sequence WHERE year = ?", (year,)
+                "SELECT last_number FROM invoice_sequence WHERE entity_id = ? AND year = ?",
+                (entity_id, year),
             ).fetchone()
             if row is None:
                 last_number = 1
                 conn.execute(
-                    "INSERT INTO invoice_sequence (year, last_number) VALUES (?, ?)",
-                    (year, last_number),
+                    "INSERT INTO invoice_sequence (entity_id, year, last_number) VALUES (?, ?, ?)",
+                    (entity_id, year, last_number),
                 )
             else:
                 last_number = int(row["last_number"]) + 1
                 conn.execute(
-                    "UPDATE invoice_sequence SET last_number = ? WHERE year = ?",
-                    (last_number, year),
+                    "UPDATE invoice_sequence SET last_number = ? WHERE entity_id = ? AND year = ?",
+                    (last_number, entity_id, year),
                 )
             conn.commit()
         except Exception:
@@ -419,6 +530,7 @@ class DataStore:
         vat_amount_eur: float | None = None,
         total_eur: float | None = None,
         email_sent_at: str | None = None,
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -426,8 +538,8 @@ class DataStore:
                 INSERT OR REPLACE INTO invoices
                 (invoice_id, event_id, client_name, amount_eur, status, approved_by, created_at,
                  invoice_number, pdf_path, client_email, client_nif, base_amount_eur, vat_rate,
-                 vat_amount_eur, total_eur, email_sent_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 vat_amount_eur, total_eur, email_sent_at, entity_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     invoice_id,
@@ -446,6 +558,7 @@ class DataStore:
                     vat_amount_eur,
                     total_eur,
                     email_sent_at,
+                    entity_id,
                 ),
             )
 
@@ -470,12 +583,18 @@ class DataStore:
                 (_utc_now(), invoice_id),
             )
 
-    def list_invoices(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_invoices(self, limit: int = 50, entity_id: str | None = None) -> list[dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM invoices ORDER BY created_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            if entity_id is not None:
+                rows = conn.execute(
+                    "SELECT * FROM invoices WHERE entity_id = ? ORDER BY created_at DESC LIMIT ?",
+                    (entity_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM invoices ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def is_email_processed(self, uid: str, folder: str) -> bool:
@@ -521,24 +640,26 @@ class DataStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
-    def upsert_client_memory(self, client_name: str, notes: str) -> None:
+    def upsert_client_memory(
+        self, client_name: str, notes: str, entity_id: str = DEFAULT_ENTITY_ID
+    ) -> None:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO client_memory (client_name, notes, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(client_name) DO UPDATE SET
+                INSERT INTO client_memory (entity_id, client_name, notes, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(entity_id, client_name) DO UPDATE SET
                     notes=excluded.notes,
                     updated_at=excluded.updated_at
                 """,
-                (client_name, notes, _utc_now()),
+                (entity_id, client_name, notes, _utc_now()),
             )
 
-    def get_client_memory(self, client_name: str) -> str | None:
+    def get_client_memory(self, client_name: str, entity_id: str = DEFAULT_ENTITY_ID) -> str | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT notes FROM client_memory WHERE client_name = ?",
-                (client_name,),
+                "SELECT notes FROM client_memory WHERE entity_id = ? AND client_name = ?",
+                (entity_id, client_name),
             ).fetchone()
         if row is None:
             return None
@@ -552,14 +673,15 @@ class DataStore:
         category: str,
         reference: str | None,
         status: str,
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> str:
         entry_id = f"LED-{event_id[:8].upper()}"
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO ledger_entries
-                (entry_id, event_id, client_name, amount_eur, category, reference, status, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (entry_id, event_id, client_name, amount_eur, category, reference, status, created_at, entity_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry_id,
@@ -570,6 +692,7 @@ class DataStore:
                     reference,
                     status,
                     _utc_now(),
+                    entity_id,
                 ),
             )
         return entry_id
@@ -580,25 +703,32 @@ class DataStore:
         check_type: str,
         outcome: str,
         details: str = "",
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> str:
         check_id = f"CMP-{event_id[:8].upper()}"
         with self._connect() as conn:
             conn.execute(
                 """
                 INSERT OR REPLACE INTO compliance_checks
-                (check_id, event_id, check_type, outcome, details, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (check_id, event_id, check_type, outcome, details, created_at, entity_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (check_id, event_id, check_type, outcome, details, _utc_now()),
+                (check_id, event_id, check_type, outcome, details, _utc_now(), entity_id),
             )
         return check_id
 
-    def list_ledger_entries(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_ledger_entries(self, limit: int = 50, entity_id: str | None = None) -> list[dict[str, Any]]:
         with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM ledger_entries ORDER BY created_at DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+            if entity_id is not None:
+                rows = conn.execute(
+                    "SELECT * FROM ledger_entries WHERE entity_id = ? ORDER BY created_at DESC LIMIT ?",
+                    (entity_id, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM ledger_entries ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
         return [dict(row) for row in rows]
 
     def purge_pii_older_than(self, days: int) -> dict[str, int | str]:
@@ -640,24 +770,36 @@ class DataStore:
 
     # ---- Users ----
 
-    def ensure_default_admin(self) -> None:
+    def ensure_default_admin(self) -> str | None:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             if count == 0:
                 user_id = f"USR-{secrets.token_hex(4).upper()}"
+                password = secrets.token_urlsafe(12)
                 conn.execute(
                     "INSERT INTO users (user_id, username, email, password_hash, role, created_at)"
                     " VALUES (?,?,?,?,?,?)",
-                    (user_id, "admin", "", _hash_password("admin123"), "admin", _utc_now()),
+                    (user_id, "admin", "", _hash_password(password), "admin", _utc_now()),
                 )
-                print("[ZeroManual] Default admin created — username: admin / password: admin123 — CHANGE THIS NOW")  # noqa: T201
+                print(  # noqa: T201
+                    f"[ZeroManual] Admin creado — usuario: admin / contraseña: {password}\n"
+                    "  Guárdala ahora: no se volverá a mostrar. Cámbiala desde /admin en cuanto puedas."
+                )
+                return password
+        return None
 
-    def ensure_default_client(self) -> None:
+    def ensure_default_client(self) -> str | None:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM clients").fetchone()[0]
             if count == 0:
-                self.create_client("Empresa de prueba", "test@empresa.com", "test123")
-                print("[ZeroManual] Cliente de prueba creado — email: test@empresa.com / password: test123 — CAMBIA ESTO")  # noqa: T201
+                password = secrets.token_urlsafe(12)
+                self.create_client("Empresa de prueba", "test@empresa.com", password)
+                print(  # noqa: T201
+                    f"[ZeroManual] Cliente de prueba creado — email: test@empresa.com / contraseña: {password}\n"
+                    "  Guárdala ahora: no se volverá a mostrar."
+                )
+                return password
+        return None
 
     def create_user(self, username: str, email: str, password: str, role: str = "admin") -> dict[str, Any]:
         user_id = f"USR-{secrets.token_hex(4).upper()}"
@@ -727,6 +869,56 @@ class DataStore:
     def delete_session(self, token: str) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM sessions WHERE token = ?", (token,))
+
+    # ---- Business Entities (persona fisica / empresa books) ----
+
+    def create_business_entity(
+        self,
+        entity_type: str,
+        name: str,
+        tax_id: str,
+        address: str = "",
+        default_vat_rate: float = 21.0,
+        invoice_series: str = "FAC",
+    ) -> dict[str, Any]:
+        entity_id = f"BIZ-{secrets.token_hex(4).upper()}"
+        now = _utc_now()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO business_entities
+                   (entity_id, entity_type, name, tax_id, address, default_vat_rate,
+                    invoice_series, is_default, created_at)
+                   VALUES (?,?,?,?,?,?,?,0,?)""",
+                (entity_id, entity_type, name, tax_id, address, default_vat_rate, invoice_series, now),
+            )
+        return self.get_business_entity(entity_id)  # type: ignore[return-value]
+
+    def list_business_entities(self) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM business_entities ORDER BY created_at ASC"
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_business_entity(self, entity_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM business_entities WHERE entity_id = ?", (entity_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_business_entity(self, entity_id: str, **fields: Any) -> dict[str, Any] | None:
+        allowed = {"entity_type", "name", "tax_id", "address", "default_vat_rate", "invoice_series"}
+        updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not updates:
+            return self.get_business_entity(entity_id)
+        assignments = ", ".join(f"{k} = ?" for k in updates)
+        with self._connect() as conn:
+            conn.execute(
+                f"UPDATE business_entities SET {assignments} WHERE entity_id = ?",
+                (*updates.values(), entity_id),
+            )
+        return self.get_business_entity(entity_id)
 
     # ---- Clients ----
 

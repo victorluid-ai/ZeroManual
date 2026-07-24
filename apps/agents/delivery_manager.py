@@ -55,6 +55,7 @@ class AgentClientDeliveryManager(BaseAutonomousAgent, AgentAIMixin):
                 "client_name": client,
                 "delivery_status": status,
                 "note": note,
+                "entity_id": event.entity_id,
             },
         )
         if result:

@@ -105,3 +105,22 @@ def test_billing_triggers_accounting_handoff(runtime: OrchestratorRuntime) -> No
     assert "handoffs" in result
     handoff_agents = [h["event"]["agent_name"] for h in result["handoffs"]]
     assert "AgentAccountingAssistantES" in handoff_agents
+
+
+def test_handoff_event_preserves_entity_id(runtime: OrchestratorRuntime) -> None:
+    other = runtime.store.create_business_entity(
+        entity_type="empresa", name="Otra Empresa", tax_id="B12345678", invoice_series="FAC-OTRA"
+    )
+    result = runtime.process_event({
+        "event_id": "evt-007",
+        "source": "test",
+        "agent_name": "AgentBillingOps",
+        "action": "create_invoice",
+        "payload": {"amount_eur": 200.0, "client_name": "Handoff SL"},
+        "entity_id": other["entity_id"],
+    })
+    assert result["status"] == "COMPLETED"
+    handoff = next(h for h in result["handoffs"] if h["event"]["agent_name"] == "AgentAccountingAssistantES")
+    assert handoff["event"]["entity_id"] == other["entity_id"]
+    invoice = runtime.store.get_invoice(result["output"]["invoice_id"])
+    assert invoice["entity_id"] == other["entity_id"]

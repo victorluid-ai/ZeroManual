@@ -26,6 +26,7 @@ class OrchestratorRuntime:
                 agent_name=row["agent_name"],
                 action=row["action"],
                 payload=row["payload"],
+                entity_id=row["entity_id"],
             )
             decision_data = row["decision"]
             decision = AgentDecision(
@@ -64,6 +65,7 @@ class OrchestratorRuntime:
                 action=event.action,
                 payload=event.payload,
                 decision=result.decision.model_dump(mode="json"),
+                entity_id=event.entity_id,
             )
         elif result.status == ExecutionStatus.COMPLETED:
             self._persist_billing_output(event, result.output)
@@ -96,6 +98,7 @@ class OrchestratorRuntime:
             amount_eur=float(amount) if amount is not None else None,
             status=output.get("status", "issued"),
             approved_by=approved_by,
+            entity_id=event.entity_id,
         )
 
     def list_agents(self) -> list[dict[str, Any]]:
@@ -112,8 +115,8 @@ class OrchestratorRuntime:
     def list_pending_approvals(self) -> list[dict[str, Any]]:
         return self.store.list_pending_approvals()
 
-    def list_invoices(self, limit: int = 50) -> list[dict[str, Any]]:
-        return self.store.list_invoices(limit=limit)
+    def list_invoices(self, limit: int = 50, entity_id: str | None = None) -> list[dict[str, Any]]:
+        return self.store.list_invoices(limit=limit, entity_id=entity_id)
 
     def approve(self, event_id: str, approved_by: str) -> dict[str, Any]:
         pending = self.pending_approvals.get(event_id)
@@ -128,6 +131,7 @@ class OrchestratorRuntime:
                     agent_name=stored["agent_name"],
                     action=stored["action"],
                     payload=stored["payload"],
+                    entity_id=stored["entity_id"],
                 ),
                 decision=AgentDecision(
                     summary=d["summary"],
@@ -166,6 +170,7 @@ class OrchestratorRuntime:
             action=pending.event.action,
             payload=pending.event.payload,
             source=pending.event.source,
+            entity_id=pending.event.entity_id,
         )
         handoff_result = ExecutionResult(
             status=ExecutionStatus.COMPLETED,

@@ -29,6 +29,7 @@ def build_handoff_events(
                 "source": "agent_handoff",
                 "agent_name": "AgentAccountingAssistantES",
                 "action": "classify_transaction",
+                "entity_id": source_event.entity_id,
                 "payload": {
                     "client_name": client,
                     "amount_eur": amount,
@@ -51,6 +52,7 @@ def build_handoff_events(
                     "source": "agent_handoff",
                     "agent_name": "AgentClientDeliveryManager",
                     "action": "client_onboarding",
+                    "entity_id": source_event.entity_id,
                     "payload": {
                         "client_name": lead,
                         "parent_event_id": source_event.event_id,

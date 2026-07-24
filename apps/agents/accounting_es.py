@@ -47,6 +47,7 @@ class AgentAccountingAssistantES(BaseAutonomousAgent, AgentAIMixin):
                     "client_name": str(client) if client else None,
                     "amount_eur": amount,
                     "invoice_id": event.payload.get("invoice_id"),
+                    "entity_id": event.entity_id,
                 },
             )
             if result:
@@ -60,6 +61,7 @@ class AgentAccountingAssistantES(BaseAutonomousAgent, AgentAIMixin):
                     "event_id": event.event_id,
                     "period": period,
                     "amount_eur": amount,
+                    "entity_id": event.entity_id,
                 },
             )
             if result:

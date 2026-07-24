@@ -39,7 +39,15 @@ class AgentAIMixin:
             approval_threshold_eur=approval_threshold_eur,
             client_context=client_context,
         )
-        return ai_decision if ai_decision is not None else default
+        if ai_decision is None:
+            return default
+        if default.requires_human_approval and not ai_decision.requires_human_approval:
+            # The deterministic rules already decided this case is mandatory-
+            # approval (tax filings, GDPR/sensitive/irreversible actions,
+            # outages, high-value deals...). The LLM's own judgement must never
+            # be able to waive that — re-assert it in code, not just in the prompt.
+            ai_decision = ai_decision.model_copy(update={"requires_human_approval": True})
+        return ai_decision
 
     def _client_context(self, event: Event) -> str:
         if not self._store:
@@ -47,7 +55,7 @@ class AgentAIMixin:
         client_name = event.payload.get("client_name") or event.payload.get("client")
         if not client_name:
             return ""
-        return self._store.get_client_memory(str(client_name)) or ""
+        return self._store.get_client_memory(str(client_name), entity_id=event.entity_id) or ""
 
     def _run_tool(self, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         if not self._tools:

@@ -24,7 +24,7 @@ class AgentSalesPipeline(BaseAutonomousAgent, AgentAIMixin):
             summary="Advance lead through sales funnel and prepare handoff.",
             risk_level=risk,
             proposed_actions=["score_lead", "draft_offer", "schedule_followup"],
-            requires_human_approval=False,
+            requires_human_approval=risk.value == "C_HIGH",
         )
 
         lead = event.payload.get("lead_name") or event.payload.get("client_name")
@@ -56,6 +56,7 @@ class AgentSalesPipeline(BaseAutonomousAgent, AgentAIMixin):
                 "lead_name": lead,
                 "stage": stage,
                 "deal_value_eur": deal_value,
+                "entity_id": event.entity_id,
             },
         )
         if result:

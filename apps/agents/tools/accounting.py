@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.orchestrator.models import DEFAULT_ENTITY_ID
 from apps.orchestrator.store import DataStore
 
 
@@ -16,6 +17,7 @@ class AccountingTools:
         amount_eur: float | None,
         invoice_id: str | None = None,
         category: str = "ingreso_servicios",
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> dict[str, Any]:
         entry_id = self.store.save_ledger_entry(
             event_id=event_id,
@@ -24,12 +26,13 @@ class AccountingTools:
             category=category,
             reference=invoice_id,
             status="classified",
+            entity_id=entity_id,
         )
         if client_name:
             note = f"Asiento {entry_id} clasificado ({category})"
             if invoice_id:
                 note += f" ref {invoice_id}"
-            self.store.upsert_client_memory(client_name, note)
+            self.store.upsert_client_memory(client_name, note, entity_id=entity_id)
         return {
             "ledger_entry_id": entry_id,
             "ledger_status": "classified",
@@ -42,6 +45,7 @@ class AccountingTools:
         event_id: str,
         period: str,
         amount_eur: float | None = None,
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> dict[str, Any]:
         entry_id = self.store.save_ledger_entry(
             event_id=event_id,
@@ -50,6 +54,7 @@ class AccountingTools:
             category="iva_borrador",
             reference=period,
             status="vat_draft",
+            entity_id=entity_id,
         )
         return {
             "ledger_entry_id": entry_id,

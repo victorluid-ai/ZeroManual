@@ -32,8 +32,9 @@ Los agentes son autonomos y viven en ZeroManual. n8n solo dispara eventos extern
 | `GET /api/v1/invoices/{id}/pdf` | Descargar PDF de factura |
 | `POST /api/v1/accounting/export` | CSV contable borrador |
 
+| `POST /internal/automations/{automation_type}/drafts` | Trigger desde n8n (autenticado con `X-Webhook-Secret`) |
+
 Ver [integrations.md](integrations.md) para SMTP, PDF y export.
-| `POST /api/v1/webhooks/n8n` | Trigger desde n8n |
 
 ## Persistencia
 

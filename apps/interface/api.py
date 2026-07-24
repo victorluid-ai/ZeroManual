@@ -1,23 +1,28 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from apps.common.tax_id import is_valid_nif
 from apps.integrations.accounting_export import AccountingExporter
 from apps.zeromanual_env import zm_env
 from apps.integrations.google_oauth import GoogleOAuthHelper
 from apps.integrations.n8n_client import N8nClient
-from apps.integrations.settings import load_integration_settings
+from apps.integrations.settings import CompanySettings, load_integration_settings
 from apps.interface.nl import NaturalLanguageInterpreter
+from apps.orchestrator.models import DEFAULT_ENTITY_ID
 from apps.orchestrator.runtime import OrchestratorRuntime
 from apps.triggers.config import load_trigger_settings
 from apps.triggers.dispatcher import TriggerDispatcher
@@ -33,6 +38,9 @@ def verify_api_key(
     x_api_key: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
 ) -> None:
+    # Fails closed: an unset ZEROMANUAL_API_KEY must never mean "no auth
+    # required" (that was a real vulnerability — see the audit). A valid
+    # admin session bearer token is still accepted as an alternative.
     key = runtime.settings.api_key
     if key and x_api_key == key:
         return
@@ -40,8 +48,7 @@ def verify_api_key(
         token = authorization.removeprefix("Bearer ")
         if runtime.store.get_session_user(token) is not None:
             return
-    if key and x_api_key != key:
-        raise HTTPException(status_code=401, detail="Invalid API key")
+    raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 def get_admin_user(authorization: str | None = Header(default=None)) -> dict:
@@ -59,6 +66,7 @@ class EventRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     source: str = "zeromanual_ui"
     event_id: str | None = None
+    entity_id: str = DEFAULT_ENTITY_ID
 
 
 class ApproveRequest(BaseModel):
@@ -74,6 +82,7 @@ class NaturalLanguageRequest(BaseModel):
     message: str
     source: str = "zeromanual_nl"
     event_id: str | None = None
+    entity_id: str = DEFAULT_ENTITY_ID
 
 
 class PurgePIIRequest(BaseModel):
@@ -120,6 +129,24 @@ class PendingAutomationRequest(BaseModel):
     automation_type: str
 
 
+class CreateBusinessEntityRequest(BaseModel):
+    entity_type: str  # "persona_fisica" | "empresa"
+    name: str
+    tax_id: str
+    address: str = ""
+    default_vat_rate: float = 21.0
+    invoice_series: str
+
+
+class UpdateBusinessEntityRequest(BaseModel):
+    entity_type: str | None = None
+    name: str | None = None
+    tax_id: str | None = None
+    address: str | None = None
+    default_vat_rate: float | None = None
+    invoice_series: str | None = None
+
+
 def get_client_user(authorization: str | None = Header(default=None)) -> dict:
     if authorization and authorization.startswith("Bearer "):
         token = authorization.removeprefix("Bearer ")
@@ -133,6 +160,38 @@ def verify_webhook_secret(x_webhook_secret: str | None = Header(default=None)) -
     secret = runtime.settings.webhook_secret
     if not secret or x_webhook_secret != secret:
         raise HTTPException(status_code=401, detail="Invalid webhook secret")
+
+
+# ---- Simple in-memory login rate limiting ----
+# Single-process/personal-scale mitigation for brute-force login attempts;
+# not meant to survive a restart or scale across multiple workers.
+_LOGIN_ATTEMPTS: dict[str, list[float]] = defaultdict(list)
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300.0
+
+
+def _rate_limit_key(request: Request, identifier: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{host}:{identifier.lower()}"
+
+
+def _check_login_rate_limit(key: str) -> None:
+    now = time.time()
+    attempts = _LOGIN_ATTEMPTS[key]
+    attempts[:] = [t for t in attempts if now - t < _LOGIN_WINDOW_SECONDS]
+    if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+        raise HTTPException(
+            status_code=429,
+            detail="Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.",
+        )
+
+
+def _record_failed_login(key: str) -> None:
+    _LOGIN_ATTEMPTS[key].append(time.time())
+
+
+def _clear_login_attempts(key: str) -> None:
+    _LOGIN_ATTEMPTS.pop(key, None)
 
 
 
@@ -163,6 +222,7 @@ def submit_natural_language(req: NaturalLanguageRequest, _: None = Depends(verif
         "agent_name": interpreted["agent_name"],
         "action": interpreted["action"],
         "payload": interpreted.get("payload", {}),
+        "entity_id": req.entity_id,
     }
     result = runtime.process_event(event_data)
     return {
@@ -178,13 +238,17 @@ def list_approvals(_: None = Depends(verify_api_key)) -> dict[str, Any]:
 
 
 @app.get("/api/v1/invoices")
-def list_invoices(limit: int = 50, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    return {"invoices": runtime.list_invoices(limit=limit)}
+def list_invoices(
+    limit: int = 50, entity_id: str | None = None, _: None = Depends(verify_api_key)
+) -> dict[str, Any]:
+    return {"invoices": runtime.list_invoices(limit=limit, entity_id=entity_id)}
 
 
 @app.get("/api/v1/ledger")
-def list_ledger(limit: int = 50, _: None = Depends(verify_api_key)) -> dict[str, Any]:
-    return {"ledger_entries": runtime.store.list_ledger_entries(limit=limit)}
+def list_ledger(
+    limit: int = 50, entity_id: str | None = None, _: None = Depends(verify_api_key)
+) -> dict[str, Any]:
+    return {"ledger_entries": runtime.store.list_ledger_entries(limit=limit, entity_id=entity_id)}
 
 
 @app.get("/api/v1/clients/{client_name}/context")
@@ -205,12 +269,26 @@ def download_invoice_pdf(invoice_id: str, _: None = Depends(verify_api_key)) -> 
 
 
 @app.post("/api/v1/accounting/export")
-def export_accounting(_: None = Depends(verify_api_key)) -> dict[str, Any]:
+def export_accounting(
+    entity_id: str = DEFAULT_ENTITY_ID, _: None = Depends(verify_api_key)
+) -> dict[str, Any]:
     settings = load_integration_settings()
-    exporter = AccountingExporter(settings.company, settings.exports_dir)
+    entity = runtime.store.get_business_entity(entity_id)
+    company = (
+        CompanySettings(
+            name=entity["name"],
+            nif=entity["tax_id"],
+            address=entity["address"],
+            default_vat_rate=entity["default_vat_rate"],
+            invoice_series=entity["invoice_series"],
+        )
+        if entity is not None
+        else settings.company
+    )
+    exporter = AccountingExporter(company, settings.exports_dir)
     export_path = exporter.export_csv(
-        invoices=runtime.list_invoices(limit=500),
-        ledger_entries=runtime.store.list_ledger_entries(limit=500),
+        invoices=runtime.list_invoices(limit=500, entity_id=entity_id),
+        ledger_entries=runtime.store.list_ledger_entries(limit=500, entity_id=entity_id),
     )
     return {
         "status": "ok",
@@ -301,10 +379,14 @@ def admin_portal() -> str:
 # ---- Auth ----
 
 @app.post("/auth/login")
-def login(req: LoginRequest) -> dict:
+def login(req: LoginRequest, request: Request) -> dict:
+    key = _rate_limit_key(request, req.username)
+    _check_login_rate_limit(key)
     user = runtime.store.authenticate_user(req.username, req.password)
     if user is None:
+        _record_failed_login(key)
         raise HTTPException(status_code=401, detail="Usuario o contraseña incorrectos")
+    _clear_login_attempts(key)
     token = runtime.store.create_session(user["user_id"])
     return {"token": token, "user": user}
 
@@ -344,13 +426,17 @@ def admin_reject(event_id: str, body: RejectRequest, user: dict = Depends(get_ad
 
 
 @app.get("/api/v1/admin/invoices")
-def admin_list_invoices(limit: int = 50, user: dict = Depends(get_admin_user)) -> dict:
-    return {"invoices": runtime.list_invoices(limit=limit)}
+def admin_list_invoices(
+    limit: int = 50, entity_id: str | None = None, user: dict = Depends(get_admin_user)
+) -> dict:
+    return {"invoices": runtime.list_invoices(limit=limit, entity_id=entity_id)}
 
 
 @app.get("/api/v1/admin/ledger")
-def admin_list_ledger(limit: int = 50, user: dict = Depends(get_admin_user)) -> dict:
-    return {"ledger_entries": runtime.store.list_ledger_entries(limit=limit)}
+def admin_list_ledger(
+    limit: int = 50, entity_id: str | None = None, user: dict = Depends(get_admin_user)
+) -> dict:
+    return {"ledger_entries": runtime.store.list_ledger_entries(limit=limit, entity_id=entity_id)}
 
 
 @app.post("/api/v1/admin/events")
@@ -370,6 +456,7 @@ def admin_nl(req: NaturalLanguageRequest, user: dict = Depends(get_admin_user)) 
         "agent_name": interpreted["agent_name"],
         "action": interpreted["action"],
         "payload": interpreted.get("payload", {}),
+        "entity_id": req.entity_id,
     }
     result = runtime.process_event(event_data)
     return {"message": req.message, "interpreted_event": event_data, "result": result}
@@ -410,10 +497,14 @@ def client_portal() -> str:
 # ---- Client auth ----
 
 @app.post("/client/login")
-def client_login(req: ClientLoginRequest) -> dict:
+def client_login(req: ClientLoginRequest, request: Request) -> dict:
+    key = _rate_limit_key(request, req.email)
+    _check_login_rate_limit(key)
     client = runtime.store.authenticate_client(req.email, req.password)
     if client is None:
+        _record_failed_login(key)
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+    _clear_login_attempts(key)
     token = runtime.store.create_client_session(client["client_id"])
     return {"token": token, "client": client}
 
@@ -456,7 +547,8 @@ def google_callback(code: str, state: str) -> RedirectResponse:
             google_email=google_email,
             location_id=None,
         )
-    except Exception:
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Google OAuth callback failed: %s", exc)
         return RedirectResponse("/client?error=oauth_failed")
 
     # Auto-consume a pending "subscribe" started before the OAuth round trip
@@ -501,6 +593,12 @@ def _activate_automation_for_client(client_id: str, client_name: str, automation
     templates = json.loads(os.getenv("N8N_TEMPLATE_IDS", "{}"))
     if automation_type not in templates:
         raise ValueError(f"Tipo de automatización desconocido: {automation_type}")
+    existing = runtime.store.get_automation(client_id, automation_type)
+    if existing and existing.get("status") == "active":
+        # Idempotent: a stale UI state or double-click would otherwise duplicate
+        # the n8n workflow and fail activation (webhook path collides with the
+        # already-active copy — n8n rejects with "conflict with one of the webhooks").
+        return {"status": "active", "workflow_id": existing["n8n_workflow_id"], "automation": existing}
     creds = runtime.store.get_google_creds(client_id)
     if not creds:
         raise ValueError("Conecta primero tu cuenta de Google Business")
@@ -632,6 +730,53 @@ def admin_create_client(req: ClientRegisterRequest, user: dict = Depends(get_adm
 def admin_delete_client(client_id: str, user: dict = Depends(get_admin_user)) -> dict:
     runtime.store.delete_client(client_id)
     return {"ok": True}
+
+
+# ---- Admin: business entities (empresas / persona fisica que facturan) ----
+
+_VALID_ENTITY_TYPES = {"persona_fisica", "empresa"}
+
+
+@app.get("/api/v1/admin/companies")
+def admin_list_companies(user: dict = Depends(get_admin_user)) -> dict:
+    return {"companies": runtime.store.list_business_entities()}
+
+
+@app.post("/api/v1/admin/companies")
+def admin_create_company(req: CreateBusinessEntityRequest, user: dict = Depends(get_admin_user)) -> dict:
+    if req.entity_type not in _VALID_ENTITY_TYPES:
+        raise HTTPException(status_code=400, detail=f"entity_type debe ser uno de {sorted(_VALID_ENTITY_TYPES)}")
+    if req.tax_id and not is_valid_nif(req.tax_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"NIF/CIF no valido: '{req.tax_id}'. Formatos aceptados: DNI (12345678A), CIF (B1234567X), NIE (X1234567A).",
+        )
+    entity = runtime.store.create_business_entity(
+        entity_type=req.entity_type,
+        name=req.name,
+        tax_id=req.tax_id,
+        address=req.address,
+        default_vat_rate=req.default_vat_rate,
+        invoice_series=req.invoice_series,
+    )
+    return {"company": entity}
+
+
+@app.put("/api/v1/admin/companies/{entity_id}")
+def admin_update_company(
+    entity_id: str, req: UpdateBusinessEntityRequest, user: dict = Depends(get_admin_user)
+) -> dict:
+    if runtime.store.get_business_entity(entity_id) is None:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if req.entity_type is not None and req.entity_type not in _VALID_ENTITY_TYPES:
+        raise HTTPException(status_code=400, detail=f"entity_type debe ser uno de {sorted(_VALID_ENTITY_TYPES)}")
+    if req.tax_id and not is_valid_nif(req.tax_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"NIF/CIF no valido: '{req.tax_id}'. Formatos aceptados: DNI (12345678A), CIF (B1234567X), NIE (X1234567A).",
+        )
+    entity = runtime.store.update_business_entity(entity_id, **req.model_dump(exclude_none=True))
+    return {"company": entity}
 
 
 _zeroman_dir = Path(__file__).parent.parent / "web" / "zeroman"

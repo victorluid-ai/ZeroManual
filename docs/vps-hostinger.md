@@ -52,26 +52,28 @@ Recomendado produccion: `systemd` o contenedor propio con restart automatico.
 
 ### 5) Configurar n8n como disparador
 
+No existe un webhook generico `/api/v1/webhooks/n8n` — usa los endpoints reales que ya expone la API, autenticados con `ZEROMANUAL_API_KEY` (cabecera `x-api-key`).
+
 En n8n crea un workflow con nodo **HTTP Request**:
 
 - Method: `POST`
-- URL: `http://<tu-vps>:8090/api/v1/webhooks/n8n`
-- Header: `x-zeromanual-secret: <ZEROMANUAL_WEBHOOK_SECRET>`
+- URL: `http://<tu-vps>:8090/api/v1/events`
+- Header: `x-api-key: <ZEROMANUAL_API_KEY>`
 - Body JSON ejemplo:
-
-```json
-{
-  "message": "Crea una factura de 300 euros para cliente Acme"
-}
-```
-
-Alternativa estructurada:
 
 ```json
 {
   "agent_name": "AgentBillingOps",
   "action": "create_invoice",
   "payload": { "amount_eur": 300, "client_name": "Acme" }
+}
+```
+
+Alternativa en lenguaje natural (`POST /api/v1/natural-language`, misma cabecera):
+
+```json
+{
+  "message": "Crea una factura de 300 euros para cliente Acme"
 }
 ```
 

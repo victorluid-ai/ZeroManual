@@ -29,7 +29,13 @@ class EmailWatcher:
             for uid in data[0].split():
                 uid_str = uid.decode() if isinstance(uid, bytes) else str(uid)
 
-                status, msg_data = mail.fetch(uid, "(RFC822)")
+                # BODY.PEEK[] (not RFC822) so the server doesn't mark the
+                # message \Seen here — dispatcher.mark_email_processed only
+                # runs after the event is handled successfully, so if we
+                # marked it read now, a crash mid-processing would drop the
+                # email forever (server says read, local dedup says never
+                # processed, next UNSEEN search would never return it again).
+                status, msg_data = mail.fetch(uid, "(BODY.PEEK[])")
                 if status != "OK" or not msg_data:
                     continue
 

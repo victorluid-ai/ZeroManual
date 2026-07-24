@@ -250,6 +250,7 @@
     <div class="topbar-divider"></div>
     <div class="topbar-sub">Panel de administración</div>
     <div class="topbar-spacer"></div>
+    <select id="entity-selector" title="Empresa/entidad activa" style="padding:6px 9px;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:12px;color:var(--fg-2);outline:none;max-width:220px;"></select>
     <div class="topbar-user">Sesión: <strong id="lbl-user">—</strong></div>
     <button class="btn ghost sm" id="btn-logout">Salir</button>
   </div>
@@ -260,6 +261,7 @@
     <button class="tab" data-tab="accounting">Contabilidad</button>
     <button class="tab" data-tab="users">Usuarios</button>
     <button class="tab" data-tab="clients">Clientes</button>
+    <button class="tab" data-tab="companies">Empresas</button>
   </div>
   <div class="content" id="content"></div>
 </div>
@@ -305,6 +307,8 @@
   let token = sessionStorage.getItem('mz_token') || null;
   let currentUser = null;
   let activeTab = 'ops';
+  let activeEntityId = null;
+  let entities = [];
 
   // ── Utilities ──────────────────────────────────────────────────────────
   const $ = id => document.getElementById(id);
@@ -399,10 +403,27 @@
     } catch { return false; }
   }
 
-  function showApp() {
+  async function showApp() {
     $('login-overlay').classList.add('hidden');
     $('lbl-user').textContent = currentUser ? currentUser.username : '—';
+    await loadEntitySelector();
     loadTab(activeTab);
+  }
+
+  // ── Entity (empresa/persona física) selector ──────────────────────────
+  async function loadEntitySelector() {
+    try {
+      const data = await api('GET', '/api/v1/admin/companies');
+      if (!data) return;
+      entities = data.companies || [];
+      const sel = $('entity-selector');
+      if (!entities.length) { sel.innerHTML = '<option value="">Sin empresas</option>'; return; }
+      sel.innerHTML = entities.map(e => `<option value="${escHtml(e.entity_id)}">${escHtml(e.name)}${e.is_default ? ' ★' : ''}</option>`).join('');
+      const defaultEntity = entities.find(e => e.is_default) || entities[0];
+      activeEntityId = defaultEntity.entity_id;
+      sel.value = activeEntityId;
+      sel.onchange = () => { activeEntityId = sel.value; loadTab(activeTab); };
+    } catch (e) { toast(e.message, 'err'); }
   }
 
   // ── Tab routing ────────────────────────────────────────────────────────
@@ -411,7 +432,7 @@
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
     const c = $('content');
     c.innerHTML = '<div class="loading">Cargando…</div>';
-    const fns = { ops: tabOps, approvals: tabApprovals, invoices: tabInvoices, accounting: tabAccounting, users: tabUsers, clients: tabClients };
+    const fns = { ops: tabOps, approvals: tabApprovals, invoices: tabInvoices, accounting: tabAccounting, users: tabUsers, clients: tabClients, companies: tabCompanies };
     if (fns[name]) fns[name](c);
   }
 
@@ -479,7 +500,7 @@
     result.className = 'nl-result show';
     result.textContent = 'Procesando…';
     try {
-      const data = await api('POST', '/api/v1/admin/events', { agent_name, action, payload });
+      const data = await api('POST', '/api/v1/admin/events', { agent_name, action, payload, entity_id: activeEntityId });
       if (!data) return;
       result.textContent = JSON.stringify(data, null, 2);
       toast('Evento enviado', 'ok');
@@ -495,7 +516,7 @@
     result.className = 'nl-result show';
     result.textContent = 'Procesando…';
     try {
-      const data = await api('POST', '/api/v1/admin/natural-language', { message: msg });
+      const data = await api('POST', '/api/v1/admin/natural-language', { message: msg, entity_id: activeEntityId });
       if (!data) return;
       result.textContent = JSON.stringify(data, null, 2);
       input.value = '';
@@ -563,7 +584,7 @@
   async function tabInvoices(c) {
     c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
-      const data = await api('GET', '/api/v1/admin/invoices?limit=100');
+      const data = await api('GET', `/api/v1/admin/invoices?limit=100&entity_id=${encodeURIComponent(activeEntityId || '')}`);
       if (!data) return;
       const inv = data.invoices || [];
       if (!inv.length) {
@@ -583,19 +604,31 @@
               <td>${dateStr(i.created_at)}</td>
               <td>${i.amount != null ? `${(+i.amount).toFixed(2)} €` : '—'}</td>
               <td><span class="badge ${i.status === 'paid' ? 'ok' : i.status === 'overdue' ? 'err' : 'warn'}">${escHtml(i.status || '—')}</span></td>
-              <td>${i.pdf_path ? `<a class="btn ghost sm" href="/api/v1/invoices/${i.invoice_id}/pdf" target="_blank">PDF</a>` : ''}</td>
+              <td>${i.pdf_path ? `<button class="btn ghost sm pdf-btn" data-id="${i.invoice_id}">PDF</button>` : ''}</td>
             </tr>`).join('')}
           </tbody>
         </table>
       </div>`;
+      document.querySelectorAll('.pdf-btn').forEach(btn => { btn.onclick = () => openInvoicePdf(btn.dataset.id); });
     } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
+  }
+
+  async function openInvoicePdf(invoiceId) {
+    try {
+      const r = await fetch(`/api/v1/invoices/${invoiceId}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!r.ok) throw new Error('No se pudo abrir el PDF');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { toast(e.message, 'err'); }
   }
 
   // ── Tab: Contabilidad ─────────────────────────────────────────────────
   async function tabAccounting(c) {
     c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
-      const data = await api('GET', '/api/v1/admin/ledger?limit=100');
+      const data = await api('GET', `/api/v1/admin/ledger?limit=100&entity_id=${encodeURIComponent(activeEntityId || '')}`);
       if (!data) return;
       const entries = data.ledger_entries || [];
       c.innerHTML = `<div class="card">
@@ -624,10 +657,15 @@
     const btn = $('btn-export');
     btn.disabled = true; btn.textContent = 'Exportando…';
     try {
-      const data = await api('POST', '/api/v1/accounting/export');
+      const data = await api('POST', `/api/v1/accounting/export?entity_id=${encodeURIComponent(activeEntityId || '')}`);
       if (!data) return;
       toast('Export listo', 'ok');
-      window.open(data.download_url, '_blank');
+      const r = await fetch(data.download_url, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!r.ok) throw new Error('No se pudo descargar el export');
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (e) { toast(e.message, 'err'); }
     finally { btn.disabled = false; btn.textContent = 'Exportar CSV →'; }
   }
@@ -806,6 +844,159 @@
       toast('Cliente eliminado');
       $(`cr-${clientId}`)?.remove();
     } catch (e) { toast(e.message, 'err'); }
+  }
+
+  // ── Tab: Empresas (persona física / empresa que facturan) ─────────────
+  async function tabCompanies(c) {
+    c.innerHTML = '<div class="loading">Cargando…</div>';
+    try {
+      const data = await api('GET', '/api/v1/admin/companies');
+      if (!data) return;
+      const companies = data.companies || [];
+      _companiesCache = companies;
+      c.innerHTML = `<div class="card">
+        <div class="card-head">
+          <div><div class="card-title">Empresas / entidades emisoras</div><div class="card-sub">${companies.length} entidad(es) — cada una con su propia numeración de factura</div></div>
+          <button class="btn primary sm" id="btn-new-company">+ Nueva entidad</button>
+        </div>
+        ${companies.length ? `<table class="tbl">
+          <thead><tr><th>Nombre / razón social</th><th>Tipo</th><th>NIF/CIF</th><th>Serie</th><th>IVA</th><th>Creado</th><th></th></tr></thead>
+          <tbody id="companies-tbody">${companies.map(e => companyRow(e)).join('')}</tbody>
+        </table>` : '<div class="empty">No hay entidades todavía. Crea la primera.</div>'}
+      </div>`;
+      $('btn-new-company').onclick = () => openCompanyModal(null);
+      bindCompanyEditButtons();
+    } catch (e) { c.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`; }
+  }
+
+  function companyRow(en) {
+    const typeLabel = en.entity_type === 'persona_fisica' ? 'Persona física' : 'Empresa';
+    return `<tr id="co-${en.entity_id}">
+      <td><strong>${escHtml(en.name)}</strong>${en.is_default ? ' <span class="badge neu" style="font-size:10px">por defecto</span>' : ''}</td>
+      <td><span class="badge neu">${escHtml(typeLabel)}</span></td>
+      <td>${escHtml(en.tax_id || '—')}</td>
+      <td>${escHtml(en.invoice_series)}</td>
+      <td>${en.default_vat_rate}%</td>
+      <td>${dateStr(en.created_at)}</td>
+      <td><button class="btn ghost sm edit-company-btn" data-id="${en.entity_id}">Editar</button></td>
+    </tr>`;
+  }
+
+  function bindCompanyEditButtons() {
+    document.querySelectorAll('.edit-company-btn').forEach(btn => {
+      btn.onclick = () => openCompanyModal(entities_full_by_id(btn.dataset.id));
+    });
+  }
+
+  let _companiesCache = [];
+  function entities_full_by_id(id) {
+    return _companiesCache.find(e => e.entity_id === id) || null;
+  }
+
+  let _companyModal = null;
+  function openCompanyModal(existing) {
+    if (!_companyModal) {
+      const div = document.createElement('div');
+      div.className = 'modal-bg';
+      div.id = 'modal-company';
+      div.innerHTML = `<div class="modal">
+        <div class="modal-title" id="co-modal-title">Nueva entidad</div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <select id="co-type">
+            <option value="persona_fisica">Persona física</option>
+            <option value="empresa">Empresa</option>
+          </select>
+        </div>
+        <div class="form-group"><label id="co-name-label">Nombre / razón social</label><input id="co-name" type="text" placeholder="Victor Luid" /></div>
+        <div class="form-group"><label id="co-tax-label">DNI / NIE</label><input id="co-tax-id" type="text" placeholder="12345678A" /></div>
+        <div class="form-group"><label>Dirección</label><input id="co-address" type="text" placeholder="Calle Ejemplo 1, Madrid" /></div>
+        <div class="form-group">
+          <label>IVA por defecto</label>
+          <select id="co-vat"><option value="21">21%</option><option value="10">10%</option><option value="4">4%</option><option value="0">0%</option></select>
+        </div>
+        <div class="form-group"><label>Serie de factura</label><input id="co-series" type="text" placeholder="FAC-P" /></div>
+        <div class="error-msg" id="co-error"></div>
+        <div class="modal-footer">
+          <button class="btn ghost" id="co-cancel">Cancelar</button>
+          <button class="btn primary" id="co-confirm">Crear entidad</button>
+        </div>
+      </div>`;
+      document.body.appendChild(div);
+      _companyModal = div;
+      $('co-cancel').onclick = () => div.classList.add('hidden');
+      $('co-type').onchange = updateCompanyLabels;
+      div.addEventListener('click', e => { if (e.target === div) div.classList.add('hidden'); });
+    }
+    const editing = !!existing;
+    $('co-modal-title').textContent = editing ? 'Editar entidad' : 'Nueva entidad';
+    $('co-confirm').textContent = editing ? 'Guardar cambios' : 'Crear entidad';
+    $('co-confirm').onclick = () => editing ? doUpdateCompany(existing.entity_id) : doCreateCompany();
+    $('co-type').value = existing ? existing.entity_type : 'persona_fisica';
+    $('co-name').value = existing ? existing.name : '';
+    $('co-tax-id').value = existing ? existing.tax_id : '';
+    $('co-address').value = existing ? existing.address : '';
+    $('co-vat').value = existing ? String(existing.default_vat_rate) : '21';
+    $('co-series').value = existing ? existing.invoice_series : '';
+    $('co-error').textContent = '';
+    updateCompanyLabels();
+    _companyModal.classList.remove('hidden');
+    $('co-name').focus();
+  }
+
+  function updateCompanyLabels() {
+    const isCompany = $('co-type').value === 'empresa';
+    $('co-name-label').textContent = isCompany ? 'Razón social' : 'Nombre completo';
+    $('co-tax-label').textContent = isCompany ? 'CIF' : 'DNI / NIE';
+    $('co-tax-id').placeholder = isCompany ? 'B12345678' : '12345678A';
+  }
+
+  async function doCreateCompany() {
+    const body = {
+      entity_type: $('co-type').value,
+      name: $('co-name').value.trim(),
+      tax_id: $('co-tax-id').value.trim(),
+      address: $('co-address').value.trim(),
+      default_vat_rate: parseFloat($('co-vat').value),
+      invoice_series: $('co-series').value.trim(),
+    };
+    $('co-error').textContent = '';
+    if (!body.name || !body.invoice_series) { $('co-error').textContent = 'Nombre y serie de factura son obligatorios.'; return; }
+    const btn = $('co-confirm');
+    btn.disabled = true; btn.textContent = 'Creando…';
+    try {
+      const data = await api('POST', '/api/v1/admin/companies', body);
+      if (!data) return;
+      _companyModal.classList.add('hidden');
+      toast('Entidad creada', 'ok');
+      loadEntitySelector();
+      loadTab('companies');
+    } catch (e) { $('co-error').textContent = e.message; }
+    finally { btn.disabled = false; btn.textContent = 'Crear entidad'; }
+  }
+
+  async function doUpdateCompany(entityId) {
+    const body = {
+      entity_type: $('co-type').value,
+      name: $('co-name').value.trim(),
+      tax_id: $('co-tax-id').value.trim(),
+      address: $('co-address').value.trim(),
+      default_vat_rate: parseFloat($('co-vat').value),
+      invoice_series: $('co-series').value.trim(),
+    };
+    $('co-error').textContent = '';
+    if (!body.name || !body.invoice_series) { $('co-error').textContent = 'Nombre y serie de factura son obligatorios.'; return; }
+    const btn = $('co-confirm');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      const data = await api('PUT', `/api/v1/admin/companies/${entityId}`, body);
+      if (!data) return;
+      _companyModal.classList.add('hidden');
+      toast('Entidad actualizada', 'ok');
+      loadEntitySelector();
+      loadTab('companies');
+    } catch (e) { $('co-error').textContent = e.message; }
+    finally { btn.disabled = false; btn.textContent = 'Guardar cambios'; }
   }
 
   // ── Escape helper ─────────────────────────────────────────────────────

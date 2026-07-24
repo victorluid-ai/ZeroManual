@@ -218,7 +218,8 @@
     <div class="topbar-sub">Portal de cliente</div>
     <div class="topbar-spacer"></div>
     <div class="topbar-user" id="lbl-business"></div>
-    <button class="btn ghost sm" id="btn-logout">Salir</button>
+    <button class="btn ghost sm" id="btn-home">Volver a inicio</button>
+    <button class="btn ghost sm" id="btn-logout">Cerrar sesión</button>
   </div>
   <div class="tabs">
     <button class="tab on" data-tab="automations">Mis automatizaciones</button>
@@ -333,13 +334,17 @@
     let pending;
     try { pending = JSON.parse(localStorage.getItem(CART_HANDOFF_KEY) || '[]'); } catch { pending = []; }
     if (!Array.isArray(pending) || !pending.length) return;
-    localStorage.removeItem(CART_HANDOFF_KEY);
     let activated = 0;
+    const failed = [];
+    let lastError = '';
     for (const type of pending) {
       try { await api('POST', `/client/automations/${encodeURIComponent(type)}/activate`); activated++; }
-      catch {}
+      catch (e) { failed.push(type); lastError = e.message || 'Error desconocido'; }
     }
+    if (failed.length) localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(failed));
+    else localStorage.removeItem(CART_HANDOFF_KEY);
     if (activated) toast(`${activated} automatización(es) activada(s)`, 'ok');
+    if (failed.length) toast(`No se pudo activar: ${lastError}`, 'err');
   }
 
   async function showApp() {
@@ -605,6 +610,7 @@
   $('btn-register').addEventListener('click', tryRegister);
   $('reg-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryRegister(); });
   $('btn-logout').addEventListener('click', doLogout);
+  $('btn-home').addEventListener('click', () => { window.location.href = '/'; });
 
   (async () => {
     const params = new URLSearchParams(window.location.search);

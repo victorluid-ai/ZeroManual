@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any
-
 from apps.llm.claude_client import ClaudeClient
 from apps.orchestrator.models import AgentDecision, Event, RiskLevel
 
@@ -10,12 +7,6 @@ from apps.orchestrator.models import AgentDecision, Event, RiskLevel
 class AgentAIEngine:
     def __init__(self) -> None:
         self.claude = ClaudeClient()
-
-    def load_prompt(self, agent_key: str) -> str:
-        path = Path(__file__).parent / "prompts" / f"{agent_key}.md"
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-        return f"You are {agent_key} agent for ZeroManual."
 
     def plan_with_ai(
         self,
@@ -60,24 +51,3 @@ class AgentAIEngine:
             proposed_actions=list(data.get("proposed_actions", [])),
             requires_human_approval=requires,
         )
-
-    def choose_tool_with_ai(
-        self,
-        agent_key: str,
-        event: Event,
-        decision: AgentDecision,
-        available_tools: list[str],
-    ) -> dict[str, Any] | None:
-        if not self.claude.enabled:
-            return None
-
-        system = self.load_prompt(agent_key)
-        user = (
-            "Elige UNA tool para ejecutar. Responde SOLO JSON:\n"
-            '{"tool_name": "...", "arguments": {...}}\n'
-            f"Tools disponibles: {available_tools}\n"
-            f"Evento: {event.model_dump(mode='json')}\n"
-            f"Decision: {decision.model_dump(mode='json')}\n"
-            "Para create_invoice usa create_invoice_draft con event_id, client_name, amount_eur."
-        )
-        return self.claude.complete_json(system=system, user=user, max_tokens=500)

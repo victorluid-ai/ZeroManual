@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.orchestrator.models import DEFAULT_ENTITY_ID
 from apps.orchestrator.store import DataStore
 
 
@@ -15,11 +16,12 @@ class SalesTools:
         lead_name: str,
         stage: str,
         deal_value_eur: float | None = None,
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> dict[str, Any]:
         notes = f"Lead {lead_name}: etapa {stage}"
         if deal_value_eur is not None:
             notes += f" ({deal_value_eur} EUR)"
-        self.store.upsert_client_memory(lead_name, notes)
+        self.store.upsert_client_memory(lead_name, notes, entity_id=entity_id)
         return {
             "lead_name": lead_name,
             "lead_status": stage,

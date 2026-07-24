@@ -5,6 +5,10 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+# Fiscal/business entity every booked event belongs to (invoice series, NIF/CIF...).
+# Existing rows and callers that predate multi-entity support fall back to this one.
+DEFAULT_ENTITY_ID = "BIZ-00000001"
+
 
 class RiskLevel(str, Enum):
     A_LOW = "A_LOW"
@@ -24,6 +28,7 @@ class Event(BaseModel):
     agent_name: str
     action: str
     payload: dict[str, Any] = Field(default_factory=dict)
+    entity_id: str = DEFAULT_ENTITY_ID
 
 
 class AgentDecision(BaseModel):

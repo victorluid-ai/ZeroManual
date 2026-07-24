@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from apps.orchestrator.models import DEFAULT_ENTITY_ID
 from apps.orchestrator.store import DataStore
 
 
@@ -15,12 +16,14 @@ class GovernanceTools:
         check_type: str,
         outcome: str,
         details: str = "",
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> dict[str, Any]:
         check_id = self.store.save_compliance_check(
             event_id=event_id,
             check_type=check_type,
             outcome=outcome,
             details=details,
+            entity_id=entity_id,
         )
         return {
             "compliance_check_id": check_id,

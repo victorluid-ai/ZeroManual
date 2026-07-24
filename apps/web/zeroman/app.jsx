@@ -18,22 +18,17 @@ const AUTOMATION_TYPE_MAP = {
 
 const T = {
   en: {
-    nav: { automations: "Automations", how: "How it works", pricing: "Pricing", reviews: "Reviews", cart: "Cart", account: "Log in", getStarted: "Get started" },
-    hero: { eyebrow: "AI automations for local business", h1: "Stop doing the busywork.", sub: "ZeroManual puts the repetitive jobs — replying to reviews, posting reels, sending newsletters — on autopilot. Pick an automation, subscribe, and it just runs.", browse: "Browse automations", how: "See how it works", t1: "Trusted by 2,400+ local businesses", t2: "180k tasks automated / month", t3: "Live in 5 minutes" },
+    nav: { automations: "Automations", how: "How it works", pricing: "Pricing", cart: "Cart", account: "Client area", getStarted: "Get started", login: "Log in" },
+    hero: { eyebrow: "AI automations for local business", h1: "Stop doing the busywork.", sub: "ZeroManual puts the repetitive jobs — replying to reviews, posting reels, sending newsletters — on autopilot. Pick an automation, subscribe, and it just runs.", browse: "Browse automations", how: "See how it works", t3: "Live in 5 minutes" },
     grid: { title: "Browse automations", sub: "Flat monthly price each. Subscribe in one click — no contracts, cancel anytime.", annual: "Billed annually · 2 months free", kicker: "Marketplace" },
     filters: { all: "All", reviews: "Reviews", social: "Social", email: "Email", messaging: "Messaging" },
-    card: { subscribe: "Subscribe", added: "Added", details: "View details →", active: "Active ✓", activating: "Activating…" },
+    card: { subscribe: "Subscribe", added: "Added", details: "View details →", active: "Active ✓", activating: "Activating…", comingSoon: "Coming soon" },
     badge: { popular: "Most popular", new: "New" },
     how: { kicker: "How it works", title: "Live in three steps", sub: "No agencies, no setup projects. Connect your accounts and ZeroManual handles the rest.", s1t: "Pick your automations", s1b: "Choose from the menu above. Mix and match — every one is a flat monthly price.", s2t: "Connect your accounts", s2b: "Link Google, Instagram, or email in a couple of taps. We never post without your rules.", s3t: "It runs 24/7", s3b: "ZeroManual works around the clock and reports back. Adjust or cancel anytime." },
     band: { sub: "No contracts. No setup fees. Cancel anytime from your dashboard.", cta: "Start free →" },
     footer: "Small automations, big AI. © 2026 ZeroManual.",
     example: { kicker: "Live demo", title: "See it work, live", sub: "A task comes in. ZeroManual handles it in your voice. You do nothing. Swipe to see more." },
     integrations: { title: "Connects to the tools you already use" },
-    testimonials: { kicker: "Customers", title: "Loved by local businesses", sub: "Restaurants, salons and clinics run on ZeroManual every day.", items: [
-      { quote: "“I used to spend days replying to reviews. Now they reply themselves — and sound like us.”", name: "Lucía Fernández", role: "La Parra Restaurant" },
-      { quote: "“We post reels every week without me lifting a finger. My bookings went up.”", name: "Diego Morales", role: "Estilo Hair Salon" },
-      { quote: "“Reminders cut our no-shows almost in half. It’s wonderful.”", name: "Dr. Ana Ruiz", role: "Sonrisa Dental Clinic" },
-    ] },
     faq: { kicker: "FAQ", title: "Frequently asked questions", sub: "Everything you need to know before you start.", items: [
       { q: "Does ZeroManual post without my permission?", a: "No. You set the rules and can review or approve before anything goes out. Negative reviews are always flagged for you to handle." },
       { q: "Is it safe to connect my accounts?", a: "Yes. We use official, encrypted connections and never access more than we need or share your data." },
@@ -67,22 +62,17 @@ const T = {
     },
   },
   es: {
-    nav: { automations: "Automatizaciones", how: "Cómo funciona", pricing: "Precios", reviews: "Opiniones", cart: "Carrito", account: "Área privada", getStarted: "Empezar" },
-    hero: { eyebrow: "Automatizaciones con IA para negocios locales", h1: "Deja de hacer el trabajo repetitivo.", sub: "ZeroManual pone en piloto automático las tareas repetitivas — responder reseñas, publicar reels, enviar newsletters. Elige una automatización, suscríbete y funciona sola.", browse: "Ver automatizaciones", how: "Ver cómo funciona", t1: "Más de 2.400 negocios locales confían", t2: "180k tareas automatizadas / mes", t3: "Listo en 5 minutos" },
+    nav: { automations: "Automatizaciones", how: "Cómo funciona", pricing: "Precios", cart: "Carrito", account: "Área privada", getStarted: "Empezar", login: "Iniciar sesión" },
+    hero: { eyebrow: "Automatizaciones con IA para negocios locales", h1: "Deja de hacer el trabajo repetitivo.", sub: "ZeroManual pone en piloto automático las tareas repetitivas — responder reseñas, publicar reels, enviar newsletters. Elige una automatización, suscríbete y funciona sola.", browse: "Ver automatizaciones", how: "Ver cómo funciona", t3: "Listo en 5 minutos" },
     grid: { title: "Explora las automatizaciones", sub: "Precio mensual fijo cada una. Suscríbete con un clic — sin contratos, cancela cuando quieras.", annual: "Facturación anual · 2 meses gratis", kicker: "Catálogo" },
     filters: { all: "Todas", reviews: "Reseñas", social: "Redes", email: "Correo", messaging: "Mensajes" },
-    card: { subscribe: "Suscribirse", added: "Añadido", details: "Ver detalles →", active: "Activa ✓", activating: "Activando…" },
+    card: { subscribe: "Suscribirse", added: "Añadido", details: "Ver detalles →", active: "Activa ✓", activating: "Activando…", comingSoon: "Próximamente" },
     badge: { popular: "Más popular", new: "Nuevo" },
     how: { kicker: "Cómo funciona", title: "Listo en tres pasos", sub: "Sin agencias ni proyectos de configuración. Conecta tus cuentas y ZeroManual hace el resto.", s1t: "Elige tus automatizaciones", s1b: "Elige del menú de arriba. Combínalas — todas con un precio mensual fijo.", s2t: "Conecta tus cuentas", s2b: "Vincula Google, Instagram o tu correo en un par de toques. Nunca publicamos sin tus reglas.", s3t: "Funciona 24/7", s3b: "ZeroManual trabaja sin parar y te informa. Ajusta o cancela cuando quieras." },
     band: { sub: "Sin contratos. Sin costes de instalación. Cancela cuando quieras desde tu panel.", cta: "Empezar gratis →" },
     footer: "Pequeñas automatizaciones, gran IA. © 2026 ZeroManual.",
     example: { kicker: "Demo en vivo", title: "Míralo funcionar, en vivo", sub: "Entra una tarea. ZeroManual la resuelve con tu tono. Tú no haces nada. Desliza para ver más." },
     integrations: { title: "Se conecta con las herramientas que ya usas" },
-    testimonials: { kicker: "Clientes", title: "Los negocios locales lo adoran", sub: "Restaurantes, peluquerías y clínicas usan ZeroManual cada día.", items: [
-      { quote: "«Antes tardaba días en responder reseñas. Ahora se responden solas y suenan a nosotros.»", name: "Lucía Fernández", role: "Restaurante La Parra" },
-      { quote: "«Publicamos reels cada semana sin que yo toque nada. Mis citas subieron.»", name: "Diego Morales", role: "Peluquería Estilo" },
-      { quote: "«Los recordatorios bajaron las ausencias casi a la mitad. Una maravilla.»", name: "Dra. Ana Ruiz", role: "Clínica Dental Sonrisa" },
-    ] },
     faq: { kicker: "Ayuda", title: "Preguntas frecuentes", sub: "Todo lo que necesitas saber antes de empezar.", items: [
       { q: "¿ZeroManual publica sin mi permiso?", a: "No. Tú defines las reglas y puedes revisar o aprobar antes de publicar. Las reseñas negativas siempre se marcan para que respondas tú." },
       { q: "¿Es seguro conectar mis cuentas?", a: "Sí. Usamos conexiones oficiales y cifradas, y nunca accedemos a más de lo necesario ni compartimos tus datos." },
@@ -167,7 +157,7 @@ function ProductIcon({ id, size = 24 }) {
 
 function fmtPrice(n) { return "$" + n; }
 
-function LoginModal({ tt, onClose, initialMode = "login" }) {
+function LoginModal({ tt, onClose, initialMode = "login", stayOnPage = false, onLoginSuccess }) {
   const [mode, setMode] = useState(initialMode);
   const [identifier, setIdentifier] = useState("");
   const [name, setName] = useState("");
@@ -199,6 +189,7 @@ function LoginModal({ tt, onClose, initialMode = "login" }) {
       if (clientRes.ok) {
         const d = await clientRes.json();
         localStorage.setItem("mz_client_token", d.token);
+        if (stayOnPage) { onLoginSuccess && onLoginSuccess(); return; }
         window.location.href = "/client";
         return;
       }
@@ -228,7 +219,8 @@ function LoginModal({ tt, onClose, initialMode = "login" }) {
       if (loginRes.ok) {
         const d = await loginRes.json();
         localStorage.setItem("mz_client_token", d.token);
-        window.location.href = "/client";
+        if (stayOnPage) { onLoginSuccess && onLoginSuccess(); }
+        else window.location.href = "/client";
       } else { setError(tl.error); }
     } catch { setError(tl.registerError); }
     finally { setLoading(false); }
@@ -405,13 +397,18 @@ function SubscribeModal({ product, lang, t, onClose, onDone }) {
 function ProductCard({ product, lang, t, inCart, annual, active, subscribing, onToggleCart, onDetail }) {
   const loc = product[lang];
   const price = annual ? product.price * 10 : product.price;
+  const comingSoon = product.id !== "reviews";
   return (
-    <article className="zm2-card" style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 15 }}>
+    <article className="zm2-card" style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 15, ...(comingSoon ? { opacity: 0.6, filter: "grayscale(.35)" } : {}) }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <span style={{ width: 46, height: 46, borderRadius: 13, background: "#EEF0FE", color: "#4F46E5", display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ProductIcon id={product.id} />
         </span>
-        {product.badge && (
+        {comingSoon ? (
+          <span style={{ fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 999, whiteSpace: "nowrap", background: "#F1F3F6", color: "#6B7280" }}>
+            {t.card.comingSoon}
+          </span>
+        ) : product.badge && (
           <span style={{ fontSize: 12, fontWeight: 600, padding: "5px 11px", borderRadius: 999, whiteSpace: "nowrap", background: product.badge === "new" ? "#E7F6EF" : "#EEF0FE", color: product.badge === "new" ? "#047857" : "#4F46E5" }}>
             {t.badge[product.badge]}
           </span>
@@ -433,9 +430,9 @@ function ProductCard({ product, lang, t, inCart, annual, active, subscribing, on
         <span style={{ color: "#6B7280", fontSize: 14 }}>{annual ? t.per.yr : t.per.mo}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-        <button className="zm2-pill-primary" disabled={active || subscribing} onClick={() => onToggleCart(product.id)}
-          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14.5, fontWeight: 600, cursor: active || subscribing ? "default" : "pointer", border: "1px solid", ...(active || inCart ? { background: "#E7F6EF", color: "#047857", borderColor: "#BCE7D1" } : { background: "#4F46E5", color: "#fff", borderColor: "#4F46E5" }) }}>
-          {active ? t.card.active : subscribing ? t.card.activating : inCart ? "✓ " + t.card.added : t.card.subscribe}
+        <button className="zm2-pill-primary" disabled={comingSoon || active || subscribing} onClick={() => onToggleCart(product.id)}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, width: "100%", padding: "11px 14px", borderRadius: 10, fontSize: 14.5, fontWeight: 600, cursor: comingSoon || active || subscribing ? "default" : "pointer", border: "1px solid", ...(comingSoon ? { background: "#F1F3F6", color: "#9099A6", borderColor: "#E6E9EE" } : active || inCart ? { background: "#E7F6EF", color: "#047857", borderColor: "#BCE7D1" } : { background: "#4F46E5", color: "#fff", borderColor: "#4F46E5" }) }}>
+          {comingSoon ? t.card.comingSoon : active ? t.card.active : subscribing ? t.card.activating : inCart ? "✓ " + t.card.added : t.card.subscribe}
         </button>
         <button className="zm2-link-muted" onClick={() => onDetail(product.id)} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 13.5, fontWeight: 500, cursor: "pointer", padding: 2 }}>
           {t.card.details}
@@ -509,6 +506,7 @@ function DetailModal({ id, lang, t, inCart, annual, onClose, onSubscribe }) {
   const loc = product[lang];
   const price = annual ? product.price * 10 : product.price;
   const per = annual ? t.per.yr : t.per.mo;
+  const comingSoon = product.id !== "reviews";
   const facts = [
     { k: t.detail.setup, v: t.detail.setupVal },
     { k: t.detail.connects, v: loc.connect },
@@ -573,8 +571,8 @@ function DetailModal({ id, lang, t, inCart, annual, onClose, onSubscribe }) {
             <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em" }}>{fmtPrice(price)}</span>
             <span style={{ color: "#6B7280", fontSize: 14 }}>{per}</span>
           </div>
-          <button className="zm2-pill-primary" onClick={() => onSubscribe(product.id)} style={{ background: "#4F46E5", color: "#fff", border: "none", padding: "13px 22px", borderRadius: 11, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
-            {inCart ? t.detail.inCart : t.detail.subscribe}
+          <button className="zm2-pill-primary" disabled={comingSoon} onClick={() => onSubscribe(product.id)} style={{ border: "none", padding: "13px 22px", borderRadius: 11, fontSize: 15, fontWeight: 600, cursor: comingSoon ? "default" : "pointer", ...(comingSoon ? { background: "#F1F3F6", color: "#9099A6" } : { background: "#4F46E5", color: "#fff" }) }}>
+            {comingSoon ? t.card.comingSoon : inCart ? t.detail.inCart : t.detail.subscribe}
           </button>
         </div>
       </div>
@@ -592,7 +590,9 @@ function App() {
   const [faqOpen, setFaqOpen] = useState(0);
   const [showLogin, setShowLogin] = useState(false);
   const [loginInitialMode, setLoginInitialMode] = useState("login");
+  const [loginStayOnPage, setLoginStayOnPage] = useState(false);
   const [clientToken, setClientToken] = useState(() => { try { return localStorage.getItem("mz_client_token"); } catch { return null; } });
+  const [clientName, setClientName] = useState("");
   const [googleConnected, setGoogleConnected] = useState(false);
   const [activeAutomations, setActiveAutomations] = useState([]);
   const [subscribingId, setSubscribingId] = useState(null);
@@ -608,12 +608,14 @@ function App() {
   // and whether Google is connected, so the grid can show "Activa" state and
   // offer the 1-click path without a modal or redirect.
   useEffect(() => {
-    if (!clientToken) { setGoogleConnected(false); setActiveAutomations([]); return; }
+    if (!clientToken) { setGoogleConnected(false); setActiveAutomations([]); setClientName(""); return; }
     let cancelled = false;
     (async () => {
       try {
         const meRes = await fetch("/client/me", { headers: { Authorization: "Bearer " + clientToken } });
         if (!meRes.ok) throw new Error("unauthorized");
+        const meData = await meRes.json();
+        if (!cancelled) setClientName(meData?.client?.name || "");
         const [autoRes, statusRes] = await Promise.all([
           fetch("/client/automations", { headers: { Authorization: "Bearer " + clientToken } }),
           fetch("/client/google/status", { headers: { Authorization: "Bearer " + clientToken } }),
@@ -631,6 +633,7 @@ function App() {
         if (!cancelled) {
           try { localStorage.removeItem("mz_client_token"); } catch {}
           setClientToken(null);
+          setClientName("");
         }
       }
     })();
@@ -641,6 +644,8 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     return type ? activeAutomations.includes(type) : false;
   };
+
+  const clientInitial = (clientName || "").trim().charAt(0).toUpperCase() || "?";
 
   const activateDirect = async (id) => {
     const type = AUTOMATION_TYPE_MAP[id];
@@ -696,16 +701,27 @@ function App() {
     setDrawerOpen(true);
   };
 
-  const openAccount = () => { setLoginInitialMode("login"); setShowLogin(true); };
+  const openAccount = () => {
+    if (clientToken) { window.location.href = "/client"; return; }
+    setLoginInitialMode("login"); setLoginStayOnPage(true); setShowLogin(true);
+  };
+
+  const onLoginModalSuccess = () => {
+    setClientToken(localStorage.getItem("mz_client_token"));
+    setShowLogin(false);
+  };
 
   // No payment backend exists yet — checkout hands the cart to the real
   // register/activate flow instead of a fake card charge. client.html reads
   // CART_HANDOFF_KEY after login and activates each recognized automation for free.
+  // Defaults to login (not register) so existing clients can get straight into
+  // their account; new users still reach registration via the modal's switch link.
   const handleCheckout = () => {
     const pending = cart.map((id) => AUTOMATION_TYPE_MAP[id]).filter(Boolean);
     try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
     setDrawerOpen(false);
-    setLoginInitialMode("register");
+    setLoginInitialMode("login");
+    setLoginStayOnPage(false);
     setShowLogin(true);
   };
 
@@ -729,7 +745,6 @@ function App() {
           <nav className="zm-nav" style={{ display: "flex", gap: 4, marginLeft: 6 }}>
             <a href="#zm-grid" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.automations}</a>
             <a href="#zm-how" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.how}</a>
-            <a href="#zm-reviews" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.reviews}</a>
             <a href="#zm-grid" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.pricing}</a>
           </nav>
           <div style={{ flex: 1 }}></div>
@@ -742,11 +757,19 @@ function App() {
             <span className="zm-cart-label">{t.nav.cart}</span>
             {cart.length > 0 && <span style={{ minWidth: 20, height: 20, padding: "0 5px", borderRadius: 999, background: "#4F46E5", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{cart.length}</span>}
           </button>
-          <button className="zm2-iconbtn" onClick={openAccount} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E6E9EE", color: "#0E1116", fontSize: 14, fontWeight: 500, padding: "9px 14px", borderRadius: 10, cursor: "pointer" }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"></path></svg>
-            <span className="zm-acct-label">{t.nav.account}</span>
-          </button>
-          <a href="#zm-grid" className="zm2-cta zm2-arrowhost" style={{ textDecoration: "none", background: "#4F46E5", color: "#fff", fontSize: 14.5, fontWeight: 600, padding: "10px 18px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6 }}>{t.nav.getStarted} <span className="zm2-arrow" style={{ fontSize: 13 }}>→</span></a>
+          {clientToken && (
+            <button className="zm2-iconbtn" onClick={openAccount} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E6E9EE", color: "#0E1116", fontSize: 14, fontWeight: 500, padding: "9px 14px", borderRadius: 10, cursor: "pointer" }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"></path></svg>
+              <span className="zm-acct-label">{t.nav.account}</span>
+            </button>
+          )}
+          {clientToken ? (
+            <button onClick={openAccount} title={clientName || t.nav.account} style={{ width: 36, height: 36, borderRadius: "50%", background: "#4F46E5", color: "#fff", fontSize: 15, fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {clientInitial}
+            </button>
+          ) : (
+            <button onClick={openAccount} className="zm2-cta zm2-arrowhost" style={{ background: "#4F46E5", color: "#fff", fontSize: 14.5, fontWeight: 600, padding: "10px 18px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6, border: "none", cursor: "pointer" }}>{t.nav.login} <span className="zm2-arrow" style={{ fontSize: 13 }}>→</span></button>
+          )}
         </div>
       </header>
 
@@ -764,7 +787,7 @@ function App() {
             <a href="#zm-how" className="zm2-cta-ghost" style={{ textDecoration: "none", background: "#fff", color: "#0E1116", fontSize: 16, fontWeight: 600, padding: "14px 26px", borderRadius: 999, border: "1px solid #E6E9EE", boxShadow: "0 2px 8px rgba(14,17,22,.05)" }}>{t.hero.how}</a>
           </div>
           <div style={{ display: "flex", gap: 10, justifyContent: "center", alignItems: "center", marginTop: 34, fontSize: 13.5, color: "#6B7280", flexWrap: "wrap" }}>
-            <span>{t.hero.t1}</span><span style={{ color: "#CBD2DC" }}>·</span><span>{t.hero.t2}</span><span style={{ color: "#CBD2DC" }}>·</span><span>{t.hero.t3}</span>
+            <span>{t.hero.t3}</span>
           </div>
         </section>
       </div>
@@ -836,24 +859,6 @@ function App() {
         </div>
       </section>
 
-      <section id="zm-reviews" style={{ maxWidth: 1200, margin: "0 auto", padding: "64px 24px 20px", scrollMarginTop: 80 }}>
-        <div style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 12.5, letterSpacing: ".14em", textTransform: "uppercase", color: "#4F46E5", margin: "0 0 8px", textAlign: "center" }}>{t.testimonials.kicker}</div>
-        <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 30, letterSpacing: "-.025em", margin: "0 0 6px", textAlign: "center" }}>{t.testimonials.title}</h2>
-        <p style={{ margin: "0 auto 32px", color: "#6B7280", fontSize: 15.5, textAlign: "center", maxWidth: 540 }}>{t.testimonials.sub}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))", gap: 18 }}>
-          {t.testimonials.items.map((tm) => (
-            <div key={tm.name} style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: 26, display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ color: "#F59E0B", fontSize: 16, letterSpacing: 2 }}>★★★★★</div>
-              <p style={{ fontSize: 16, color: "#1E2430", lineHeight: 1.55, margin: 0, flex: 1 }}>{tm.quote}</p>
-              <div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: "#0E1116" }}>{tm.name}</div>
-                <div style={{ fontSize: 13.5, color: "#6B7280", marginTop: 2 }}>{tm.role}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
       <section style={{ maxWidth: 1200, margin: "54px auto 0", padding: "0 24px" }}>
         <div style={{ position: "relative", overflow: "hidden", background: "#0E1116", borderRadius: 22, padding: "48px 40px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 28, flexWrap: "wrap" }}>
           <div style={{ position: "absolute", top: "-55%", right: "-6%", width: 460, height: 460, borderRadius: "50%", background: "radial-gradient(circle,rgba(79,70,229,.38),transparent 68%)", pointerEvents: "none" }}></div>
@@ -896,10 +901,10 @@ function App() {
           </span>
           <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 16, letterSpacing: "-.01em" }}>Zero<span style={{ fontWeight: 300 }}>Manual</span></span>
         </div>
-        <p style={{ margin: 0, color: "#9099A6", fontSize: 13.5 }}>{t.footer} · <a href="/admin" style={{ color: "#9099A6" }}>Admin</a></p>
+        <p style={{ margin: 0, color: "#9099A6", fontSize: 13.5 }}>{t.footer}</p>
       </footer>
 
-      {showLogin && <LoginModal tt={t} onClose={() => setShowLogin(false)} initialMode={loginInitialMode} />}
+      {showLogin && <LoginModal tt={t} onClose={() => setShowLogin(false)} initialMode={loginInitialMode} stayOnPage={loginStayOnPage} onLoginSuccess={onLoginModalSuccess} />}
       {subscribeModalId && (
         <SubscribeModal product={PRODUCTS.find((p) => p.id === subscribeModalId)} lang={lang} t={t}
           onClose={() => setSubscribeModalId(null)} onDone={onSubscribeModalDone} />

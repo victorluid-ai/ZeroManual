@@ -1,34 +1,37 @@
 from __future__ import annotations
 
-import re
 from typing import Any
 
+from apps.common.tax_id import is_valid_nif
 from apps.integrations.invoice_pdf import InvoicePDFGenerator
-from apps.integrations.settings import load_integration_settings
+from apps.integrations.settings import CompanySettings, load_integration_settings
 from apps.integrations.smtp_client import SmtpClient
+from apps.orchestrator.models import DEFAULT_ENTITY_ID
 from apps.orchestrator.store import DataStore
 
 VALID_VAT_RATES: frozenset[float] = frozenset({0.0, 4.0, 10.0, 21.0})
-
-_NIF_DNI = re.compile(r"^\d{8}[A-Z]$")
-_NIF_CIF = re.compile(r"^[A-HJNPQRSUVW]\d{7}[0-9A-J]$")
-_NIF_NIE = re.compile(r"^[XYZ]\d{7}[A-Z]$")
-
-
-def _is_valid_nif(nif: str) -> bool:
-    n = nif.strip().upper()
-    return bool(_NIF_DNI.match(n) or _NIF_CIF.match(n) or _NIF_NIE.match(n))
 
 
 class BillingTools:
     def __init__(self, store: DataStore) -> None:
         self.store = store
         self._settings = load_integration_settings()
-        self._pdf = InvoicePDFGenerator(
-            self._settings.company,
-            self._settings.invoices_dir,
-        )
         self._smtp = SmtpClient(self._settings.smtp)
+
+    def _company_settings_for(self, entity_id: str) -> CompanySettings:
+        """Fiscal identity to print on the invoice — from the business_entities
+        row for entity_id, falling back to the single .env-configured company
+        only if the row is somehow missing (shouldn't happen in practice)."""
+        row = self.store.get_business_entity(entity_id)
+        if row is None:
+            return self._settings.company
+        return CompanySettings(
+            name=row["name"],
+            nif=row["tax_id"],
+            address=row["address"],
+            default_vat_rate=row["default_vat_rate"],
+            invoice_series=row["invoice_series"],
+        )
 
     def create_invoice_draft(
         self,
@@ -40,15 +43,17 @@ class BillingTools:
         client_nif: str | None = None,
         concept: str | None = None,
         vat_rate: float | None = None,
+        entity_id: str = DEFAULT_ENTITY_ID,
     ) -> dict[str, Any]:
-        if client_nif and not _is_valid_nif(client_nif):
+        if client_nif and not is_valid_nif(client_nif):
             return {
                 "error": (
                     f"NIF/CIF no valido: '{client_nif}'. "
                     "Formatos aceptados: DNI (12345678A), CIF (B1234567X), NIE (X1234567A)."
                 )
             }
-        effective_vat_rate = vat_rate if vat_rate is not None else self._settings.company.default_vat_rate
+        company = self._company_settings_for(entity_id)
+        effective_vat_rate = vat_rate if vat_rate is not None else company.default_vat_rate
         if effective_vat_rate not in VALID_VAT_RATES:
             return {
                 "error": (
@@ -57,10 +62,24 @@ class BillingTools:
                 )
             }
         invoice_id = f"INV-{event_id[:8].upper()}"
-        invoice_number = self.store.next_invoice_number()
+        existing = self.store.get_invoice(invoice_id)
+        if existing is not None and existing.get("pdf_path"):
+            # Idempotent: replaying the same event_id (retry, at-least-once
+            # delivery) must not burn another legal invoice number/PDF.
+            return {
+                "invoice_id": invoice_id,
+                "invoice_number": existing.get("invoice_number"),
+                "status": existing.get("status", "issued"),
+                "client_name": existing.get("client_name"),
+                "amount_eur": str(existing.get("amount_eur") or ""),
+                "pdf_path": existing.get("pdf_path"),
+                "message": f"Factura {existing.get('invoice_number')} ya emitida para este evento (sin duplicar).",
+            }
+        invoice_number = self.store.next_invoice_number(entity_id=entity_id)
         amounts = InvoicePDFGenerator.compute_amounts(amount_eur, effective_vat_rate)
 
-        pdf_path = self._pdf.generate(
+        pdf = InvoicePDFGenerator(company, self._settings.invoices_dir)
+        pdf_path = pdf.generate(
             invoice_id=invoice_id,
             invoice_number=invoice_number,
             client_name=client_name,
@@ -87,13 +106,14 @@ class BillingTools:
             vat_rate=effective_vat_rate,
             vat_amount_eur=amounts["vat"],
             total_eur=amounts["total"],
+            entity_id=entity_id,
         )
 
         if client_name:
             notes = f"Ultima factura {invoice_number} ({invoice_id})"
             if amount_eur is not None:
                 notes += f" por {amount_eur} EUR"
-            self.store.upsert_client_memory(client_name, notes)
+            self.store.upsert_client_memory(client_name, notes, entity_id=entity_id)
 
         result: dict[str, Any] = {
             "invoice_id": invoice_id,
@@ -141,13 +161,14 @@ class BillingTools:
         invoice_number = str(invoice.get("invoice_number") or invoice_id)
         client_name = str(invoice.get("client_name") or "cliente")
         total = invoice.get("total_eur") or invoice.get("amount_eur")
+        company = self._company_settings_for(invoice.get("entity_id") or DEFAULT_ENTITY_ID)
 
-        subject = f"Factura {invoice_number} — {self._settings.company.name}"
+        subject = f"Factura {invoice_number} — {company.name}"
         body = (
             f"Hola {client_name},\n\n"
             f"Adjuntamos la factura {invoice_number}"
             f"{f' por un importe de {total:.2f} EUR' if total is not None else ''}.\n\n"
-            f"Saludos,\n{self._settings.company.name}"
+            f"Saludos,\n{company.name}"
         )
 
         result = self._smtp.send_invoice(

@@ -19,7 +19,17 @@ class BaseAutonomousAgent(ABC):
                 output={"next_step": "human_approval_required"},
                 audit_notes=["Escalated to human approval gate."],
             )
-        output = self.execute(event, decision)
+        try:
+            output = self.execute(event, decision)
+        except ValueError as exc:
+            # Malformed/unsupported input for this agent+action must fail
+            # visibly, never masquerade as a fabricated success.
+            return ExecutionResult(
+                status=ExecutionStatus.FAILED,
+                decision=decision,
+                output={"error": str(exc)},
+                audit_notes=[f"Execution failed: {exc}"],
+            )
         return ExecutionResult(
             status=ExecutionStatus.COMPLETED,
             decision=decision,

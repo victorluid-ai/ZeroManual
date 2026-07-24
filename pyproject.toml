@@ -26,6 +26,7 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 packages = [
   "apps",
+  "apps.common",
   "apps.orchestrator",
   "apps.agents",
   "apps.agents.tools",

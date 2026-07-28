@@ -460,9 +460,9 @@
             <div class="auto-desc">${escHtml(lbl.desc)}</div>
           </div>
           <div class="auto-footer">
-            <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? '● Activo' : '○ Inactivo'}</span>
+            <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? '● Suscrito' : '○ Sin suscripción'}</span>
             <button class="btn sm ${isOn ? 'ghost' : 'primary'}" data-type="${escHtml(type)}" data-on="${isOn}">
-              ${isOn ? 'Desactivar' : 'Activar'}
+              ${isOn ? 'Desuscribirse' : 'Suscribirse'}
             </button>
           </div>`;
         div.querySelector('button').addEventListener('click', handleAutoBtn);
@@ -481,7 +481,7 @@
     try {
       if (isOn) {
         await api('DELETE', `/client/automations/${encodeURIComponent(type)}`);
-        toast('Automatización desactivada');
+        toast('Suscripción cancelada', 'ok');
       } else {
         const checkout = await api('POST', '/client/checkout/session', {
           automation_types: [type],
@@ -492,10 +492,10 @@
           return;
         }
         if (checkout.mode === 'free') {
-          toast('Stripe no configurado — activación en modo demo', 'warn');
+          toast('Stripe no configurado — suscripción en modo demo', 'warn');
         }
         await api('POST', `/client/automations/${encodeURIComponent(type)}/activate`);
-        toast('Automatización activada', 'ok');
+        toast('Suscripción activada', 'ok');
       }
       loadTab('automations');
     } catch (e) {

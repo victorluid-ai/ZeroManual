@@ -11,8 +11,11 @@ from fastapi.testclient import TestClient
 @pytest.fixture(autouse=True)
 def no_ai(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ZEROMANUAL_AI_MODE", "off")
-    monkeypatch.delenv("ZEROMANUAL_STRIPE_SECRET_KEY", raising=False)
-    monkeypatch.delenv("MANUALZERO_STRIPE_SECRET_KEY", raising=False)
+    # Empty (not deleted): load_dotenv() must not reintroduce keys from .env.
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "")
+    monkeypatch.setenv("MANUALZERO_STRIPE_SECRET_KEY", "")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "")
+    monkeypatch.setenv("MANUALZERO_STRIPE_WEBHOOK_SECRET", "")
 
 
 @pytest.fixture
@@ -206,6 +209,187 @@ def test_subscription_cancel_deactivates_automation(
     assert auto["status"] == "inactive"
 
 
+def test_stripe_object_helpers_normalize_metadata() -> None:
+    from apps.integrations.stripe_payments import parse_session_metadata, stripe_id, stripe_object_to_dict
+
+    class FakeStripe:
+        def to_dict(self):
+            return {
+                "id": "cs_1",
+                "client_reference_id": "CLI-ABC",
+                "metadata": {
+                    "client_id": "CLI-ABC",
+                    "automation_types": "google_reviews",
+                    "billing_interval": "monthly",
+                },
+                "customer": "cus_1",
+            }
+
+        def __getattr__(self, item):
+            raise AttributeError(item)
+
+    client_id, types, interval = parse_session_metadata(FakeStripe())
+    assert client_id == "CLI-ABC"
+    assert types == ["google_reviews"]
+    assert interval == "monthly"
+    assert stripe_id("cus_1") == "cus_1"
+    assert stripe_id({"id": "cus_2"}) == "cus_2"
+    assert stripe_object_to_dict(FakeStripe())["id"] == "cs_1"
+
+
+def test_unsubscribe_cancels_stripe_subscription(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    import apps.integrations.stripe_payments as sp
+    import apps.interface.api as api_module
+
+    calls: list[str] = []
+
+    def fake_cancel(sub_id: str, **kwargs):
+        calls.append(sub_id)
+        return {"id": sub_id, "status": "canceled"}
+
+    monkeypatch.setattr(sp, "cancel_subscription", fake_cancel)
+
+    reg = _register(client, "unsub@example.com")
+    client_id = reg["client"]["client_id"]
+    auth = {"Authorization": f"Bearer {reg['token']}"}
+    store = api_module.runtime.store
+    store.upsert_subscription(
+        client_id=client_id,
+        automation_type="google_reviews",
+        status="trialing",
+        stripe_subscription_id="sub_to_cancel",
+    )
+    store.activate_automation(client_id, "google_reviews", "wf-1")
+
+    resp = client.delete("/client/automations/google_reviews", headers=auth)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "inactive"
+    assert body["stripe_cancelled"] is True
+    assert calls == ["sub_to_cancel"]
+    assert not store.has_active_subscription(client_id, "google_reviews")
+
+
+def test_checkout_persists_stripe_customer_id(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    import apps.integrations.stripe_payments as sp
+    import apps.interface.api as api_module
+
+    monkeypatch.setattr(
+        sp,
+        "create_checkout_session",
+        lambda **kwargs: {
+            "session_id": "cs_new",
+            "checkout_url": "https://checkout.stripe.com/c/pay/cs_new",
+            "automation_types": kwargs["automation_types"],
+            "billing_interval": "monthly",
+            "stripe_customer_id": "cus_persistent",
+        },
+    )
+
+    reg = _register(client, "persist@example.com")
+    client_id = reg["client"]["client_id"]
+    auth = {"Authorization": f"Bearer {reg['token']}"}
+    resp = client.post(
+        "/client/checkout/session",
+        headers=auth,
+        json={"automation_types": ["google_reviews"]},
+    )
+    assert resp.status_code == 200
+    assert api_module.runtime.store.get_client_by_id(client_id)["stripe_customer_id"] == "cus_persistent"
+
+
+def test_ensure_stripe_customer_reuses_existing(monkeypatch: pytest.MonkeyPatch) -> None:
+    import apps.integrations.stripe_payments as sp
+
+    class FakeCustomerAPI:
+        @staticmethod
+        def retrieve(cid):
+            return {"id": cid, "deleted": False}
+
+        @staticmethod
+        def search(**kwargs):
+            return {"data": []}
+
+        @staticmethod
+        def create(**kwargs):
+            return {"id": "cus_brand_new"}
+
+    class FakeStripe:
+        Customer = FakeCustomerAPI
+
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setitem(__import__("sys").modules, "stripe", FakeStripe())
+
+    # Force import path used inside ensure_stripe_customer
+    import stripe as stripe_mod  # noqa: F401 — may be real; patch via monkeypatch on sp flow
+
+    monkeypatch.setattr(
+        sp,
+        "ensure_stripe_customer",
+        sp.ensure_stripe_customer,
+    )
+
+    # Call with existing id — retrieve succeeds → reuse
+    # We patch stripe import inside the function by injecting module
+    import types
+    fake_module = types.ModuleType("stripe")
+    fake_module.Customer = FakeCustomerAPI
+    fake_module.api_key = None
+    monkeypatch.setitem(__import__("sys").modules, "stripe", fake_module)
+
+    cid = sp.ensure_stripe_customer(
+        client_id="CLI-1",
+        client_email="a@b.com",
+        stripe_customer_id="cus_existing",
+        settings=sp.StripeSettings(
+            secret_key="sk_test",
+            webhook_secret="",
+            publishable_key="",
+            public_url="http://localhost",
+            trial_days=14,
+            price_ids={},
+        ),
+    )
+    assert cid == "cus_existing"
+
+    # Missing customer → create
+    class MissingCustomerAPI:
+        @staticmethod
+        def retrieve(cid):
+            raise RuntimeError("No such customer: 'cus_gone'")
+
+        @staticmethod
+        def search(**kwargs):
+            return {"data": []}
+
+        @staticmethod
+        def create(**kwargs):
+            assert kwargs["metadata"]["zeromanual_client_id"] == "CLI-2"
+            return {"id": "cus_created"}
+
+    fake_module.Customer = MissingCustomerAPI
+    cid2 = sp.ensure_stripe_customer(
+        client_id="CLI-2",
+        client_email="c@d.com",
+        stripe_customer_id="cus_gone",
+        settings=sp.StripeSettings(
+            secret_key="sk_test",
+            webhook_secret="",
+            publishable_key="",
+            public_url="http://localhost",
+            trial_days=14,
+            price_ids={},
+        ),
+    )
+    assert cid2 == "cus_created"
+
+
 def test_catalog_validate_and_line_items() -> None:
     from apps.integrations.stripe_payments import (
         StripeSettings,
@@ -228,3 +412,4 @@ def test_catalog_validate_and_line_items() -> None:
     items = _line_items(cfg, ["google_reviews"], "yearly")
     assert items[0]["price_data"]["unit_amount"] == 29000
     assert items[0]["price_data"]["recurring"]["interval"] == "year"
+

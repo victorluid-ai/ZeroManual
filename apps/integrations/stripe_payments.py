@@ -126,6 +126,73 @@ def _line_items(
     return items
 
 
+def is_missing_customer_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    return "no such customer" in msg
+
+
+def ensure_stripe_customer(
+    *,
+    client_id: str,
+    client_email: str,
+    client_name: str = "",
+    stripe_customer_id: str | None = None,
+    settings: StripeSettings | None = None,
+) -> str:
+    """Return a durable Stripe Customer id for this ZeroManual client.
+
+    Production model: one Stripe Customer per client account, reused forever.
+    We never delete Customers from the app — only cancel Subscriptions.
+    """
+    import stripe
+
+    cfg = settings or load_stripe_settings()
+    if not cfg.secret_key:
+        raise RuntimeError("Stripe no está configurado (ZEROMANUAL_STRIPE_SECRET_KEY)")
+    stripe.api_key = cfg.secret_key
+
+    if stripe_customer_id:
+        try:
+            existing = stripe.Customer.retrieve(stripe_customer_id)
+            data = stripe_object_to_dict(existing)
+            if data.get("id") and not data.get("deleted"):
+                return str(data["id"])
+        except Exception as exc:
+            if not is_missing_customer_error(exc):
+                raise
+
+    # Prefer reusing an existing Stripe customer with the same email + our metadata.
+    try:
+        found = stripe.Customer.search(
+            query=f"email:'{client_email.replace(chr(39), '')}' AND metadata['zeromanual_client_id']:'{client_id}'",
+            limit=1,
+        )
+        data = stripe_object_to_dict(found)
+        rows = data.get("data") or []
+        if rows:
+            sid = stripe_id(rows[0])
+            if sid:
+                return sid
+    except Exception:
+        # Search may be unavailable on some accounts; fall through to create.
+        pass
+
+    created = stripe.Customer.create(
+        **{
+            "email": client_email,
+            "metadata": {
+                "zeromanual_client_id": client_id,
+                "client_id": client_id,
+            },
+            **({"name": client_name} if client_name else {}),
+        }
+    )
+    sid = stripe_id(created)
+    if not sid:
+        raise RuntimeError("Stripe Customer.create no devolvió id")
+    return sid
+
+
 def create_checkout_session(
     *,
     client_id: str,
@@ -133,9 +200,13 @@ def create_checkout_session(
     automation_types: list[str],
     billing_interval: str = "monthly",
     stripe_customer_id: str | None = None,
+    client_name: str = "",
     settings: StripeSettings | None = None,
 ) -> dict[str, Any]:
-    """Create a Stripe Checkout Session (subscription + optional trial)."""
+    """Create a Stripe Checkout Session (subscription + optional trial).
+
+    Always attaches to a persistent Stripe Customer (created once per client).
+    """
     import stripe
 
     cfg = settings or load_stripe_settings()
@@ -146,6 +217,14 @@ def create_checkout_session(
     types = validate_automation_types(automation_types)
     stripe.api_key = cfg.secret_key
 
+    customer_id = ensure_stripe_customer(
+        client_id=client_id,
+        client_email=client_email,
+        client_name=client_name,
+        stripe_customer_id=stripe_customer_id,
+        settings=cfg,
+    )
+
     success_url = (
         f"{cfg.public_url}/client/checkout/success"
         f"?session_id={{CHECKOUT_SESSION_ID}}"
@@ -154,8 +233,7 @@ def create_checkout_session(
 
     params: dict[str, Any] = {
         "mode": "subscription",
-        "customer_email": client_email if not stripe_customer_id else None,
-        "customer": stripe_customer_id or None,
+        "customer": customer_id,
         "line_items": _line_items(cfg, types, interval),
         "success_url": success_url,
         "cancel_url": cancel_url,
@@ -177,19 +255,47 @@ def create_checkout_session(
     if cfg.trial_days > 0:
         params["subscription_data"]["trial_period_days"] = cfg.trial_days
 
-    # Drop None customer fields — Stripe rejects both set together.
-    if params["customer"]:
-        params.pop("customer_email", None)
-    else:
-        params.pop("customer", None)
-
     session = stripe.checkout.Session.create(**params)
     return {
         "session_id": session["id"],
         "checkout_url": session["url"],
         "automation_types": types,
         "billing_interval": interval,
+        "stripe_customer_id": customer_id,
     }
+
+
+def stripe_object_to_dict(obj: Any) -> dict[str, Any]:
+    """Normalize StripeObject / dict / nested refs to a plain dict.
+
+    Newer stripe-python StripeObject does not support dict-like ``.get()``;
+    ``dict(stripe_object)`` can also fail. Prefer ``to_dict()``.
+    """
+    if obj is None:
+        return {}
+    if isinstance(obj, dict):
+        return obj
+    to_dict = getattr(obj, "to_dict", None)
+    if callable(to_dict):
+        raw = to_dict()
+        return raw if isinstance(raw, dict) else {}
+    try:
+        return {k: obj[k] for k in obj.keys()}  # type: ignore[attr-defined]
+    except Exception:
+        return {}
+
+
+def stripe_id(value: Any) -> str | None:
+    """Extract an id string from a plain id or expanded Stripe object."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        sid = value.get("id")
+        return str(sid) if sid else None
+    sid = getattr(value, "id", None)
+    return str(sid) if sid else None
 
 
 def retrieve_checkout_session(session_id: str, settings: StripeSettings | None = None) -> dict[str, Any]:
@@ -198,7 +304,7 @@ def retrieve_checkout_session(session_id: str, settings: StripeSettings | None =
     cfg = settings or load_stripe_settings()
     stripe.api_key = cfg.secret_key
     session = stripe.checkout.Session.retrieve(session_id)
-    return dict(session)
+    return stripe_object_to_dict(session)
 
 
 def create_billing_portal_session(
@@ -217,7 +323,34 @@ def create_billing_portal_session(
         customer=stripe_customer_id,
         return_url=return_url or f"{cfg.public_url}/client",
     )
-    return {"portal_url": portal["url"]}
+    data = stripe_object_to_dict(portal)
+    return {"portal_url": str(data.get("url") or portal["url"])}
+
+
+def cancel_subscription(
+    stripe_subscription_id: str,
+    *,
+    at_period_end: bool = False,
+    settings: StripeSettings | None = None,
+) -> dict[str, Any]:
+    """Cancel a Stripe Subscription only — never delete the Customer.
+
+    The Stripe Customer stays linked to the ZeroManual client for future
+    checkouts, invoices, and the billing portal.
+    """
+    import stripe
+
+    cfg = settings or load_stripe_settings()
+    if not cfg.secret_key:
+        raise RuntimeError("Stripe no está configurado")
+    stripe.api_key = cfg.secret_key
+    if at_period_end:
+        sub = stripe.Subscription.modify(
+            stripe_subscription_id, cancel_at_period_end=True
+        )
+    else:
+        sub = stripe.Subscription.cancel(stripe_subscription_id)
+    return stripe_object_to_dict(sub)
 
 
 def construct_webhook_event(
@@ -231,16 +364,18 @@ def construct_webhook_event(
     return stripe.Webhook.construct_event(payload, signature, cfg.webhook_secret)
 
 
-def parse_session_metadata(session: dict[str, Any]) -> tuple[str, list[str], str]:
-    meta = session.get("metadata") or {}
-    client_id = (
+def parse_session_metadata(session: Any) -> tuple[str, list[str], str]:
+    data = stripe_object_to_dict(session)
+    meta_raw = data.get("metadata") or {}
+    meta = stripe_object_to_dict(meta_raw) if not isinstance(meta_raw, dict) else meta_raw
+    client_id = str(
         meta.get("client_id")
-        or session.get("client_reference_id")
+        or data.get("client_reference_id")
         or ""
     )
     raw_types = meta.get("automation_types") or ""
-    types = [t.strip() for t in raw_types.split(",") if t.strip()]
-    interval = meta.get("billing_interval") or "monthly"
+    types = [t.strip() for t in str(raw_types).split(",") if t.strip()]
+    interval = str(meta.get("billing_interval") or "monthly")
     if not client_id:
         raise ValueError("Sesión Stripe sin client_id")
     if not types:

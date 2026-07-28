@@ -168,14 +168,21 @@ def register_payment_routes(
             session = stripe_payments.create_checkout_session(
                 client_id=client["client_id"],
                 client_email=client["email"],
+                client_name=client.get("name") or stored.get("name") or "",
                 automation_types=types,
                 billing_interval=interval,
-                stripe_customer_id=stored.get("stripe_customer_id"),
+                stripe_customer_id=stored.get("stripe_customer_id") or None,
                 settings=cfg,
             )
         except Exception as exc:
             logger.exception("Stripe checkout session failed")
-            raise HTTPException(status_code=503, detail=f"No se pudo iniciar el pago: {exc}") from exc
+            raise HTTPException(
+                status_code=503, detail=f"No se pudo iniciar el pago: {exc}"
+            ) from exc
+
+        # Persist durable Stripe Customer id (created once, reused forever).
+        if session.get("stripe_customer_id"):
+            store.set_stripe_customer_id(client["client_id"], session["stripe_customer_id"])
 
         return {
             "mode": "stripe",
@@ -204,8 +211,8 @@ def register_payment_routes(
                 client_id=client_id,
                 automation_types=types,
                 billing_interval=interval,
-                stripe_customer_id=session.get("customer"),
-                stripe_subscription_id=session.get("subscription"),
+                stripe_customer_id=stripe_payments.stripe_id(session.get("customer")),
+                stripe_subscription_id=stripe_payments.stripe_id(session.get("subscription")),
                 checkout_session_id=session_id,
                 status=status,
             )
@@ -241,7 +248,7 @@ def register_payment_routes(
             raise HTTPException(status_code=400, detail=f"Webhook inválido: {exc}") from exc
 
         event_type = event["type"]
-        data_object = event["data"]["object"]
+        data_object = stripe_payments.stripe_object_to_dict(event["data"]["object"])
 
         if event_type == "checkout.session.completed":
             try:
@@ -253,9 +260,11 @@ def register_payment_routes(
                     client_id=client_id,
                     automation_types=types,
                     billing_interval=interval,
-                    stripe_customer_id=data_object.get("customer"),
-                    stripe_subscription_id=data_object.get("subscription"),
-                    checkout_session_id=data_object.get("id"),
+                    stripe_customer_id=stripe_payments.stripe_id(data_object.get("customer")),
+                    stripe_subscription_id=stripe_payments.stripe_id(
+                        data_object.get("subscription")
+                    ),
+                    checkout_session_id=stripe_payments.stripe_id(data_object.get("id")),
                     status=status,
                 )
             except Exception as exc:
@@ -266,7 +275,7 @@ def register_payment_routes(
             "customer.subscription.updated",
             "customer.subscription.deleted",
         ):
-            sub_id = data_object.get("id")
+            sub_id = stripe_payments.stripe_id(data_object.get("id"))
             raw_status = data_object.get("status") or "canceled"
             if event_type == "customer.subscription.deleted":
                 raw_status = "canceled"
@@ -287,7 +296,7 @@ def register_payment_routes(
                         store.deactivate_automation(sub["client_id"], sub["automation_type"])
 
         elif event_type == "invoice.payment_failed":
-            sub_id = data_object.get("subscription")
+            sub_id = stripe_payments.stripe_id(data_object.get("subscription"))
             if sub_id:
                 store.mark_subscriptions_by_stripe_id(sub_id, "past_due")
 

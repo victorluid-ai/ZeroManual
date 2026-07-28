@@ -15,6 +15,7 @@ from pydantic import BaseModel
 
 from apps.integrations.google_oauth import GoogleOAuthHelper
 from apps.integrations.n8n_client import N8nClient
+from apps.integrations import stripe_payments
 from apps.interface.payments import activate_automation_for_client, register_payment_routes
 from apps.orchestrator.runtime import OrchestratorRuntime
 from apps.zeromanual_env import zm_env
@@ -331,14 +332,55 @@ def set_pending_automation(
 def deactivate_client_automation(
     automation_type: str, client: dict = Depends(get_client_user)
 ) -> dict:
-    automation = runtime.store.get_automation(client["client_id"], automation_type)
+    client_id = client["client_id"]
+    automation = runtime.store.get_automation(client_id, automation_type)
     if automation and automation.get("n8n_workflow_id"):
         try:
             _n8n.delete_workflow(automation["n8n_workflow_id"])
         except Exception:
             pass
-    runtime.store.deactivate_automation(client["client_id"], automation_type)
-    return {"status": "inactive"}
+    runtime.store.deactivate_automation(client_id, automation_type)
+
+    stripe_cancelled = False
+    sub = runtime.store.get_subscription(client_id, automation_type)
+    stripe_sub_id = (sub or {}).get("stripe_subscription_id") if sub else None
+    if stripe_sub_id and stripe_payments.stripe_enabled():
+        try:
+            stripe_payments.cancel_subscription(stripe_sub_id)
+            stripe_cancelled = True
+        except Exception as exc:
+            logging.getLogger(__name__).exception(
+                "Stripe cancel failed for %s/%s: %s", client_id, automation_type, exc
+            )
+            raise HTTPException(
+                status_code=503,
+                detail=f"Automatización desactivada localmente, pero Stripe no canceló: {exc}",
+            ) from exc
+        # Same Stripe sub may cover several automations (multi-item cart).
+        for linked in runtime.store.list_subscriptions_by_stripe_id(stripe_sub_id):
+            runtime.store.upsert_subscription(
+                client_id=linked["client_id"],
+                automation_type=linked["automation_type"],
+                status="canceled",
+                billing_interval=linked.get("billing_interval") or "monthly",
+                provider=linked.get("provider") or "stripe",
+                stripe_subscription_id=stripe_sub_id,
+            )
+            if linked["automation_type"] != automation_type:
+                runtime.store.deactivate_automation(
+                    linked["client_id"], linked["automation_type"]
+                )
+    elif sub:
+        runtime.store.upsert_subscription(
+            client_id=client_id,
+            automation_type=automation_type,
+            status="canceled",
+            billing_interval=sub.get("billing_interval") or "monthly",
+            provider=sub.get("provider") or "dev",
+            stripe_subscription_id=sub.get("stripe_subscription_id"),
+        )
+
+    return {"status": "inactive", "stripe_cancelled": stripe_cancelled}
 
 
 @app.post("/internal/automations/{automation_type}/drafts")

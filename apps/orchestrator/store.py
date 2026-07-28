@@ -999,7 +999,7 @@ class DataStore:
             ).fetchone()
         return dict(row) if row else None
 
-    def set_stripe_customer_id(self, client_id: str, stripe_customer_id: str) -> None:
+    def set_stripe_customer_id(self, client_id: str, stripe_customer_id: str | None) -> None:
         with self._connect() as conn:
             conn.execute(
                 "UPDATE clients SET stripe_customer_id=? WHERE client_id=?",

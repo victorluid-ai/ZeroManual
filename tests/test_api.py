@@ -9,6 +9,9 @@ from fastapi.testclient import TestClient
 @pytest.fixture(autouse=True)
 def no_ai(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ZEROMANUAL_AI_MODE", "off")
+    # Keep Stripe off unless a test enables it; empty beats load_dotenv from .env.
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "")
+    monkeypatch.setenv("MANUALZERO_STRIPE_SECRET_KEY", "")
 
 
 @pytest.fixture

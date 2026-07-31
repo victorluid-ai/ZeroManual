@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from apps.integrations.google_oauth import GoogleOAuthHelper
+from apps.integrations.google_business import GoogleBusinessClient, GoogleBusinessError
 from apps.integrations.n8n_client import N8nClient
 from apps.integrations import stripe_payments
 from apps.interface.payments import activate_automation_for_client, register_payment_routes
@@ -24,6 +25,7 @@ app = FastAPI(title="ZeroManual Web API", version="0.2.0")
 runtime = OrchestratorRuntime()
 _n8n = N8nClient()
 _google_oauth = GoogleOAuthHelper()
+_google_business = GoogleBusinessClient()
 
 
 def get_admin_user(authorization: str | None = Header(default=None)) -> dict:
@@ -75,6 +77,7 @@ class ClientRegisterRequest(BaseModel):
 
 class DraftPushRequest(BaseModel):
     client_id: str
+    business_id: str | None = None
     review_id: str | None = None
     reviewer_name: str | None = None
     rating: str | None = None
@@ -84,6 +87,10 @@ class DraftPushRequest(BaseModel):
 
 class DraftResolveRequest(BaseModel):
     final_reply: str | None = None
+
+
+class AutomationSettingsRequest(BaseModel):
+    reply_mode: str
 
 
 class PendingAutomationRequest(BaseModel):
@@ -118,6 +125,39 @@ def _record_failed_login(key: str) -> None:
 
 def _clear_login_attempts(key: str) -> None:
     _LOGIN_ATTEMPTS.pop(key, None)
+
+
+def _resolve_business_id(client_id: str, business_id: str | None) -> str:
+    """Resolve the business a request applies to.
+
+    Explicit ``business_id`` is validated for ownership. When omitted, falls back to
+    (and lazily creates) the client's default/only business so single-location
+    clients never have to think about business selection.
+    """
+    if business_id:
+        business = runtime.store.get_business_for_client(client_id, business_id)
+        if business is None:
+            raise HTTPException(status_code=404, detail="Negocio no encontrado")
+        return business_id
+    return runtime.store.ensure_default_business(client_id)["business_id"]
+
+
+def _sync_businesses_from_google(client_id: str) -> list[dict]:
+    """Best-effort refresh of a client's businesses/locations from Google."""
+    creds = runtime.store.get_google_creds(client_id)
+    if not creds:
+        return runtime.store.list_businesses(client_id)
+    try:
+        businesses, token_update = _google_business.list_businesses_for_creds(creds)
+    except GoogleBusinessError:
+        return runtime.store.list_businesses(client_id)
+    if token_update:
+        runtime.store.update_google_access_token(
+            client_id, token_update["access_token"], token_update["token_expiry"]
+        )
+    if businesses:
+        return runtime.store.sync_businesses(client_id, businesses)
+    return runtime.store.list_businesses(client_id)
 
 
 @app.get("/health")
@@ -261,6 +301,7 @@ def google_callback(code: str, state: str) -> RedirectResponse:
             google_email=google_email,
             location_id=None,
         )
+        _sync_businesses_from_google(client_id)
     except Exception as exc:
         logging.getLogger(__name__).exception("Google OAuth callback failed: %s", exc)
         return RedirectResponse("/client?error=oauth_failed")
@@ -284,6 +325,13 @@ def google_callback(code: str, state: str) -> RedirectResponse:
     return RedirectResponse("/client?connected=1")
 
 
+@app.get("/client/businesses")
+def list_client_businesses(client: dict = Depends(get_client_user)) -> dict:
+    """List every Google Business location detected for this client's account."""
+    businesses = _sync_businesses_from_google(client["client_id"])
+    return {"businesses": businesses}
+
+
 @app.get("/client/google/status")
 def google_status(client: dict = Depends(get_client_user)) -> dict:
     creds = runtime.store.get_google_creds(client["client_id"])
@@ -292,6 +340,54 @@ def google_status(client: dict = Depends(get_client_user)) -> dict:
         "google_email": creds["google_email"] if creds else None,
         "location_id": creds["location_id"] if creds else None,
         "connected_at": creds["connected_at"] if creds else None,
+    }
+
+
+@app.delete("/client/google/disconnect")
+def google_disconnect(client: dict = Depends(get_client_user)) -> dict:
+    runtime.store.delete_google_creds(client["client_id"])
+    return {"connected": False}
+
+
+@app.get("/client/accounts/status")
+def accounts_status(client: dict = Depends(get_client_user)) -> dict:
+    """Aggregated connection status for third-party accounts in the client portal."""
+    google = runtime.store.get_google_creds(client["client_id"])
+    return {
+        "accounts": [
+            {
+                "provider": "google",
+                "label": "Google Business",
+                "connected": google is not None,
+                "account_label": (google or {}).get("google_email"),
+                "connected_at": (google or {}).get("connected_at"),
+                "connectable": True,
+            },
+            {
+                "provider": "instagram",
+                "label": "Instagram",
+                "connected": False,
+                "account_label": None,
+                "connected_at": None,
+                "connectable": False,
+            },
+            {
+                "provider": "tiktok",
+                "label": "TikTok",
+                "connected": False,
+                "account_label": None,
+                "connected_at": None,
+                "connectable": False,
+            },
+            {
+                "provider": "email",
+                "label": "Correo",
+                "connected": False,
+                "account_label": None,
+                "connected_at": None,
+                "connectable": False,
+            },
+        ]
     }
 
 
@@ -304,8 +400,13 @@ def list_client_automations(client: dict = Depends(get_client_user)) -> dict:
 
 @app.post("/client/automations/{automation_type}/activate")
 def activate_client_automation(
-    automation_type: str, client: dict = Depends(get_client_user)
+    automation_type: str,
+    business_id: str | None = None,
+    client: dict = Depends(get_client_user),
 ) -> dict:
+    if business_id:
+        if runtime.store.get_business_for_client(client["client_id"], business_id) is None:
+            raise HTTPException(status_code=404, detail="Negocio no encontrado")
     try:
         return activate_automation_for_client(
             store=runtime.store,
@@ -313,6 +414,7 @@ def activate_client_automation(
             client_id=client["client_id"],
             client_name=client["name"],
             automation_type=automation_type,
+            business_id=business_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -330,16 +432,19 @@ def set_pending_automation(
 
 @app.delete("/client/automations/{automation_type}")
 def deactivate_client_automation(
-    automation_type: str, client: dict = Depends(get_client_user)
+    automation_type: str,
+    business_id: str | None = None,
+    client: dict = Depends(get_client_user),
 ) -> dict:
     client_id = client["client_id"]
-    automation = runtime.store.get_automation(client_id, automation_type)
+    resolved_business_id = _resolve_business_id(client_id, business_id)
+    automation = runtime.store.get_automation(client_id, resolved_business_id, automation_type)
     if automation and automation.get("n8n_workflow_id"):
         try:
             _n8n.delete_workflow(automation["n8n_workflow_id"])
         except Exception:
             pass
-    runtime.store.deactivate_automation(client_id, automation_type)
+    runtime.store.deactivate_automation(client_id, resolved_business_id, automation_type)
 
     stripe_cancelled = False
     sub = runtime.store.get_subscription(client_id, automation_type)
@@ -367,9 +472,12 @@ def deactivate_client_automation(
                 stripe_subscription_id=stripe_sub_id,
             )
             if linked["automation_type"] != automation_type:
-                runtime.store.deactivate_automation(
+                for other in runtime.store.list_automations_by_type(
                     linked["client_id"], linked["automation_type"]
-                )
+                ):
+                    runtime.store.deactivate_automation(
+                        linked["client_id"], other["business_id"], linked["automation_type"]
+                    )
     elif sub:
         runtime.store.upsert_subscription(
             client_id=client_id,
@@ -383,27 +491,172 @@ def deactivate_client_automation(
     return {"status": "inactive", "stripe_cancelled": stripe_cancelled}
 
 
+def _publish_draft_via_n8n(draft: dict, final_reply: str) -> None:
+    """Trigger n8n to post the reply to Google. Raises on HTTP failure."""
+    business_id = draft.get("business_id") or runtime.store.ensure_default_business(
+        draft["client_id"]
+    )["business_id"]
+    _n8n.trigger_publish_reply(
+        draft["client_id"],
+        business_id,
+        {
+            "draft_id": draft["draft_id"],
+            "client_id": draft["client_id"],
+            "business_id": business_id,
+            "review_id": draft.get("review_id"),
+            "final_reply": final_reply,
+        },
+    )
+
+
+@app.get("/client/automations/{automation_type}/settings")
+def get_automation_settings(
+    automation_type: str,
+    business_id: str | None = None,
+    client: dict = Depends(get_client_user),
+) -> dict:
+    resolved_business_id = _resolve_business_id(client["client_id"], business_id)
+    auto = runtime.store.get_automation(client["client_id"], resolved_business_id, automation_type)
+    if auto is None:
+        raise HTTPException(status_code=404, detail="Automatización no encontrada")
+    return {
+        "automation_type": automation_type,
+        "business_id": resolved_business_id,
+        "reply_mode": auto.get("reply_mode") or "approval",
+        "status": auto.get("status"),
+    }
+
+
+@app.put("/client/automations/{automation_type}/settings")
+def update_automation_settings(
+    automation_type: str,
+    body: AutomationSettingsRequest,
+    business_id: str | None = None,
+    client: dict = Depends(get_client_user),
+) -> dict:
+    resolved_business_id = _resolve_business_id(client["client_id"], business_id)
+    try:
+        updated = runtime.store.update_automation_settings(
+            client["client_id"], resolved_business_id, automation_type, body.reply_mode
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Automatización no encontrada")
+    return {
+        "automation_type": automation_type,
+        "business_id": resolved_business_id,
+        "reply_mode": updated.get("reply_mode") or "approval",
+        "status": updated.get("status"),
+    }
+
+
+@app.get("/client/automations/google_reviews/reviews")
+def list_google_reviews(
+    page_token: str | None = None,
+    business_id: str | None = None,
+    client: dict = Depends(get_client_user),
+) -> dict:
+    """List live Google Business Profile reviews for the connected account."""
+    client_id = client["client_id"]
+    creds = runtime.store.get_google_creds(client_id)
+    if creds is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Conecta primero tu cuenta de Google Business",
+        )
+    resolved_business_id = _resolve_business_id(client_id, business_id)
+    business = runtime.store.get_business(resolved_business_id)
+    location_override = (business or {}).get("location_id")
+    if location_override and not location_override.startswith("accounts/"):
+        # Placeholder/legacy business rows may hold a bare id or none at all —
+        # fall back to normal resolution rather than sending a bogus name to Google.
+        location_override = None
+    try:
+        payload, location, token_update = _google_business.fetch_reviews_for_creds(
+            creds, page_size=50, page_token=page_token, location_override=location_override
+        )
+    except GoogleBusinessError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    if token_update:
+        runtime.store.update_google_access_token(
+            client_id, token_update["access_token"], token_update["token_expiry"]
+        )
+    if location and location != creds.get("location_id"):
+        runtime.store.update_google_location_id(client_id, location)
+
+    drafts = runtime.store.list_drafts(client_id, "google_reviews", business_id=resolved_business_id)
+    by_review: dict[str, dict] = {}
+    for d in drafts:
+        rid = d.get("review_id")
+        if rid and rid not in by_review:
+            by_review[str(rid)] = d
+
+    for rev in payload["reviews"]:
+        rid = str(rev.get("review_id") or "")
+        draft = by_review.get(rid)
+        # Also match full resource name suffixes
+        if draft is None and rid:
+            for key, d in by_review.items():
+                if key.endswith(rid) or rid.endswith(key.rsplit("/", 1)[-1]):
+                    draft = d
+                    break
+        rev["draft"] = (
+            {
+                "draft_id": draft["draft_id"],
+                "status": draft["status"],
+                "suggested_reply": draft.get("suggested_reply"),
+                "final_reply": draft.get("final_reply"),
+            }
+            if draft
+            else None
+        )
+
+    payload["business_id"] = resolved_business_id
+    return payload
+
+
 @app.post("/internal/automations/{automation_type}/drafts")
 def push_automation_draft(
     automation_type: str, body: DraftPushRequest, _: None = Depends(verify_webhook_secret)
 ) -> dict:
+    business_id = body.business_id or runtime.store.ensure_default_business(body.client_id)["business_id"]
     draft = runtime.store.create_draft(
         client_id=body.client_id,
         automation_type=automation_type,
         suggested_reply=body.suggested_reply,
+        business_id=business_id,
         review_id=body.review_id,
         reviewer_name=body.reviewer_name,
         rating=body.rating,
         source_text=body.source_text,
     )
+    auto = runtime.store.get_automation(body.client_id, business_id, automation_type)
+    reply_mode = (auto or {}).get("reply_mode") or "approval"
+    if reply_mode == "auto":
+        try:
+            _publish_draft_via_n8n(draft, body.suggested_reply)
+            draft = runtime.store.resolve_draft(
+                draft["draft_id"], "auto_sent", body.suggested_reply
+            )
+        except Exception as exc:
+            logging.getLogger(__name__).exception(
+                "Auto-publish failed for draft %s: %s", draft["draft_id"], exc
+            )
+            draft = runtime.store.resolve_draft(draft["draft_id"], "failed", body.suggested_reply)
+            return {"status": "failed", "draft": draft, "error": str(exc)}
     return {"status": "ok", "draft": draft}
 
 
 @app.get("/client/automations/{automation_type}/drafts")
 def list_client_drafts(
-    automation_type: str, status: str | None = None, client: dict = Depends(get_client_user)
+    automation_type: str,
+    status: str | None = None,
+    business_id: str | None = None,
+    client: dict = Depends(get_client_user),
 ) -> dict:
-    drafts = runtime.store.list_drafts(client["client_id"], automation_type, status)
+    drafts = runtime.store.list_drafts(client["client_id"], automation_type, status, business_id=business_id)
     return {"drafts": drafts}
 
 
@@ -414,8 +667,20 @@ def approve_client_draft(
     draft = runtime.store.get_draft(draft_id)
     if draft is None or draft["client_id"] != client["client_id"]:
         raise HTTPException(status_code=404, detail="Borrador no encontrado")
+    if draft.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="El borrador ya fue resuelto")
     final_reply = body.final_reply if body.final_reply is not None else draft["suggested_reply"]
     status = "edited" if final_reply != draft["suggested_reply"] else "approved"
+    try:
+        _publish_draft_via_n8n(draft, final_reply)
+    except Exception as exc:
+        logging.getLogger(__name__).exception(
+            "Publish failed for draft %s: %s", draft_id, exc
+        )
+        runtime.store.resolve_draft(draft_id, "failed", final_reply)
+        raise HTTPException(
+            status_code=503, detail=f"No se pudo publicar en Google: {exc}"
+        ) from exc
     updated = runtime.store.resolve_draft(draft_id, status, final_reply)
     return {"draft": updated}
 

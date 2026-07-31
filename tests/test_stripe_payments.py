@@ -190,7 +190,7 @@ def test_subscription_cancel_deactivates_automation(
         status="active",
         stripe_subscription_id="sub_cancel",
     )
-    store.activate_automation(client_id, "google_reviews", "wf-1")
+    store.activate_automation(client_id, store.ensure_default_business(client_id)["business_id"], "google_reviews", "wf-1")
 
     fake_event = {
         "type": "customer.subscription.deleted",
@@ -205,7 +205,8 @@ def test_subscription_cancel_deactivates_automation(
     )
     assert resp.status_code == 200
     assert not store.has_active_subscription(client_id, "google_reviews")
-    auto = store.get_automation(client_id, "google_reviews")
+    business_id = store.ensure_default_business(client_id)["business_id"]
+    auto = store.get_automation(client_id, business_id, "google_reviews")
     assert auto["status"] == "inactive"
 
 
@@ -262,7 +263,7 @@ def test_unsubscribe_cancels_stripe_subscription(
         status="trialing",
         stripe_subscription_id="sub_to_cancel",
     )
-    store.activate_automation(client_id, "google_reviews", "wf-1")
+    store.activate_automation(client_id, store.ensure_default_business(client_id)["business_id"], "google_reviews", "wf-1")
 
     resp = client.delete("/client/automations/google_reviews", headers=auth)
     assert resp.status_code == 200

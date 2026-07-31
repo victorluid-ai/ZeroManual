@@ -228,20 +228,36 @@ class DataStore:
                     FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
                 );
 
-                CREATE TABLE IF NOT EXISTS client_automations (
-                    id               INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_id        TEXT    NOT NULL,
-                    automation_type  TEXT    NOT NULL,
-                    n8n_workflow_id  TEXT,
-                    status           TEXT    NOT NULL DEFAULT 'inactive',
-                    activated_at     TEXT,
-                    UNIQUE (client_id, automation_type),
+                CREATE TABLE IF NOT EXISTS client_businesses (
+                    business_id          TEXT    PRIMARY KEY,
+                    client_id            TEXT    NOT NULL,
+                    google_account_id    TEXT    NOT NULL,
+                    location_id          TEXT    NOT NULL,
+                    business_name        TEXT    NOT NULL,
+                    created_at           TEXT    NOT NULL,
+                    UNIQUE(client_id, location_id),
                     FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS client_automations (
+                    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                    client_id           TEXT    NOT NULL,
+                    business_id         TEXT    NOT NULL,
+                    automation_type     TEXT    NOT NULL,
+                    n8n_workflow_id     TEXT,
+                    status              TEXT    NOT NULL DEFAULT 'inactive',
+                    activated_at        TEXT,
+                    reply_mode          TEXT    NOT NULL DEFAULT 'approval',
+                    settings_json       TEXT    DEFAULT '{}',
+                    UNIQUE (client_id, business_id, automation_type),
+                    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+                    FOREIGN KEY (business_id) REFERENCES client_businesses(business_id) ON DELETE CASCADE
                 );
 
                 CREATE TABLE IF NOT EXISTS automation_drafts (
                     draft_id         TEXT    PRIMARY KEY,
                     client_id        TEXT    NOT NULL,
+                    business_id      TEXT,
                     automation_type  TEXT    NOT NULL,
                     review_id        TEXT,
                     reviewer_name    TEXT,
@@ -459,6 +475,108 @@ class DataStore:
                 """
             )
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (6)")
+
+        if current < 7:
+            auto_cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(client_automations)").fetchall()
+            }
+            if "reply_mode" not in auto_cols:
+                conn.execute(
+                    "ALTER TABLE client_automations"
+                    " ADD COLUMN reply_mode TEXT NOT NULL DEFAULT 'approval'"
+                )
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (7)")
+
+        if current < 8:
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS client_businesses (
+                    business_id          TEXT    PRIMARY KEY,
+                    client_id            TEXT    NOT NULL,
+                    google_account_id    TEXT    NOT NULL,
+                    location_id          TEXT    NOT NULL,
+                    business_name        TEXT    NOT NULL,
+                    created_at           TEXT    NOT NULL,
+                    UNIQUE(client_id, location_id),
+                    FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE
+                );
+                """
+            )
+            auto_cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(client_automations)").fetchall()
+            }
+            if "business_id" not in auto_cols:
+                # SQLite can't add a NOT NULL column without a default when the
+                # table already has rows, and we can't backfill a real
+                # business_id without contacting Google. Rebuild the table with
+                # business_id nullable, backfill a per-client placeholder
+                # business row for any pre-existing automations, then move on.
+                conn.executescript(
+                    """
+                    CREATE TABLE client_automations_new (
+                        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                        client_id           TEXT    NOT NULL,
+                        business_id         TEXT    NOT NULL,
+                        automation_type     TEXT    NOT NULL,
+                        n8n_workflow_id     TEXT,
+                        status              TEXT    NOT NULL DEFAULT 'inactive',
+                        activated_at        TEXT,
+                        reply_mode          TEXT    NOT NULL DEFAULT 'approval',
+                        settings_json       TEXT    DEFAULT '{}',
+                        UNIQUE (client_id, business_id, automation_type),
+                        FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
+                        FOREIGN KEY (business_id) REFERENCES client_businesses(business_id) ON DELETE CASCADE
+                    );
+                    """
+                )
+                for row in conn.execute("SELECT * FROM client_automations").fetchall():
+                    client_id = row["client_id"]
+                    business = conn.execute(
+                        "SELECT business_id FROM client_businesses WHERE client_id=? ORDER BY created_at ASC LIMIT 1",
+                        (client_id,),
+                    ).fetchone()
+                    if business:
+                        business_id = business["business_id"]
+                    else:
+                        business_id = f"BIZ-{secrets.token_hex(6).upper()}"
+                        creds = conn.execute(
+                            "SELECT location_id, google_email FROM client_google_creds WHERE client_id=?",
+                            (client_id,),
+                        ).fetchone()
+                        location_id = (creds["location_id"] if creds else None) or f"legacy-{client_id}"
+                        google_account_id = (creds["google_email"] if creds else None) or "legacy"
+                        conn.execute(
+                            "INSERT INTO client_businesses"
+                            " (business_id, client_id, google_account_id, location_id, business_name, created_at)"
+                            " VALUES (?,?,?,?,?,?)",
+                            (business_id, client_id, google_account_id, location_id, "Mi negocio", _utc_now()),
+                        )
+                    conn.execute(
+                        """INSERT INTO client_automations_new
+                           (client_id, business_id, automation_type, n8n_workflow_id, status,
+                            activated_at, reply_mode, settings_json)
+                           VALUES (?,?,?,?,?,?,?,?)""",
+                        (
+                            client_id,
+                            business_id,
+                            row["automation_type"],
+                            row["n8n_workflow_id"],
+                            row["status"],
+                            row["activated_at"],
+                            row["reply_mode"],
+                            "{}",
+                        ),
+                    )
+                conn.executescript(
+                    "DROP TABLE client_automations;"
+                    "ALTER TABLE client_automations_new RENAME TO client_automations;"
+                )
+            draft_cols = {
+                r[1] for r in conn.execute("PRAGMA table_info(automation_drafts)").fetchall()
+            }
+            if "business_id" not in draft_cols:
+                conn.execute("ALTER TABLE automation_drafts ADD COLUMN business_id TEXT")
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (8)")
 
     def save_pending_approval(
         self,
@@ -1095,52 +1213,221 @@ class DataStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def update_google_access_token(
+        self, client_id: str, access_token: str, token_expiry: str | None
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE client_google_creds SET access_token=?, token_expiry=?"
+                " WHERE client_id=?",
+                (access_token, token_expiry, client_id),
+            )
+
+    def update_google_location_id(self, client_id: str, location_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE client_google_creds SET location_id=? WHERE client_id=?",
+                (location_id, client_id),
+            )
+
     def delete_google_creds(self, client_id: str) -> None:
         with self._connect() as conn:
             conn.execute("DELETE FROM client_google_creds WHERE client_id = ?", (client_id,))
 
+    # ---- Client Businesses (Google locations) ----
+
+    def sync_businesses(self, client_id: str, businesses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Upsert the businesses/locations discovered for a client's Google account.
+
+        ``businesses`` items need ``google_account_id``, ``location_id``, ``business_name``.
+        Returns the full current list of businesses for this client.
+        """
+        now = _utc_now()
+        with self._connect() as conn:
+            for biz in businesses:
+                existing = conn.execute(
+                    "SELECT business_id FROM client_businesses WHERE client_id=? AND location_id=?",
+                    (client_id, biz["location_id"]),
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        "UPDATE client_businesses SET business_name=?, google_account_id=?"
+                        " WHERE business_id=?",
+                        (biz["business_name"], biz["google_account_id"], existing["business_id"]),
+                    )
+                else:
+                    business_id = f"BIZ-{secrets.token_hex(6).upper()}"
+                    conn.execute(
+                        "INSERT INTO client_businesses"
+                        " (business_id, client_id, google_account_id, location_id, business_name, created_at)"
+                        " VALUES (?,?,?,?,?,?)",
+                        (
+                            business_id,
+                            client_id,
+                            biz["google_account_id"],
+                            biz["location_id"],
+                            biz["business_name"],
+                            now,
+                        ),
+                    )
+            rows = conn.execute(
+                "SELECT * FROM client_businesses WHERE client_id=? ORDER BY created_at ASC",
+                (client_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_businesses(self, client_id: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM client_businesses WHERE client_id=? ORDER BY created_at ASC",
+                (client_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_business(self, business_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM client_businesses WHERE business_id=?", (business_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def get_business_for_client(self, client_id: str, business_id: str) -> dict[str, Any] | None:
+        """Fetch a business only if it belongs to this client (ownership check)."""
+        business = self.get_business(business_id)
+        if business and business["client_id"] == client_id:
+            return business
+        return None
+
+    def delete_businesses_for_client(self, client_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute("DELETE FROM client_businesses WHERE client_id=?", (client_id,))
+
+    def ensure_default_business(self, client_id: str) -> dict[str, Any]:
+        """Return the client's first business, creating a placeholder from their Google
+        creds if none has been discovered/synced yet. Keeps single-location clients working
+        without forcing every caller to pick a business_id explicitly."""
+        existing = self.list_businesses(client_id)
+        if existing:
+            return existing[0]
+        with self._connect() as conn:
+            creds = conn.execute(
+                "SELECT location_id, google_email FROM client_google_creds WHERE client_id=?",
+                (client_id,),
+            ).fetchone()
+            location_id = (creds["location_id"] if creds else None) or f"default-{client_id}"
+            google_account_id = (creds["google_email"] if creds else None) or "unknown"
+            business_id = f"BIZ-{secrets.token_hex(6).upper()}"
+            conn.execute(
+                "INSERT INTO client_businesses"
+                " (business_id, client_id, google_account_id, location_id, business_name, created_at)"
+                " VALUES (?,?,?,?,?,?)",
+                (business_id, client_id, google_account_id, location_id, "Mi negocio", _utc_now()),
+            )
+            row = conn.execute(
+                "SELECT * FROM client_businesses WHERE business_id=?", (business_id,)
+            ).fetchone()
+        return dict(row)
+
     # ---- Client Automations ----
 
     def activate_automation(
-        self, client_id: str, automation_type: str, n8n_workflow_id: str
+        self, client_id: str, business_id: str, automation_type: str, n8n_workflow_id: str
     ) -> dict[str, Any]:
         now = _utc_now()
         with self._connect() as conn:
+            existing = conn.execute(
+                "SELECT reply_mode FROM client_automations"
+                " WHERE client_id=? AND business_id=? AND automation_type=?",
+                (client_id, business_id, automation_type),
+            ).fetchone()
+            reply_mode = existing["reply_mode"] if existing else "approval"
             conn.execute(
                 """INSERT OR REPLACE INTO client_automations
-                   (client_id, automation_type, n8n_workflow_id, status, activated_at)
-                   VALUES (?,?,?,'active',?)""",
-                (client_id, automation_type, n8n_workflow_id, now),
+                   (client_id, business_id, automation_type, n8n_workflow_id, status, activated_at, reply_mode)
+                   VALUES (?,?,?,?,'active',?,?)""",
+                (client_id, business_id, automation_type, n8n_workflow_id, now, reply_mode),
             )
         return {
             "client_id": client_id,
+            "business_id": business_id,
             "automation_type": automation_type,
             "n8n_workflow_id": n8n_workflow_id,
             "status": "active",
             "activated_at": now,
+            "reply_mode": reply_mode,
         }
 
-    def deactivate_automation(self, client_id: str, automation_type: str) -> None:
+    def deactivate_automation(self, client_id: str, business_id: str, automation_type: str) -> None:
         with self._connect() as conn:
             conn.execute(
                 "UPDATE client_automations SET status='inactive', n8n_workflow_id=NULL"
-                " WHERE client_id=? AND automation_type=?",
-                (client_id, automation_type),
+                " WHERE client_id=? AND business_id=? AND automation_type=?",
+                (client_id, business_id, automation_type),
             )
 
-    def get_automation(self, client_id: str, automation_type: str) -> dict[str, Any] | None:
+    def update_automation_settings(
+        self, client_id: str, business_id: str, automation_type: str, reply_mode: str
+    ) -> dict[str, Any] | None:
+        if reply_mode not in ("approval", "auto"):
+            raise ValueError("reply_mode debe ser 'approval' o 'auto'")
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE client_automations SET reply_mode=?"
+                " WHERE client_id=? AND business_id=? AND automation_type=?",
+                (reply_mode, client_id, business_id, automation_type),
+            )
+            if cur.rowcount == 0:
+                return None
+        return self.get_automation(client_id, business_id, automation_type)
+
+    def get_automation(
+        self, client_id: str, business_id: str, automation_type: str
+    ) -> dict[str, Any] | None:
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM client_automations WHERE client_id=? AND automation_type=?",
-                (client_id, automation_type),
+                "SELECT * FROM client_automations WHERE client_id=? AND business_id=? AND automation_type=?",
+                (client_id, business_id, automation_type),
             ).fetchone()
         return dict(row) if row else None
 
-    def list_client_automations(self, client_id: str) -> list[dict[str, Any]]:
+    def get_automation_by_workflow(self, client_id: str, n8n_workflow_id: str) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM client_automations WHERE client_id=? AND n8n_workflow_id=?",
+                (client_id, n8n_workflow_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def list_automations_for_business(self, client_id: str, business_id: str) -> list[dict[str, Any]]:
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM client_automations WHERE client_id=? ORDER BY automation_type ASC",
+                "SELECT * FROM client_automations WHERE client_id=? AND business_id=?"
+                " ORDER BY automation_type ASC",
+                (client_id, business_id),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_client_automations(self, client_id: str) -> list[dict[str, Any]]:
+        """All automations across every business for this client, with business_name joined in."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ca.*, cb.business_name, cb.location_id
+                   FROM client_automations ca
+                   LEFT JOIN client_businesses cb ON cb.business_id = ca.business_id
+                   WHERE ca.client_id=? ORDER BY ca.automation_type ASC, cb.business_name ASC""",
                 (client_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_automations_by_type(self, client_id: str, automation_type: str) -> list[dict[str, Any]]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ca.*, cb.business_name, cb.location_id
+                   FROM client_automations ca
+                   LEFT JOIN client_businesses cb ON cb.business_id = ca.business_id
+                   WHERE ca.client_id=? AND ca.automation_type=?
+                   ORDER BY cb.business_name ASC""",
+                (client_id, automation_type),
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1260,6 +1547,7 @@ class DataStore:
         client_id: str,
         automation_type: str,
         suggested_reply: str,
+        business_id: str | None = None,
         review_id: str | None = None,
         reviewer_name: str | None = None,
         rating: str | None = None,
@@ -1270,11 +1558,11 @@ class DataStore:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO automation_drafts
-                   (draft_id, client_id, automation_type, review_id, reviewer_name, rating,
+                   (draft_id, client_id, business_id, automation_type, review_id, reviewer_name, rating,
                     source_text, suggested_reply, final_reply, status, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,NULL,'pending',?,?)""",
+                   VALUES (?,?,?,?,?,?,?,?,?,NULL,'pending',?,?)""",
                 (
-                    draft_id, client_id, automation_type, review_id, reviewer_name, rating,
+                    draft_id, client_id, business_id, automation_type, review_id, reviewer_name, rating,
                     source_text, suggested_reply, now, now,
                 ),
             )
@@ -1288,7 +1576,11 @@ class DataStore:
         return dict(row) if row else None
 
     def list_drafts(
-        self, client_id: str, automation_type: str | None = None, status: str | None = None
+        self,
+        client_id: str,
+        automation_type: str | None = None,
+        status: str | None = None,
+        business_id: str | None = None,
     ) -> list[dict[str, Any]]:
         query = "SELECT * FROM automation_drafts WHERE client_id = ?"
         params: list[Any] = [client_id]
@@ -1298,6 +1590,9 @@ class DataStore:
         if status is not None:
             query += " AND status = ?"
             params.append(status)
+        if business_id is not None:
+            query += " AND business_id = ?"
+            params.append(business_id)
         query += " ORDER BY created_at DESC"
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()

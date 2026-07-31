@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es" data-theme="paper">
 <head>
   <meta charset="UTF-8" />
@@ -95,15 +95,69 @@
     .topbar-spacer { flex: 1; }
     .topbar-user { font-size: 12px; color: var(--fg-3); }
     .topbar-user strong { color: var(--fg-2); }
-    .tabs { display: flex; padding: 0 20px; background: #fff; border-bottom: 1px solid var(--line); gap: 2px; flex-shrink: 0; }
-    .tab {
-      padding: 11px 14px; font-size: 13px; font-weight: 500; color: var(--fg-3);
-      border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent;
-      transition: color .15s, border-color .15s; font-family: inherit;
+    .workspace { flex: 1; display: flex; min-height: 0; }
+    .sidebar {
+      width: 260px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line);
+      display: flex; flex-direction: column; overflow-y: auto;
     }
-    .tab:hover { color: var(--fg); }
-    .tab.on { color: var(--fg); border-bottom-color: var(--accent); }
-    .content { flex: 1; overflow-y: auto; padding: 24px 20px; }
+    .sidebar-section { padding: 14px 12px 8px; }
+    .sidebar-label {
+      font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+      color: var(--fg-3); padding: 0 8px 8px;
+    }
+    .nav-item {
+      display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+      padding: 9px 10px; border: none; background: transparent; border-radius: var(--r-sm);
+      cursor: pointer; font: inherit; font-size: 13px; color: var(--fg-2);
+      transition: background .12s, color .12s;
+    }
+    .nav-item:hover { background: var(--bg-2); color: var(--fg); }
+    .nav-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+    .nav-item .nav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-3); flex-shrink: 0; }
+    .nav-item.on .nav-dot, .nav-item.active-auto .nav-dot { background: var(--ok); }
+    .nav-item .nav-meta { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 500; }
+    .nav-item .nav-badge {
+      margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+      background: var(--accent); color: #fff; font-size: 10px; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .sidebar-foot { margin-top: auto; padding: 12px; border-top: 1px solid var(--line); }
+    .panel { flex: 1; overflow-y: auto; padding: 24px 20px; background: var(--bg); }
+    .panel-subtabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .panel-subtab {
+      padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--fg-3);
+      border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent;
+      font-family: inherit;
+    }
+    .panel-subtab:hover { color: var(--fg); }
+    .panel-subtab.on { color: var(--fg); border-bottom-color: var(--accent); }
+    .mode-toggle {
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .mode-option {
+      flex: 1; min-width: 180px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-sm);
+      background: var(--bg); cursor: pointer; text-align: left; font: inherit;
+      transition: border-color .15s, background .15s;
+    }
+    .mode-option:hover { border-color: var(--accent); }
+    .mode-option.on { border-color: var(--accent); background: var(--accent-soft); }
+    .mode-option strong { display: block; font-size: 13px; margin-bottom: 4px; color: var(--fg); }
+    .mode-option span { font-size: 12px; color: var(--fg-3); line-height: 1.4; }
+    .draft-text {
+      width: 100%; min-height: 70px; padding: 8px; border: 1px solid var(--line);
+      border-radius: var(--r-sm); font: inherit; font-size: 13px; color: var(--fg);
+      background: #fff; resize: vertical;
+    }
+    .hist-row {
+      padding: 12px 0; border-bottom: 1px solid var(--line);
+    }
+    .hist-row:last-child { border-bottom: none; }
+    .hist-meta { font-size: 12px; color: var(--fg-3); margin-bottom: 4px; }
+    .hist-body { font-size: 13px; color: var(--fg-2); white-space: pre-wrap; }
+    @media (max-width: 720px) {
+      .workspace { flex-direction: column; }
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--line); max-height: 40vh; }
+    }
     .card { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 20px; margin-bottom: 16px; }
     .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
     .card-title { font-size: 13px; font-weight: 600; }
@@ -132,6 +186,10 @@
     }
     .google-box-head { display: flex; align-items: center; gap: 10px; }
     .google-box-icon { width: 32px; height: 32px; flex-shrink: 0; }
+    .acct-icon {
+      width: 32px; height: 32px; flex-shrink: 0; border-radius: 8px;
+      display: inline-flex; align-items: center; justify-content: center;
+    }
     .google-box-title { font-size: 15px; font-weight: 600; }
     .google-box-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
     .google-box-body { font-size: 13px; color: var(--fg-2); line-height: 1.6; }
@@ -174,10 +232,10 @@
       </div>
       <div class="form-group">
         <label for="inp-password">Contraseña</label>
-        <input id="inp-password" type="password" autocomplete="current-password" placeholder="••••••••" />
+        <input id="inp-password" type="password" autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
       </div>
       <div class="error-msg" id="login-error"></div>
-      <button class="btn primary full" id="btn-login">Entrar →</button>
+      <button class="btn primary full" id="btn-login">Entrar â†’</button>
       <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
         ¿Primera vez? <button onclick="showRegister()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Crear cuenta</button>
       </div>
@@ -199,7 +257,7 @@
         <input id="reg-password" type="password" placeholder="Mínimo 8 caracteres" />
       </div>
       <div class="error-msg" id="register-error"></div>
-      <button class="btn primary full" id="btn-register">Crear cuenta →</button>
+      <button class="btn primary full" id="btn-register">Crear cuenta â†’</button>
       <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
         ¿Ya tienes cuenta? <button onclick="showLogin()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Entrar</button>
       </div>
@@ -221,12 +279,10 @@
     <button class="btn ghost sm" id="btn-home">Volver a inicio</button>
     <button class="btn ghost sm" id="btn-logout">Cerrar sesión</button>
   </div>
-  <div class="tabs">
-    <button class="tab on" data-tab="automations">Mis automatizaciones</button>
-    <button class="tab" data-tab="drafts">Reseñas pendientes</button>
-    <button class="tab" data-tab="google">Conectar Google</button>
+  <div class="workspace">
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="panel" id="content"></main>
   </div>
-  <div class="content" id="content"></div>
 </div>
 
 <div id="toast"></div>
@@ -238,7 +294,13 @@
   const TOKEN_KEY = 'mz_client_token';
   const CART_HANDOFF_KEY = 'zm_pending_activations';
   let token = localStorage.getItem(TOKEN_KEY) || null;
-  let currentClient = null, activeTab = 'automations';
+  let currentClient = null;
+  // view: 'catalog' | 'google' | automation_type
+  let activeView = 'catalog';
+  let activeBusinessId = null; // business context for the open automation panel
+  let reviewsSubtab = 'reviews'; // reviews | pending | history | settings
+  let cachedAutos = null;
+  let cachedBusinesses = [];
 
   const AUTOMATION_LABELS = {
     google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
@@ -286,12 +348,20 @@
     return new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
   }
 
+  function statusLabel(st) {
+    const map = {
+      pending: 'Pendiente', approved: 'Aprobada', edited: 'Editada',
+      rejected: 'Rechazada', auto_sent: 'Auto-enviada', failed: 'Fallida',
+    };
+    return map[st] || st;
+  }
+
   async function tryLogin() {
     const email = $('inp-email').value.trim(), password = $('inp-password').value;
     $('login-error').textContent = '';
     if (!email || !password) { $('login-error').textContent = 'Completa email y contraseña.'; return; }
     const btn = $('btn-login');
-    btn.disabled = true; btn.textContent = 'Entrando…';
+    btn.disabled = true; btn.textContent = 'Entrandoâ€¦';
     try {
       const r = await fetch('/client/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -306,7 +376,7 @@
     } catch (e) {
       $('login-error').textContent = e.message;
     } finally {
-      btn.disabled = false; btn.textContent = 'Entrar →';
+      btn.disabled = false; btn.textContent = 'Entrar â†’';
     }
   }
 
@@ -352,126 +422,168 @@
     const name = currentClient ? (currentClient.business_name || currentClient.name || currentClient.email || '—') : '—';
     $('lbl-business').innerHTML = `<strong>${escHtml(name)}</strong>`;
     await applyPendingActivations();
-    loadTab(activeTab);
+    await loadWorkspace();
   }
 
-  function loadTab(name) {
-    activeTab = name;
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.dataset.tab === name));
+  async function fetchAutomations() {
+    const data = await api('GET', '/client/automations');
+    if (!data) return null;
+    cachedAutos = data;
+    return data;
+  }
+
+  async function fetchBusinesses() {
+    try {
+      const data = await api('GET', '/client/businesses');
+      cachedBusinesses = (data && data.businesses) || [];
+    } catch {
+      cachedBusinesses = [];
+    }
+    return cachedBusinesses;
+  }
+
+  function bizQuery(businessId) {
+    return businessId ? `business_id=${encodeURIComponent(businessId)}` : '';
+  }
+
+  function withQuery(path, query) {
+    if (!query) return path;
+    return path + (path.includes('?') ? '&' : '?') + query;
+  }
+
+  async function loadWorkspace() {
+    const side = $('sidebar');
     const c = $('content');
-    c.innerHTML = '<div class="loading">Cargando…</div>';
-    if (name === 'automations') tabAutomations(c);
-    else if (name === 'drafts') tabDrafts(c);
-    else if (name === 'google') tabGoogle(c);
-  }
-
-  async function tabDrafts(c) {
+    c.innerHTML = '<div class="loading">Cargandoâ€¦</div>';
     try {
-      const data = await api('GET', '/client/automations/google_reviews/drafts');
+      const [data] = await Promise.all([fetchAutomations(), fetchBusinesses()]);
       if (!data) return;
-      const drafts = data.drafts || [];
-      const pending = drafts.filter(d => d.status === 'pending');
-      if (!drafts.length) {
-        c.innerHTML = '<div class="card"><div class="empty">No hay borradores de respuestas todavía.</div></div>';
-        return;
+      const active = (data.active || []).filter(a => a.status === 'active');
+      const activeTypes = [...new Set(active.map(a => a.automation_type))];
+      if (activeView !== 'catalog' && activeView !== 'google' && activeView !== 'accounts') {
+        if (!activeTypes.includes(activeView)) {
+          activeView = activeTypes.length ? activeTypes[0] : 'catalog';
+        }
       }
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div>
-          <div class="card-title">Respuestas de reseñas pendientes de revisión</div>
-          <div class="card-sub">${pending.length} pendiente(s)</div>
-        </div></div>
-        <div id="drafts-list"></div>
-      </div>`;
-      const list = $('drafts-list');
-      if (!pending.length) {
-        list.innerHTML = '<div class="empty">No hay borradores pendientes.</div>';
-        return;
-      }
-      pending.forEach(d => {
-        const div = document.createElement('div');
-        div.className = 'auto-card';
-        div.style.marginBottom = '12px';
-        div.innerHTML = `
-          <div class="auto-card-body">
-            <div class="auto-name">${escHtml(d.reviewer_name || 'Anónimo')}${d.rating ? ' · ' + escHtml(d.rating) : ''}</div>
-            <div class="auto-desc" style="margin-bottom:8px">${escHtml(d.source_text || '')}</div>
-            <textarea class="draft-text" style="width:100%;min-height:70px;padding:8px;border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:13px;color:var(--fg)">${escHtml(d.suggested_reply)}</textarea>
-          </div>
-          <div class="auto-footer">
-            <span class="auto-status off">○ Pendiente</span>
-            <div style="display:flex;gap:8px">
-              <button class="btn sm danger" data-action="reject">Rechazar</button>
-              <button class="btn sm primary" data-action="approve">Aprobar</button>
-            </div>
-          </div>`;
-        div.querySelector('[data-action="approve"]').addEventListener('click', () => resolveDraft(d.draft_id, 'approve', div));
-        div.querySelector('[data-action="reject"]').addEventListener('click', () => resolveDraft(d.draft_id, 'reject', div));
-        list.appendChild(div);
-      });
-    } catch (e) {
-      c.innerHTML = `<div class="card"><div class="empty">Error cargando borradores. Recarga la página.</div></div>`;
-    }
-  }
-
-  async function resolveDraft(draftId, action, cardEl) {
-    try {
-      if (action === 'approve') {
-        const text = cardEl.querySelector('.draft-text').value;
-        await api('POST', `/client/drafts/${encodeURIComponent(draftId)}/approve`, { final_reply: text });
-        toast('Respuesta aprobada', 'ok');
-      } else {
-        await api('POST', `/client/drafts/${encodeURIComponent(draftId)}/reject`);
-        toast('Respuesta rechazada');
-      }
-      loadTab('drafts');
-    } catch (e) {
-      toast(e.message, 'err');
-    }
-  }
-
-  async function tabAutomations(c) {
-    try {
-      const data = await api('GET', '/client/automations');
-      if (!data) return;
-      const available = data.available || [];
-      const active = data.active || [];
-      if (!available.length) {
-        c.innerHTML = '<div class="card"><div class="empty">Las automatizaciones estarán disponibles próximamente.</div></div>';
-        return;
-      }
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div>
-          <div class="card-title">Mis automatizaciones</div>
-          <div class="card-sub">${available.length} disponible(s)</div>
-        </div></div>
-        <div class="auto-grid" id="auto-grid"></div>
-      </div>`;
-      const grid = $('auto-grid');
-      available.forEach(type => {
-        const rec = active.find(a => a.automation_type === type && a.status === 'active');
-        const isOn = !!rec;
-        const lbl = AUTOMATION_LABELS[type] || { name: type, desc: '' };
-        const div = document.createElement('div');
-        div.className = 'auto-card';
-        div.dataset.type = type;
-        div.innerHTML = `
-          <div class="auto-card-body">
-            <div class="auto-name">${escHtml(lbl.name)}</div>
-            <div class="auto-desc">${escHtml(lbl.desc)}</div>
-          </div>
-          <div class="auto-footer">
-            <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? '● Suscrito' : '○ Sin suscripción'}</span>
-            <button class="btn sm ${isOn ? 'ghost' : 'primary'}" data-type="${escHtml(type)}" data-on="${isOn}">
-              ${isOn ? 'Desuscribirse' : 'Suscribirse'}
-            </button>
-          </div>`;
-        div.querySelector('button').addEventListener('click', handleAutoBtn);
-        grid.appendChild(div);
-      });
+      renderSidebar(side, active);
+      await renderPanel(c, data);
     } catch (e) {
       c.innerHTML = `<div class="card"><div class="empty">Error cargando datos. Recarga la página.</div></div>`;
     }
   }
+
+  function renderSidebar(side, active) {
+    const byType = new Map();
+    active.forEach(a => {
+      if (!byType.has(a.automation_type)) byType.set(a.automation_type, []);
+      byType.get(a.automation_type).push(a);
+    });
+    const items = [...byType.entries()].map(([type, rows]) => {
+      const lbl = AUTOMATION_LABELS[type] || { name: type };
+      const on = activeView === type ? ' on active-auto' : ' active-auto';
+      const badge = rows.length > 1 ? `<span class="nav-meta">${rows.length} negocios</span>` : '';
+      return `<button class="nav-item${on}" data-view="${escHtml(type)}">
+        <span class="nav-dot"></span>
+        <span>${escHtml(lbl.name)}</span>
+        ${badge}
+      </button>`;
+    }).join('') || `<div style="padding:8px 10px;font-size:12px;color:var(--fg-3)">Ninguna suscrita aún</div>`;
+
+    side.innerHTML = `
+      <div class="sidebar-section">
+        <div class="sidebar-label">Mis automatizaciones</div>
+        ${items}
+      </div>
+      <div class="sidebar-section">
+        <div class="sidebar-label">Cuenta</div>
+        <button class="nav-item${activeView === 'catalog' ? ' on' : ''}" data-view="catalog">Catálogo / suscribir</button>
+        <button class="nav-item${activeView === 'google' || activeView === 'accounts' ? ' on' : ''}" data-view="accounts">Conectar cuentas</button>
+      </div>
+      <div class="sidebar-foot">
+        <div style="font-size:11px;color:var(--fg-3);line-height:1.4">Selecciona una automatización para ver su panel.</div>
+      </div>`;
+    side.querySelectorAll('[data-view]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeView = btn.dataset.view;
+        activeBusinessId = null;
+        if (activeView === 'google_reviews') reviewsSubtab = 'reviews';
+        loadWorkspace();
+      });
+    });
+  }
+
+  async function renderPanel(c, data) {
+    if (activeView === 'catalog') {
+      renderCatalog(c, data);
+      return;
+    }
+    if (activeView === 'accounts' || activeView === 'google') {
+      await renderAccounts(c);
+      return;
+    }
+    if (activeView === 'google_reviews') {
+      await renderGoogleReviews(c);
+      return;
+    }
+    const lbl = AUTOMATION_LABELS[activeView] || { name: activeView, desc: '' };
+    c.innerHTML = `<div class="card">
+      <div class="card-head"><div>
+        <div class="card-title">${escHtml(lbl.name)}</div>
+        <div class="card-sub">${escHtml(lbl.desc)}</div>
+      </div></div>
+      <div class="empty">Panel de esta automatización próximamente.</div>
+    </div>`;
+  }
+
+  function renderCatalog(c, data) {
+    const available = data.available || [];
+    const active = data.active || [];
+    if (!available.length) {
+      c.innerHTML = '<div class="card"><div class="empty">Las automatizaciones estarán disponibles próximamente.</div></div>';
+      return;
+    }
+    const multiBiz = cachedBusinesses.length > 1;
+    c.innerHTML = `<div class="card">
+      <div class="card-head"><div>
+        <div class="card-title">Catálogo de automatizaciones</div>
+        <div class="card-sub">${available.length} disponible(s)${multiBiz ? ` · ${cachedBusinesses.length} negocios detectados — 20% dto. a partir del 2º` : ''}</div>
+      </div></div>
+      <div class="auto-grid" id="auto-grid"></div>
+    </div>`;
+    const grid = $('auto-grid');
+    available.forEach(type => {
+      const rows = active.filter(a => a.automation_type === type && a.status === 'active');
+      const isOn = rows.length > 0;
+      const lbl = AUTOMATION_LABELS[type] || { name: type, desc: '' };
+      const div = document.createElement('div');
+      div.className = 'auto-card';
+      div.dataset.type = type;
+      div.innerHTML = `
+        <div class="auto-card-body">
+          <div class="auto-name">${escHtml(lbl.name)}</div>
+          <div class="auto-desc">${escHtml(lbl.desc)}</div>
+        </div>
+        <div class="auto-footer">
+          <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? `● Suscrito${rows.length > 1 ? ` (${rows.length} negocios)` : ''}` : '○ Sin suscripción'}</span>
+          <div style="display:flex;gap:8px">
+            ${isOn ? `<button class="btn sm ghost" data-open="${escHtml(type)}">Abrir</button>` : ''}
+            <button class="btn sm ${isOn ? 'ghost' : 'primary'}" data-type="${escHtml(type)}" data-on="${isOn}">
+              ${isOn ? 'Desuscribirse' : 'Suscribirse'}
+            </button>
+          </div>
+        </div>`;
+      div.querySelector('[data-type]').addEventListener('click', handleAutoBtn);
+      const openBtn = div.querySelector('[data-open]');
+      if (openBtn) openBtn.addEventListener('click', () => {
+        activeView = type;
+        activeBusinessId = null;
+        reviewsSubtab = 'reviews';
+        loadWorkspace();
+      });
+      grid.appendChild(div);
+    });
+  }
+
 
   async function handleAutoBtn(e) {
     const btn = e.currentTarget;
@@ -480,8 +592,18 @@
     btn.disabled = true;
     try {
       if (isOn) {
-        await api('DELETE', `/client/automations/${encodeURIComponent(type)}`);
+        const rows = (cachedAutos && cachedAutos.active || []).filter(
+          a => a.automation_type === type && a.status === 'active'
+        );
+        const businessIds = rows.length ? rows.map(r => r.business_id) : [null];
+        for (const bid of businessIds) {
+          await api('DELETE', withQuery(`/client/automations/${encodeURIComponent(type)}`, bizQuery(bid)));
+        }
         toast('Suscripción cancelada', 'ok');
+        if (activeView === type) activeView = 'catalog';
+      } else if (cachedBusinesses.length > 1) {
+        await openBusinessPicker(type, btn);
+        return; // picker owns the loading state / continuation
       } else {
         const checkout = await api('POST', '/client/checkout/session', {
           automation_types: [type],
@@ -496,22 +618,339 @@
         }
         await api('POST', `/client/automations/${encodeURIComponent(type)}/activate`);
         toast('Suscripción activada', 'ok');
+        activeView = type;
       }
-      loadTab('automations');
-    } catch (e) {
-      if (e.message && e.message.toLowerCase().includes('google')) {
+      await loadWorkspace();
+    } catch (err) {
+      if (err.message && err.message.toLowerCase().includes('google')) {
         const card = btn.closest('.auto-card');
         const warn = document.createElement('div');
         warn.className = 'auto-warn';
-        warn.innerHTML = `Conecta primero tu cuenta de Google. <a class="goto-google">Ir a Conectar Google →</a>`;
-        warn.querySelector('.goto-google').addEventListener('click', () => loadTab('google'));
+        warn.innerHTML = `Conecta primero tu cuenta de Google. <a class="goto-google">Ir a Conectar cuentas →</a>`;
+        warn.querySelector('.goto-google').addEventListener('click', () => {
+          activeView = 'accounts';
+          loadWorkspace();
+        });
         card.appendChild(warn);
-      } else if (e.message && e.message.toLowerCase().includes('suscripci')) {
-        toast(e.message, 'err');
       } else {
-        toast(e.message, 'err');
+        toast(err.message, 'err');
       }
       btn.disabled = false;
+    }
+  }
+
+  async function openBusinessPicker(type, btn) {
+    const card = btn.closest('.auto-card');
+    const activeForType = (cachedAutos && cachedAutos.active || []).filter(
+      a => a.automation_type === type && a.status === 'active'
+    );
+    const activeBizIds = new Set(activeForType.map(a => a.business_id));
+    const picker = document.createElement('div');
+    picker.className = 'auto-warn';
+    picker.style.background = 'var(--bg-2)';
+    picker.style.color = 'var(--fg-2)';
+    const rows = cachedBusinesses.map(b => `
+      <label style="display:flex;align-items:center;gap:6px;padding:4px 0;font-size:12px">
+        <input type="checkbox" value="${escHtml(b.business_id)}" ${activeBizIds.has(b.business_id) ? 'checked disabled' : ''} />
+        ${escHtml(b.business_name)}${activeBizIds.has(b.business_id) ? ' (ya activo)' : ''}
+      </label>`).join('');
+    picker.innerHTML = `
+      <div style="margin-bottom:6px;font-weight:600">¿Para qué negocios?</div>
+      ${rows}
+      <div style="margin-top:8px;font-size:11px;color:var(--fg-3)">2º negocio en adelante: 20% de descuento.</div>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn sm ghost" data-cancel>Cancelar</button>
+        <button class="btn sm primary" data-confirm>Suscribir seleccionados</button>
+      </div>`;
+    card.appendChild(picker);
+    btn.disabled = true;
+    picker.querySelector('[data-cancel]').addEventListener('click', () => {
+      picker.remove();
+      btn.disabled = false;
+    });
+    picker.querySelector('[data-confirm]').addEventListener('click', async () => {
+      const selected = [...picker.querySelectorAll('input[type=checkbox]:checked:not(:disabled)')]
+        .map(i => i.value);
+      if (!selected.length) { toast('Selecciona al menos un negocio', 'err'); return; }
+      try {
+        const business_pairs = selected.map(bid => [type, bid]);
+        const checkout = await api('POST', '/client/checkout/session', {
+          automation_types: [type],
+          billing_interval: 'monthly',
+          business_pairs,
+        });
+        if (checkout.checkout_url) {
+          window.location.href = checkout.checkout_url;
+          return;
+        }
+        if (checkout.mode === 'free') {
+          toast('Stripe no configurado — suscripción en modo demo', 'warn');
+        }
+        for (const bid of selected) {
+          await api('POST', withQuery(`/client/automations/${encodeURIComponent(type)}/activate`, bizQuery(bid)));
+        }
+        toast('Suscripción activada', 'ok');
+        activeView = type;
+        await loadWorkspace();
+      } catch (err) {
+        toast(err.message, 'err');
+        picker.remove();
+        btn.disabled = false;
+      }
+    });
+  }
+
+  async function renderGoogleReviews(c) {
+    const rows = (cachedAutos && cachedAutos.active || []).filter(
+      a => a.automation_type === 'google_reviews' && a.status === 'active'
+    );
+    if (!activeBusinessId || !rows.some(r => r.business_id === activeBusinessId)) {
+      activeBusinessId = rows.length ? rows[0].business_id : null;
+    }
+    const bizSelector = rows.length > 1 ? `
+      <select id="biz-selector" style="margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:12px">
+        ${rows.map(r => `<option value="${escHtml(r.business_id)}" ${r.business_id === activeBusinessId ? 'selected' : ''}>${escHtml(r.business_name || r.business_id)}</option>`).join('')}
+      </select>` : '';
+    c.innerHTML = `
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-head" style="margin-bottom:0"><div>
+          <div class="card-title">Responder reseñas de Google</div>
+          <div class="card-sub">Revisa borradores, historial y modo de envío</div>
+        </div>${bizSelector}</div>
+      </div>
+      <div class="panel-subtabs">
+        <button class="panel-subtab${reviewsSubtab === 'reviews' ? ' on' : ''}" data-sub="reviews">Reseñas</button>
+        <button class="panel-subtab${reviewsSubtab === 'pending' ? ' on' : ''}" data-sub="pending">Pendientes</button>
+        <button class="panel-subtab${reviewsSubtab === 'history' ? ' on' : ''}" data-sub="history">Historial</button>
+        <button class="panel-subtab${reviewsSubtab === 'settings' ? ' on' : ''}" data-sub="settings">Ajustes</button>
+      </div>
+      <div id="reviews-body"><div class="loading">Cargando…</div></div>`;
+    c.querySelectorAll('[data-sub]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        reviewsSubtab = btn.dataset.sub;
+        renderGoogleReviews(c);
+      });
+    });
+    const selector = $('biz-selector');
+    if (selector) selector.addEventListener('change', () => {
+      activeBusinessId = selector.value;
+      renderGoogleReviews(c);
+    });
+    const body = $('reviews-body');
+    if (reviewsSubtab === 'settings') await renderReviewsSettings(body);
+    else if (reviewsSubtab === 'history') await renderReviewsHistory(body);
+    else if (reviewsSubtab === 'pending') await renderReviewsPending(body);
+    else await renderGoogleReviewsList(body);
+  }
+
+  function starsHtml(rating) {
+    const n = Number(rating) || 0;
+    if (!n) return '';
+    return '★'.repeat(Math.min(5, Math.max(0, Math.round(n)))) + '☆'.repeat(Math.max(0, 5 - Math.round(n)));
+  }
+
+  async function renderGoogleReviewsList(body) {
+    try {
+      const data = await api('GET', withQuery('/client/automations/google_reviews/reviews', bizQuery(activeBusinessId)));
+      if (!data) return;
+      const reviews = data.reviews || [];
+      const avg = data.average_rating != null ? Number(data.average_rating).toFixed(1) : '—';
+      const total = data.total_review_count != null ? data.total_review_count : reviews.length;
+      if (!reviews.length) {
+        body.innerHTML = `<div class="card"><div class="empty">
+          No hay reseñas en esta ubicación de Google Business.<br/>
+          <span style="font-size:12px">Media: ${escHtml(String(avg))} · Total: ${escHtml(String(total))}</span>
+        </div></div>`;
+        return;
+      }
+      body.innerHTML = `<div class="card">
+        <div class="card-head"><div>
+          <div class="card-title">Reseñas de Google</div>
+          <div class="card-sub">Media ${escHtml(String(avg))} · ${escHtml(String(total))} reseña(s)</div>
+        </div>
+        <button class="btn sm ghost" id="btn-refresh-reviews">Actualizar</button>
+        </div>
+        <div id="gmb-reviews-list"></div>
+      </div>`;
+      $('btn-refresh-reviews').addEventListener('click', () => renderGoogleReviewsList(body));
+      const list = $('gmb-reviews-list');
+      reviews.forEach(r => {
+        const draft = r.draft;
+        let draftBadge = '';
+        if (draft) {
+          const st = draft.status || '';
+          draftBadge = `<span class="badge ${st === 'pending' ? 'neu' : 'ok'}">${escHtml(statusLabel(st))}</span>`;
+        } else if (r.has_reply) {
+          draftBadge = '<span class="badge ok">Respondida en Google</span>';
+        } else {
+          draftBadge = '<span class="badge neu">Sin respuesta</span>';
+        }
+        const div = document.createElement('div');
+        div.className = 'auto-card';
+        div.style.marginBottom = '12px';
+        div.innerHTML = `
+          <div class="auto-card-body">
+            <div class="auto-name" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <span>${escHtml(r.reviewer_name || 'Anónimo')}</span>
+              <span style="color:var(--warn);font-size:12px">${starsHtml(r.rating)}</span>
+              ${draftBadge}
+            </div>
+            <div class="hist-meta">${dateStr(r.update_time || r.create_time)}</div>
+            <div class="auto-desc" style="margin:8px 0;white-space:pre-wrap">${escHtml(r.comment || '(Sin texto)')}</div>
+            ${r.reply_comment ? `<div class="hist-body" style="background:var(--bg-2);padding:10px;border-radius:var(--r-sm)"><strong>Tu respuesta:</strong><br/>${escHtml(r.reply_comment)}</div>` : ''}
+            ${draft && draft.status === 'pending' && draft.suggested_reply ? `<div class="card-sub" style="margin-top:8px">Borrador pendiente: ${escHtml(draft.suggested_reply.slice(0, 120))}${draft.suggested_reply.length > 120 ? '…' : ''}</div>` : ''}
+          </div>
+          <div class="auto-footer">
+            <span class="auto-status ${r.has_reply ? 'on' : 'off'}">${r.has_reply ? '● Con respuesta' : '○ Sin respuesta en Google'}</span>
+            ${draft && draft.status === 'pending' ? '<button class="btn sm ghost" data-goto-pending>Ver pendiente</button>' : ''}
+          </div>`;
+        const goto = div.querySelector('[data-goto-pending]');
+        if (goto) goto.addEventListener('click', () => {
+          reviewsSubtab = 'pending';
+          loadWorkspace();
+        });
+        list.appendChild(div);
+      });
+    } catch (e) {
+      const msg = e.message || 'Error cargando reseñas';
+      const needsGoogle = /conecta|google|ubicación|cuenta/i.test(msg);
+      body.innerHTML = `<div class="card"><div class="empty">
+        ${escHtml(msg)}
+        ${needsGoogle ? '<br/><br/><button class="btn sm primary" id="btn-goto-google">Ir a Conectar cuentas</button>' : ''}
+      </div></div>`;
+      const btn = $('btn-goto-google');
+      if (btn) btn.addEventListener('click', () => { activeView = 'accounts'; loadWorkspace(); });
+    }
+  }
+
+  async function renderReviewsSettings(body) {
+    try {
+      const data = await api('GET', withQuery('/client/automations/google_reviews/settings', bizQuery(activeBusinessId)));
+      if (!data) return;
+      const mode = data.reply_mode || 'approval';
+      body.innerHTML = `<div class="card">
+        <div class="card-title" style="margin-bottom:8px">Modo de respuesta</div>
+        <div class="card-sub" style="margin-bottom:14px">Elige si las respuestas se envían solas o tras tu aprobación.</div>
+        <div class="mode-toggle">
+          <button class="mode-option${mode === 'approval' ? ' on' : ''}" data-mode="approval">
+            <strong>Pedir permiso</strong>
+            <span>ZeroManual genera el borrador y tú apruebas (o editas) antes de publicarlo en Google.</span>
+          </button>
+          <button class="mode-option${mode === 'auto' ? ' on' : ''}" data-mode="auto">
+            <strong>Respuesta automática</strong>
+            <span>Cada borrador se publica en Google sin esperar tu confirmación. Queda en el historial.</span>
+          </button>
+        </div>
+      </div>`;
+      body.querySelectorAll('[data-mode]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const next = btn.dataset.mode;
+          if (next === mode) return;
+          try {
+            await api('PUT', withQuery('/client/automations/google_reviews/settings', bizQuery(activeBusinessId)), { reply_mode: next });
+            toast(next === 'auto' ? 'Modo automático activado' : 'Modo con permiso activado', 'ok');
+            renderReviewsSettings(body);
+          } catch (e) { toast(e.message, 'err'); }
+        });
+      });
+    } catch (e) {
+      body.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message)}</div></div>`;
+    }
+  }
+
+  async function renderReviewsPending(body) {
+    try {
+      const data = await api('GET', withQuery('/client/automations/google_reviews/drafts?status=pending', bizQuery(activeBusinessId)));
+      if (!data) return;
+      const drafts = data.drafts || [];
+      if (!drafts.length) {
+        body.innerHTML = '<div class="card"><div class="empty">No hay respuestas pendientes de revisión.</div></div>';
+        return;
+      }
+      body.innerHTML = `<div class="card">
+        <div class="card-head"><div>
+          <div class="card-title">Respuestas pendientes</div>
+          <div class="card-sub">${drafts.length} pendiente(s)</div>
+        </div></div>
+        <div id="drafts-list"></div>
+      </div>`;
+      const list = $('drafts-list');
+      drafts.forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'auto-card';
+        div.style.marginBottom = '12px';
+        div.innerHTML = `
+          <div class="auto-card-body">
+            <div class="auto-name">${escHtml(d.reviewer_name || 'Anónimo')}${d.rating ? ' · ' + escHtml(d.rating) : ''}</div>
+            <div class="auto-desc" style="margin-bottom:8px">${escHtml(d.source_text || '')}</div>
+            <textarea class="draft-text">${escHtml(d.suggested_reply)}</textarea>
+          </div>
+          <div class="auto-footer">
+            <span class="auto-status off">○ Pendiente</span>
+            <div style="display:flex;gap:8px">
+              <button class="btn sm danger" data-action="reject">Rechazar</button>
+              <button class="btn sm primary" data-action="approve">Aprobar y enviar</button>
+            </div>
+          </div>`;
+        div.querySelector('[data-action="approve"]').addEventListener('click', () => resolveDraft(d.draft_id, 'approve', div));
+        div.querySelector('[data-action="reject"]').addEventListener('click', () => resolveDraft(d.draft_id, 'reject', div));
+        list.appendChild(div);
+      });
+    } catch (e) {
+      body.innerHTML = `<div class="card"><div class="empty">Error cargando borradores.</div></div>`;
+    }
+  }
+
+  async function renderReviewsHistory(body) {
+    try {
+      const data = await api('GET', withQuery('/client/automations/google_reviews/drafts', bizQuery(activeBusinessId)));
+      if (!data) return;
+      const drafts = (data.drafts || []).filter(d => d.status !== 'pending');
+      if (!drafts.length) {
+        body.innerHTML = '<div class="card"><div class="empty">Aún no hay historial de respuestas.</div></div>';
+        return;
+      }
+      body.innerHTML = `<div class="card">
+        <div class="card-head"><div>
+          <div class="card-title">Historial</div>
+          <div class="card-sub">${drafts.length} respuesta(s)</div>
+        </div></div>
+        <div id="hist-list"></div>
+      </div>`;
+      const list = $('hist-list');
+      drafts.forEach(d => {
+        const div = document.createElement('div');
+        div.className = 'hist-row';
+        const reply = d.final_reply || d.suggested_reply || '';
+        div.innerHTML = `
+          <div class="hist-meta">
+            <strong>${escHtml(d.reviewer_name || 'Anónimo')}</strong>
+            · ${escHtml(statusLabel(d.status))}
+            · ${dateStr(d.updated_at || d.created_at)}
+          </div>
+          <div class="auto-desc" style="margin-bottom:6px">${escHtml(d.source_text || '')}</div>
+          <div class="hist-body">${escHtml(reply)}</div>`;
+        list.appendChild(div);
+      });
+    } catch (e) {
+      body.innerHTML = `<div class="card"><div class="empty">Error cargando historial.</div></div>`;
+    }
+  }
+
+  async function resolveDraft(draftId, action, cardEl) {
+    try {
+      if (action === 'approve') {
+        const text = cardEl.querySelector('.draft-text').value;
+        await api('POST', `/client/drafts/${encodeURIComponent(draftId)}/approve`, { final_reply: text });
+        toast('Respuesta enviada a Google', 'ok');
+      } else {
+        await api('POST', `/client/drafts/${encodeURIComponent(draftId)}/reject`);
+        toast('Respuesta rechazada');
+      }
+      reviewsSubtab = 'pending';
+      await loadWorkspace();
+    } catch (e) {
+      toast(e.message, 'err');
     }
   }
 
@@ -522,6 +961,20 @@
     <path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 12 2 10 10 0 0 0 3 7.5l3.4 2.6C7.2 7.7 9.4 5.9 12 5.9z" fill="#EA4335"/>
   </svg>`;
 
+  const ACCOUNT_ICONS = {
+    google: GSVG,
+    instagram: `<div class="acct-icon" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;font-weight:700;font-size:11px">IG</div>`,
+    tiktok: `<div class="acct-icon" style="background:#0e1116;color:#fff;font-weight:700;font-size:11px">TT</div>`,
+    email: `<div class="acct-icon" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:11px">@</div>`,
+  };
+
+  const ACCOUNT_DESC = {
+    google: 'Necesario para reseñas, publicaciones en Google Business y más.',
+    instagram: 'Para publicar y responder en Instagram.',
+    tiktok: 'Para publicar contenido en TikTok.',
+    email: 'Para newsletters y respuestas por correo.',
+  };
+
   async function connectGoogle() {
     try {
       const r = await api('GET', '/client/google/connect');
@@ -529,50 +982,75 @@
     } catch (e) { toast(e.message, 'err'); }
   }
 
-  async function tabGoogle(c) {
+  async function disconnectGoogle() {
+    if (!confirm('¿Desconectar Google Business? Las automatizaciones que lo usen dejarán de funcionar hasta que vuelvas a conectar.')) {
+      return;
+    }
     try {
-      const data = await api('GET', '/client/google/status');
+      await api('DELETE', '/client/google/disconnect');
+      toast('Google desconectado', 'ok');
+      await loadWorkspace();
+    } catch (e) { toast(e.message, 'err'); }
+  }
+
+  async function renderAccounts(c) {
+    try {
+      const data = await api('GET', '/client/accounts/status');
       if (!data) return;
-      if (data.connected) {
-        c.innerHTML = `<div class="card">
-          <div class="card-head">
-            <div><div class="card-title">Google Business Profile</div><div class="card-sub">Cuenta vinculada</div></div>
-            <span class="badge ok">Conectado</span>
-          </div>
-          <div class="google-box">
-            <div class="google-box-head">${GSVG}<div>
-              <div class="google-box-title">✓ Google Business conectado</div>
-              <div class="google-box-sub">Listo para automatizar</div>
-            </div></div>
-            <div class="google-box-meta">
-              Cuenta: <strong>${escHtml(data.google_email || '—')}</strong><br/>
-              Conectado el: ${dateStr(data.connected_at)}
+      const accounts = data.accounts || [];
+      c.innerHTML = `<div class="card">
+        <div class="card-head"><div>
+          <div class="card-title">Conectar cuentas</div>
+          <div class="card-sub">Vincula las plataformas que usan tus automatizaciones</div>
+        </div></div>
+        <div id="accounts-list"></div>
+      </div>`;
+      const list = $('accounts-list');
+      accounts.forEach(acc => {
+        const icon = ACCOUNT_ICONS[acc.provider] || '';
+        const desc = ACCOUNT_DESC[acc.provider] || '';
+        const div = document.createElement('div');
+        div.className = 'auto-card';
+        div.style.marginBottom = '12px';
+        let actions = '';
+        if (acc.connected) {
+          actions = `<button class="btn sm danger" data-disconnect="${escHtml(acc.provider)}">Desconectar</button>`;
+        } else if (acc.connectable && acc.provider === 'google') {
+          actions = `<button class="btn sm primary" data-connect="google">Conectar →</button>`;
+        } else {
+          actions = `<button class="btn sm ghost" disabled>Próximamente</button>`;
+        }
+        div.innerHTML = `
+          <div class="auto-card-body">
+            <div class="google-box-head" style="margin-bottom:8px">
+              ${icon}
+              <div>
+                <div class="auto-name">${escHtml(acc.label)}</div>
+                <div class="auto-desc">${escHtml(desc)}</div>
+              </div>
             </div>
+            ${acc.connected ? `<div class="google-box-meta">
+              Cuenta: <strong>${escHtml(acc.account_label || '—')}</strong><br/>
+              Conectado el: ${dateStr(acc.connected_at)}
+            </div>` : ''}
           </div>
-        </div>`;
-      } else {
-        c.innerHTML = `<div class="card">
-          <div class="card-head">
-            <div><div class="card-title">Google Business Profile</div><div class="card-sub">Sin cuenta vinculada</div></div>
-            <span class="badge neu">No conectado</span>
-          </div>
-          <div class="google-box">
-            <div class="google-box-head">${GSVG}<div>
-              <div class="google-box-title">Conecta tu cuenta de Google</div>
-              <div class="google-box-sub">Necesario para reseñas, publicaciones y más</div>
-            </div></div>
-            <div class="google-box-body">
-              Conecta tu cuenta de Google para que ZeroManual pueda responder reseñas y
-              publicar en tu nombre.<br/><br/>
-              No necesitas crear nada en Google Console. Solo haz clic y autoriza.
-            </div>
-            <div><button class="btn primary" id="btn-connect-google">Conectar Google Business →</button></div>
-          </div>
-        </div>`;
-        $('btn-connect-google').addEventListener('click', connectGoogle);
-      }
+          <div class="auto-footer">
+            <span class="auto-status ${acc.connected ? 'on' : 'off'}">${acc.connected ? '● Conectado' : '○ No conectado'}</span>
+            ${actions}
+          </div>`;
+        const connectBtn = div.querySelector('[data-connect="google"]');
+        if (connectBtn) connectBtn.addEventListener('click', connectGoogle);
+        const discBtn = div.querySelector('[data-disconnect]');
+        if (discBtn) {
+          discBtn.addEventListener('click', () => {
+            if (discBtn.dataset.disconnect === 'google') disconnectGoogle();
+            else toast('Desconexión no disponible todavía', 'err');
+          });
+        }
+        list.appendChild(div);
+      });
     } catch (e) {
-      c.innerHTML = `<div class="card"><div class="empty">Error cargando datos. Recarga la página.</div></div>`;
+      c.innerHTML = `<div class="card"><div class="empty">Error cargando cuentas. Recarga la página.</div></div>`;
     }
   }
 
@@ -595,7 +1073,7 @@
     if (!name || !email || !password) { $('register-error').textContent = 'Completa todos los campos.'; return; }
     if (password.length < 8) { $('register-error').textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
     const btn = $('btn-register');
-    btn.disabled = true; btn.textContent = 'Creando cuenta…';
+    btn.disabled = true; btn.textContent = 'Creando cuentaâ€¦';
     try {
       const r = await fetch('/client/register', {
         method: 'POST',
@@ -611,13 +1089,10 @@
     } catch (e) {
       $('register-error').textContent = e.message;
     } finally {
-      btn.disabled = false; btn.textContent = 'Crear cuenta →';
+      btn.disabled = false; btn.textContent = 'Crear cuenta â†’';
     }
   }
 
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => loadTab(tab.dataset.tab));
-  });
   $('btn-login').addEventListener('click', tryLogin);
   $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
   $('btn-register').addEventListener('click', tryRegister);
@@ -631,10 +1106,12 @@
     if (activatedType) {
       const lbl = AUTOMATION_LABELS[activatedType] || { name: activatedType };
       toast(`Automatización activada ✓ — ${lbl.name}`, 'ok');
+      activeView = activatedType;
     } else if (params.get('checkout') === 'paid') {
       toast('Pago recibido. Completa la conexión de Google para activar.', 'ok');
     } else if (params.get('connected') === '1') {
       toast('Google Business conectado correctamente', 'ok');
+      activeView = 'accounts';
     }
     if (params.get('checkout') === 'error') toast('No se pudo confirmar el pago. Inténtalo de nuevo.', 'err');
     if (params.get('error') === 'oauth_failed') toast('Error al conectar Google. Inténtalo de nuevo.', 'err');

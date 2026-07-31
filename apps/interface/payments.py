@@ -18,6 +18,10 @@ logger = logging.getLogger(__name__)
 class CheckoutSessionRequest(BaseModel):
     automation_types: list[str]
     billing_interval: str = "monthly"
+    # Optional (automation_type, business_id) pairs for multi-business checkout.
+    # When provided, takes precedence over automation_types for line-item building
+    # and enables the multi-business discount.
+    business_pairs: list[list[str]] | None = None
 
 
 def activate_automation_for_client(
@@ -27,6 +31,7 @@ def activate_automation_for_client(
     client_id: str,
     client_name: str,
     automation_type: str,
+    business_id: str | None = None,
 ) -> dict:
     if stripe_payments.stripe_enabled() and not store.has_active_subscription(
         client_id, automation_type
@@ -35,28 +40,42 @@ def activate_automation_for_client(
     templates = json_template_ids()
     if automation_type not in templates:
         raise ValueError(f"Tipo de automatización desconocido: {automation_type}")
-    existing = store.get_automation(client_id, automation_type)
-    if existing and existing.get("status") == "active":
-        return {"status": "active", "workflow_id": existing["n8n_workflow_id"], "automation": existing}
     creds = store.get_google_creds(client_id)
     if not creds:
         raise ValueError("Conecta primero tu cuenta de Google Business")
+    resolved_business_id = business_id or store.ensure_default_business(client_id)["business_id"]
+    existing = store.get_automation(client_id, resolved_business_id, automation_type)
+    if existing and existing.get("status") == "active":
+        return {
+            "status": "active",
+            "workflow_id": existing["n8n_workflow_id"],
+            "automation": existing,
+            "business_id": resolved_business_id,
+        }
     template_id = templates[automation_type]
     if not template_id:
         raise RuntimeError("Template no configurado aún")
+    business = store.get_business(resolved_business_id)
+    location_id = (business or {}).get("location_id") or creds.get("location_id")
     try:
         wf_id = n8n.duplicate_template(
             template_id=template_id,
             client_id=client_id,
             client_name=client_name,
             refresh_token=creds["refresh_token"],
-            location_id=creds.get("location_id"),
+            location_id=location_id,
             automation_type=automation_type,
+            business_id=resolved_business_id,
         )
     except Exception as exc:
         raise RuntimeError(f"Error al activar en n8n: {exc}") from exc
-    record = store.activate_automation(client_id, automation_type, wf_id)
-    return {"status": "active", "workflow_id": wf_id, "automation": record}
+    record = store.activate_automation(client_id, resolved_business_id, automation_type, wf_id)
+    return {
+        "status": "active",
+        "workflow_id": wf_id,
+        "automation": record,
+        "business_id": resolved_business_id,
+    }
 
 
 def json_template_ids() -> dict[str, str]:
@@ -96,6 +115,7 @@ def post_payment_redirect(
     n8n: Any,
     client_id: str,
     automation_types: list[str],
+    business_pairs: list[tuple[str, str]] | None = None,
 ) -> RedirectResponse:
     client = store.get_client_by_id(client_id)
     if client is None:
@@ -106,18 +126,36 @@ def post_payment_redirect(
             store.set_pending_automation(client_id, automation_types[0])
         return RedirectResponse(url="/client?checkout=paid&connect=google", status_code=303)
     activated: list[str] = []
-    for automation_type in automation_types:
-        try:
-            activate_automation_for_client(
-                store=store,
-                n8n=n8n,
-                client_id=client_id,
-                client_name=client["name"],
-                automation_type=automation_type,
-            )
-            activated.append(automation_type)
-        except Exception as exc:
-            logger.warning("Post-payment activate failed for %s/%s: %s", client_id, automation_type, exc)
+    if business_pairs:
+        for automation_type, business_id in business_pairs:
+            try:
+                activate_automation_for_client(
+                    store=store,
+                    n8n=n8n,
+                    client_id=client_id,
+                    client_name=client["name"],
+                    automation_type=automation_type,
+                    business_id=business_id,
+                )
+                activated.append(automation_type)
+            except Exception as exc:
+                logger.warning(
+                    "Post-payment activate failed for %s/%s/%s: %s",
+                    client_id, automation_type, business_id, exc,
+                )
+    else:
+        for automation_type in automation_types:
+            try:
+                activate_automation_for_client(
+                    store=store,
+                    n8n=n8n,
+                    client_id=client_id,
+                    client_name=client["name"],
+                    automation_type=automation_type,
+                )
+                activated.append(automation_type)
+            except Exception as exc:
+                logger.warning("Post-payment activate failed for %s/%s: %s", client_id, automation_type, exc)
     if activated:
         return RedirectResponse(
             url=f"/client?activated={activated[0]}&checkout=paid",
@@ -139,10 +177,23 @@ def register_payment_routes(
     def create_client_checkout_session(
         req: CheckoutSessionRequest, client: dict = Depends(get_client_user)
     ) -> dict:
-        try:
-            types = stripe_payments.validate_automation_types(req.automation_types)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        business_pairs: list[tuple[str, str]] | None = None
+        if req.business_pairs:
+            try:
+                business_pairs = [(pair[0], pair[1]) for pair in req.business_pairs]
+                # Ownership check — a client may only buy for their own businesses.
+                for _automation_type, business_id in business_pairs:
+                    if store.get_business_for_client(client["client_id"], business_id) is None:
+                        raise HTTPException(status_code=404, detail="Negocio no encontrado")
+                business_pairs = stripe_payments.validate_checkout_pairs(business_pairs)
+                types = sorted({t for t, _ in business_pairs})
+            except (IndexError, ValueError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        else:
+            try:
+                types = stripe_payments.validate_automation_types(req.automation_types)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         interval = "yearly" if req.billing_interval == "yearly" else "monthly"
         cfg = stripe_payments.load_stripe_settings()
@@ -173,6 +224,7 @@ def register_payment_routes(
                 billing_interval=interval,
                 stripe_customer_id=stored.get("stripe_customer_id") or None,
                 settings=cfg,
+                business_pairs=business_pairs,
             )
         except Exception as exc:
             logger.exception("Stripe checkout session failed")
@@ -204,6 +256,7 @@ def register_payment_routes(
             if session.get("status") != "complete":
                 return RedirectResponse(url="/client?checkout=error", status_code=303)
             client_id, types, interval = stripe_payments.parse_session_metadata(session)
+            business_pairs = stripe_payments.parse_session_business_pairs(session)
             payment_status = session.get("payment_status") or ""
             status = "active" if payment_status == "paid" else "trialing"
             grant_subscriptions_from_checkout(
@@ -217,7 +270,11 @@ def register_payment_routes(
                 status=status,
             )
             return post_payment_redirect(
-                store=store, n8n=n8n, client_id=client_id, automation_types=types
+                store=store,
+                n8n=n8n,
+                client_id=client_id,
+                automation_types=types,
+                business_pairs=business_pairs or None,
             )
         except Exception as exc:
             logger.exception("Checkout success handling failed: %s", exc)
@@ -293,7 +350,12 @@ def register_payment_routes(
                 store.mark_subscriptions_by_stripe_id(sub_id, mapped)
                 if mapped in ("canceled", "unpaid"):
                     for sub in store.list_subscriptions_by_stripe_id(sub_id):
-                        store.deactivate_automation(sub["client_id"], sub["automation_type"])
+                        for auto in store.list_automations_by_type(
+                            sub["client_id"], sub["automation_type"]
+                        ):
+                            store.deactivate_automation(
+                                sub["client_id"], auto["business_id"], sub["automation_type"]
+                            )
 
         elif event_type == "invoice.payment_failed":
             sub_id = stripe_payments.stripe_id(data_object.get("subscription"))

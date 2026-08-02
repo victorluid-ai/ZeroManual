@@ -259,7 +259,7 @@ def client_login(req: ClientLoginRequest, request: Request) -> dict:
     client = runtime.store.authenticate_client(req.email, req.password)
     if client is None:
         _record_failed_login(key)
-        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
     _clear_login_attempts(key)
     token = runtime.store.create_client_session(client["client_id"])
     return {"token": token, "client": client}

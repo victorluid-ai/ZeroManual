@@ -227,12 +227,12 @@
       <div class="login-title">Portal de cliente</div>
       <div class="login-sub">Accede a tu panel de automatizaciones.</div>
       <div class="form-group">
-        <label for="inp-email">Email</label>
+        <label for="inp-email">Correo</label>
         <input id="inp-email" type="email" autocomplete="email" placeholder="tu@empresa.com" />
       </div>
       <div class="form-group">
         <label for="inp-password">Contraseña</label>
-        <input id="inp-password" type="password" autocomplete="current-password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" />
+        <input id="inp-password" type="password" autocomplete="current-password" placeholder="••••••••" />
       </div>
       <div class="error-msg" id="login-error"></div>
       <button class="btn primary full" id="btn-login">Entrar â†’</button>
@@ -249,7 +249,7 @@
         <input id="reg-name" type="text" placeholder="Panadería La Lupita" />
       </div>
       <div class="form-group">
-        <label for="reg-email">Email</label>
+        <label for="reg-email">Correo</label>
         <input id="reg-email" type="email" autocomplete="email" placeholder="tu@empresa.com" />
       </div>
       <div class="form-group">
@@ -306,7 +306,7 @@
     google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
     gmb_posts:      { name: 'Publicar en Google Business',   desc: 'Publica actualizaciones regulares en tu ficha de Google Business.' },
     instagram_posts:{ name: 'Publicar en Instagram',         desc: 'Programa y publica contenido en Instagram de forma automática.' },
-    newsletter:     { name: 'Newsletter a clientes',         desc: 'Envía un email semanal a tu lista de clientes.' },
+    newsletter:     { name: 'Newsletter a clientes',         desc: 'Envía un correo semanal a tu lista de clientes.' },
     dms:            { name: 'Responder DMs y comentarios',   desc: 'Contesta mensajes directos y comentarios automáticamente.' },
   };
 
@@ -359,9 +359,9 @@
   async function tryLogin() {
     const email = $('inp-email').value.trim(), password = $('inp-password').value;
     $('login-error').textContent = '';
-    if (!email || !password) { $('login-error').textContent = 'Completa email y contraseña.'; return; }
+    if (!email || !password) { $('login-error').textContent = 'Completa el correo y la contraseña.'; return; }
     const btn = $('btn-login');
-    btn.disabled = true; btn.textContent = 'Entrandoâ€¦';
+    btn.disabled = true; btn.textContent = 'Entrando…';
     try {
       const r = await fetch('/client/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -454,7 +454,7 @@
   async function loadWorkspace() {
     const side = $('sidebar');
     const c = $('content');
-    c.innerHTML = '<div class="loading">Cargandoâ€¦</div>';
+    c.innerHTML = '<div class="loading">Cargando…</div>';
     try {
       const [data] = await Promise.all([fetchAutomations(), fetchBusinesses()]);
       if (!data) return;
@@ -1073,7 +1073,7 @@
     if (!name || !email || !password) { $('register-error').textContent = 'Completa todos los campos.'; return; }
     if (password.length < 8) { $('register-error').textContent = 'La contraseña debe tener al menos 8 caracteres.'; return; }
     const btn = $('btn-register');
-    btn.disabled = true; btn.textContent = 'Creando cuentaâ€¦';
+    btn.disabled = true; btn.textContent = 'Creando cuenta…';
     try {
       const r = await fetch('/client/register', {
         method: 'POST',

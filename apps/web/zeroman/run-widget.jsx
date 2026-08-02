@@ -76,8 +76,8 @@ const REVIEWS = {
       stars: 5,
       time_pre: "hace 1 min",
       title: "El mejor brunch del barrio",
-      body: "Llevo viniendo cada domingo y nunca me decepciona. Los huevos benedictinos son de otro planeta. Carla siempre nos atiende como en casa.",
-      reply: "¡Diego, qué bonito leerte! 🤍 Le pasamos el mensaje a Carla — se va a poner contentísima. Te guardamos la mesa de la ventana para el próximo domingo. Gracias por seguir viniendo.",
+      body: "Llevo viniendo cada domingo y nunca me decepciona. Los huevos Benedict son de otro planeta. Carla siempre nos atiende como en casa.",
+      reply: "¡Diego, qué alegría leerte! 🤍 Le pasamos el mensaje a Carla — se va a poner contentísima. Te guardamos la mesa de la ventana para el próximo domingo. Gracias por seguir viniendo.",
       reply_name: "Carla · La Lupita",
     },
     {
@@ -87,8 +87,8 @@ const REVIEWS = {
       stars: 4,
       time_pre: "hace 3 min",
       title: "Buena comida, ambiente algo ruidoso",
-      body: "La comida estuvo deliciosa. Lo único: estaba muy ruidoso para platicar tranquilas. ¿Tienen mesas más quietas?",
-      reply: "¡Hola Sofía! Gracias por el feedback — el ruido los sábados es algo que estamos trabajando. Tenemos dos mesas al fondo, junto a la cocina vieja, que son mucho más tranquilas. Si vienes en la semana avísanos y te las reservamos. ✨",
+      body: "La comida estuvo deliciosa. Lo único: estaba muy ruidoso para charlar tranquilas. ¿Tenéis mesas más tranquilas?",
+      reply: "¡Hola Sofía! Gracias por el comentario — el ruido los sábados es algo en lo que estamos trabajando. Tenemos dos mesas al fondo, junto a la cocina vieja, que son mucho más tranquilas. Si vienes entre semana avísanos y te las reservamos. ✨",
       reply_name: "Carla · La Lupita",
     },
   ],
@@ -347,11 +347,11 @@ const RL_CSS = `
 
 const REEL_SCENES = {
   es: [
-    { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "Nunca más\neditas un reel", sub: "lo hace ZeroManual por ti", emoji: "🎬" },
-    { type: "upload",  dur: 2700, bg: "linear-gradient(165deg,#1d2233,#0b0d16)", glow: "rgba(120,130,160,.3)", kicker: "Paso 1", title: "Sube tus fotos", sub: "o las toma de tu galería", photos: ["🍳", "🥐", "☕"] },
-    { type: "edit",    dur: 2900, bg: "linear-gradient(165deg,#3a2f9a,#16182a)", glow: "rgba(79,70,229,.5)", kicker: "Paso 2", title: "La IA las edita", sub: "cortes, ritmo y audio en tendencia", frames: ["🍳", "🥐", "☕", "🪟"] },
-    { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Paso 3", title: "Escribe tu pie", caption: "Domingo de brunch en La Lupita 🍳 te guardamos mesa ", tags: "#LaLupita #brunch" },
-    { type: "publish", dur: 2800, bg: "linear-gradient(165deg,#11885b,#0a3a2b)", glow: "rgba(16,185,129,.45)", kicker: "Paso 4", title: "Y lo publica\nsolo", sub: "en Instagram y TikTok" },
+    { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "Nunca más\neditas un reel", sub: "ZeroManual lo hace por ti", emoji: "🎬" },
+    { type: "upload",  dur: 2700, bg: "linear-gradient(165deg,#1d2233,#0b0d16)", glow: "rgba(120,130,160,.3)", kicker: "Paso 1", title: "Sube tus fotos", sub: "o las saca de tu galería", photos: ["🍳", "🥐", "☕"] },
+    { type: "edit",    dur: 2900, bg: "linear-gradient(165deg,#3a2f9a,#16182a)", glow: "rgba(79,70,229,.5)", kicker: "Paso 2", title: "La IA las edita", sub: "cortes, ritmo y audio de tendencia", frames: ["🍳", "🥐", "☕", "🪟"] },
+    { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Paso 3", title: "Escribe el pie de foto", caption: "Domingo de brunch en La Lupita 🍳 te guardamos mesa ", tags: "#LaLupita #brunch" },
+    { type: "publish", dur: 2800, bg: "linear-gradient(165deg,#11885b,#0a3a2b)", glow: "rgba(16,185,129,.45)", kicker: "Paso 4", title: "Y lo publica\npor ti", sub: "en Instagram y TikTok" },
     { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Tus reels,\nen piloto automático", sub: "ZeroManual" },
   ],
   en: [
@@ -368,7 +368,7 @@ const RL_COPY = {
   es: {
     watching: "ZeroManual · creando tu contenido",
     preview: "Reel",
-    music: "Sunny Mornings · audio en tendencia",
+    music: "Sunny Mornings · audio de tendencia",
     acct: "lalupita", follow: "Seguir",
     foot: "Tus fotos se vuelven reels y se publican solas, cada semana.",
   },

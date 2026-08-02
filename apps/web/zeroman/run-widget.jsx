@@ -67,7 +67,7 @@ const REVIEWS = {
       title: "Pizza buena pero servicio lento",
       body: "La pizza estaba riquísima pero esperamos más de 40 minutos para que nos atendieran. Casi nos vamos.",
       reply: "¡Hola María! Gracias por venir y por contarnos. Tienes toda la razón: 40 minutos es demasiado. El viernes fue un día complicado en cocina, pero no es excusa. Nos encantaría invitarte un postre la próxima vez — escríbenos a hola@ y lo arreglamos.",
-      reply_name: "Carla · La Lupita",
+      reply_name: "Carla · Café Luma",
     },
     {
       name: "Diego F.",
@@ -78,7 +78,7 @@ const REVIEWS = {
       title: "El mejor brunch del barrio",
       body: "Llevo viniendo cada domingo y nunca me decepciona. Los huevos Benedict son de otro planeta. Carla siempre nos atiende como en casa.",
       reply: "¡Diego, qué alegría leerte! 🤍 Le pasamos el mensaje a Carla — se va a poner contentísima. Te guardamos la mesa de la ventana para el próximo domingo. Gracias por seguir viniendo.",
-      reply_name: "Carla · La Lupita",
+      reply_name: "Carla · Café Luma",
     },
     {
       name: "Sofía R.",
@@ -89,7 +89,7 @@ const REVIEWS = {
       title: "Buena comida, ambiente algo ruidoso",
       body: "La comida estuvo deliciosa. Lo único: estaba muy ruidoso para charlar tranquilas. ¿Tenéis mesas más tranquilas?",
       reply: "¡Hola Sofía! Gracias por el comentario — el ruido los sábados es algo en lo que estamos trabajando. Tenemos dos mesas al fondo, junto a la cocina vieja, que son mucho más tranquilas. Si vienes entre semana avísanos y te las reservamos. ✨",
-      reply_name: "Carla · La Lupita",
+      reply_name: "Carla · Café Luma",
     },
   ],
   en: [
@@ -102,7 +102,7 @@ const REVIEWS = {
       title: "Great pizza, slow service",
       body: "The pizza was delicious but we waited over 40 minutes to get served. We almost left.",
       reply: "Hi Maria — thank you for coming and for telling us straight. You're right, 40 minutes is too long. Friday was rough in the kitchen but that's not an excuse. We'd love to comp a dessert next time — drop us a note at hello@ and we'll sort it.",
-      reply_name: "Carla · La Lupita",
+      reply_name: "Carla · Café Luma",
     },
     {
       name: "Diego F.",
@@ -113,7 +113,7 @@ const REVIEWS = {
       title: "Best brunch in the neighborhood",
       body: "I come every Sunday and it never disappoints. Eggs benedict are out of this world. Carla always makes us feel at home.",
       reply: "Diego — this made our morning. 🤍 We'll pass it on to Carla, she'll be over the moon. We'll save the window table for you next Sunday. Thank you for keeping us in your routine.",
-      reply_name: "Carla · La Lupita",
+      reply_name: "Carla · Café Luma",
     },
     {
       name: "Sofia R.",
@@ -124,7 +124,7 @@ const REVIEWS = {
       title: "Good food, room a bit loud",
       body: "Food was excellent. Only thing: it was very loud to actually have a conversation. Any quieter tables?",
       reply: "Hi Sofia — thank you for the honest note. Saturday noise is something we're working on. There are two tables at the back, near the old kitchen, that are much quieter. If you come midweek let us know and we'll hold them for you. ✨",
-      reply_name: "Carla · La Lupita",
+      reply_name: "Carla · Café Luma",
     },
   ],
 };
@@ -350,7 +350,7 @@ const REEL_SCENES = {
     { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "Nunca más\neditas un reel", sub: "ZeroManual lo hace por ti", emoji: "🎬" },
     { type: "upload",  dur: 2700, bg: "linear-gradient(165deg,#1d2233,#0b0d16)", glow: "rgba(120,130,160,.3)", kicker: "Paso 1", title: "Sube tus fotos", sub: "o las saca de tu galería", photos: ["🍳", "🥐", "☕"] },
     { type: "edit",    dur: 2900, bg: "linear-gradient(165deg,#3a2f9a,#16182a)", glow: "rgba(79,70,229,.5)", kicker: "Paso 2", title: "La IA las edita", sub: "cortes, ritmo y audio de tendencia", frames: ["🍳", "🥐", "☕", "🪟"] },
-    { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Paso 3", title: "Escribe el pie de foto", caption: "Domingo de brunch en La Lupita 🍳 te guardamos mesa ", tags: "#LaLupita #brunch" },
+    { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Paso 3", title: "Escribe el pie de foto", caption: "Domingo de brunch en Café Luma 🍳 te guardamos mesa ", tags: "#CafeLuma #brunch" },
     { type: "publish", dur: 2800, bg: "linear-gradient(165deg,#11885b,#0a3a2b)", glow: "rgba(16,185,129,.45)", kicker: "Paso 4", title: "Y lo publica\npor ti", sub: "en Instagram y TikTok" },
     { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Tus reels,\nen piloto automático", sub: "ZeroManual" },
   ],
@@ -358,7 +358,7 @@ const REEL_SCENES = {
     { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "You never\nedit a reel again", sub: "ZeroManual does it for you", emoji: "🎬" },
     { type: "upload",  dur: 2700, bg: "linear-gradient(165deg,#1d2233,#0b0d16)", glow: "rgba(120,130,160,.3)", kicker: "Step 1", title: "Drop your photos", sub: "or it grabs them from your gallery", photos: ["🍳", "🥐", "☕"] },
     { type: "edit",    dur: 2900, bg: "linear-gradient(165deg,#3a2f9a,#16182a)", glow: "rgba(79,70,229,.5)", kicker: "Step 2", title: "AI edits them", sub: "cuts, pacing and trending audio", frames: ["🍳", "🥐", "☕", "🪟"] },
-    { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Step 3", title: "Writes the caption", caption: "Sunday brunch at La Lupita 🍳 we'll save you a table ", tags: "#LaLupita #brunch" },
+    { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Step 3", title: "Writes the caption", caption: "Sunday brunch at Café Luma 🍳 we'll save you a table ", tags: "#CafeLuma #brunch" },
     { type: "publish", dur: 2800, bg: "linear-gradient(165deg,#11885b,#0a3a2b)", glow: "rgba(16,185,129,.45)", kicker: "Step 4", title: "And posts it\nfor you", sub: "to Instagram and TikTok" },
     { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Your reels,\non autopilot", sub: "ZeroManual" },
   ],
@@ -369,14 +369,14 @@ const RL_COPY = {
     watching: "ZeroManual · creando tu contenido",
     preview: "Reel",
     music: "Sunny Mornings · audio de tendencia",
-    acct: "lalupita", follow: "Seguir",
+    acct: "cafeluma", follow: "Seguir",
     foot: "Tus fotos se vuelven reels y se publican solas, cada semana.",
   },
   en: {
     watching: "ZeroManual · creating your content",
     preview: "Reel",
     music: "Sunny Mornings · trending audio",
-    acct: "lalupita", follow: "Follow",
+    acct: "cafeluma", follow: "Follow",
     foot: "Your photos become reels and post themselves, every week.",
   },
 };

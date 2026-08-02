@@ -227,7 +227,7 @@
       <div class="login-title">Portal de cliente</div>
       <div class="login-sub">Accede a tu panel de automatizaciones.</div>
       <div class="form-group">
-        <label for="inp-email">Correo</label>
+        <label for="inp-email">Email</label>
         <input id="inp-email" type="email" autocomplete="email" placeholder="tu@empresa.com" />
       </div>
       <div class="form-group">
@@ -246,10 +246,10 @@
       <div class="login-sub">Empieza a automatizar tu negocio.</div>
       <div class="form-group">
         <label for="reg-name">Nombre del negocio</label>
-        <input id="reg-name" type="text" placeholder="Panadería La Lupita" />
+        <input id="reg-name" type="text" placeholder="Café Luma" />
       </div>
       <div class="form-group">
-        <label for="reg-email">Correo</label>
+        <label for="reg-email">Email</label>
         <input id="reg-email" type="email" autocomplete="email" placeholder="tu@empresa.com" />
       </div>
       <div class="form-group">
@@ -306,7 +306,7 @@
     google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
     gmb_posts:      { name: 'Publicar en Google Business',   desc: 'Publica actualizaciones regulares en tu ficha de Google Business.' },
     instagram_posts:{ name: 'Publicar en Instagram',         desc: 'Programa y publica contenido en Instagram de forma automática.' },
-    newsletter:     { name: 'Newsletter a clientes',         desc: 'Envía un correo semanal a tu lista de clientes.' },
+    newsletter:     { name: 'Newsletter a clientes',         desc: 'Envía un email semanal a tu lista de clientes.' },
     dms:            { name: 'Responder DMs y comentarios',   desc: 'Contesta mensajes directos y comentarios automáticamente.' },
   };
 
@@ -359,7 +359,7 @@
   async function tryLogin() {
     const email = $('inp-email').value.trim(), password = $('inp-password').value;
     $('login-error').textContent = '';
-    if (!email || !password) { $('login-error').textContent = 'Completa el correo y la contraseña.'; return; }
+    if (!email || !password) { $('login-error').textContent = 'Completa el email y la contraseña.'; return; }
     const btn = $('btn-login');
     btn.disabled = true; btn.textContent = 'Entrando…';
     try {
@@ -972,7 +972,7 @@
     google: 'Necesario para reseñas, publicaciones en Google Business y más.',
     instagram: 'Para publicar y responder en Instagram.',
     tiktok: 'Para publicar contenido en TikTok.',
-    email: 'Para newsletters y respuestas por correo.',
+    email: 'Para newsletters y respuestas por email.',
   };
 
   async function connectGoogle() {

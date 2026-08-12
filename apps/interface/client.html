@@ -4,185 +4,281 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ZeroManual · Portal de cliente</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='none' stroke='%230e1116' stroke-width='2'/><circle cx='16' cy='16' r='8' fill='%234f46e5'/></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='15' fill='none' stroke='%231b2030' stroke-width='2'/><circle cx='16' cy='16' r='8' fill='%234f56c9'/></svg>" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg: #f6f7f9; --bg-2: #eff1f4; --bg-3: #e9edf3; --line: #e6e9ee;
-      --fg: #0e1116; --fg-2: #3a4150; --fg-3: #6b7280;
-      --accent: #4f46e5; --accent-h: #4338ca; --accent-soft: #eef0fe;
+      --bg: #f6f7fa; --bg-2: #f1f3f7; --bg-3: #e9edf3;
+      --line: #e2e5ec; --line-2: #c8cdd9;
+      --fg: #1b2030; --fg-2: #3b4a6b; --fg-3: #6b7280;
+      --accent: #4f56c9; --accent-h: #4349b0; --accent-soft: #ecedfb; --accent-fg: #fff;
       --ok: #047857; --warn: #b7791f; --err: #e5484d;
       --r: 14px; --r-sm: 10px;
-      --shadow: 0 1px 2px rgba(14,17,22,0.04), 0 8px 24px rgba(14,17,22,0.06);
-      --font: 'IBM Plex Sans', system-ui, sans-serif;
-      --display: 'Space Grotesk', system-ui, sans-serif;
+      --shadow: 0 20px 50px -28px rgba(27,32,48,0.18), 0 2px 6px -2px rgba(27,32,48,0.06);
+      --shadow-sm: 0 1px 2px rgba(27,32,48,0.04), 0 8px 24px rgba(27,32,48,0.06);
+      --grid: rgba(27,32,48,0.04);
+      --font: "Plus Jakarta Sans", system-ui, sans-serif;
+      --display: "Space Grotesk", system-ui, sans-serif;
+      --mono: "JetBrains Mono", ui-monospace, monospace;
+      --serif: "Instrument Serif", "Times New Roman", serif;
     }
-    .login-brand-name, .topbar-brand-name, .login-title, .card-title, .auto-name, .google-box-title { font-family: var(--display); }
-    .login-title { font-size: 22px; letter-spacing: -.01em; }
-    .auto-card { border-radius: var(--r-sm); }
-    .btn { font-weight: 600; }
     html, body { height: 100%; }
-    body { font-family: var(--font); background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.5; }
+    body {
+      font-family: var(--font); background: var(--bg); color: var(--fg);
+      font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased;
+    }
+    ::selection { background: var(--accent); color: var(--accent-fg); }
+    .login-brand-name, .topbar-brand-name, .login-title, .card-title, .auto-name, .google-box-title, .panel-heading {
+      font-family: var(--display);
+    }
     #login-overlay {
-      position: fixed; inset: 0; background: var(--bg);
+      position: fixed; inset: 0; z-index: 100;
       display: flex; align-items: center; justify-content: center;
-      z-index: 100; transition: opacity .2s;
+      background: var(--bg); transition: opacity .25s ease;
+    }
+    #login-overlay::before {
+      content: ""; position: absolute; inset: 0; pointer-events: none;
+      background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 48px 48px;
+      mask-image: radial-gradient(ellipse 70% 55% at 50% 40%, #000 25%, transparent 75%);
+    }
+    #login-overlay::after {
+      content: ""; position: absolute; width: 280px; height: 280px; border-radius: 50%;
+      background: radial-gradient(circle, color-mix(in srgb, var(--accent) 28%, transparent), transparent 70%);
+      top: 12%; left: 18%; pointer-events: none;
     }
     #login-overlay.hidden { opacity: 0; pointer-events: none; }
     .login-card {
-      background: #fff; border: 1px solid var(--line); border-radius: var(--r);
-      box-shadow: var(--shadow); padding: 40px 36px; width: 340px;
+      position: relative; z-index: 1; width: min(380px, calc(100vw - 32px));
+      background: #fff; border: 1px solid var(--line); border-radius: 16px;
+      box-shadow: var(--shadow); padding: 40px 36px;
+      animation: zmPop .35s cubic-bezier(.2,.7,.3,1);
     }
+    @keyframes zmPop { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
     .login-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
-    .login-brand-mark {
-      width: 28px; height: 28px; border: 1.5px solid var(--fg); border-radius: 50%;
+    .login-brand-mark, .topbar-brand-mark {
+      border: 1.5px solid var(--fg); border-radius: 50%;
       position: relative; display: inline-block; flex-shrink: 0;
     }
-    .login-brand-mark::after {
-      content: ""; position: absolute; inset: 5px;
-      background: var(--accent); border-radius: 50%; animation: pulse 2.4s ease-in-out infinite;
+    .login-brand-mark { width: 28px; height: 28px; }
+    .login-brand-mark::after, .topbar-brand-mark::after {
+      content: ""; position: absolute; inset: 5px; background: var(--accent);
+      border-radius: 50%; animation: pulse 2.4s ease-in-out infinite;
     }
-    .login-brand-name { font-size: 17px; font-weight: 600; letter-spacing: -.01em; }
-    .login-brand-name span { font-weight: 300; }
-    .login-title { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
-    .login-sub { color: var(--fg-3); margin-bottom: 24px; font-size: 13px; }
+    .topbar-brand-mark { width: 22px; height: 22px; }
+    .topbar-brand-mark::after { inset: 4px; }
+    @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.55); opacity: 0.7; } }
+    .login-brand-name { font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+    .login-brand-name span, .topbar-brand-name span { font-weight: 300; }
+    .login-title { font-size: 22px; font-weight: 500; letter-spacing: -.02em; margin-bottom: 6px; }
+    .login-sub { color: var(--fg-3); margin-bottom: 24px; font-size: 13.5px; line-height: 1.45; }
     .form-group { margin-bottom: 14px; }
-    .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--fg-2); margin-bottom: 5px; }
-    .form-group input {
-      width: 100%; padding: 9px 11px; background: var(--bg); border: 1px solid var(--line);
-      border-radius: var(--r-sm); font: inherit; font-size: 14px; color: var(--fg);
-      outline: none; transition: border-color .15s;
+    .form-group label { display: block; font-size: 12px; font-weight: 500; color: var(--fg-2); margin-bottom: 5px; font-family: var(--display); }
+    .form-group input, .form-group select {
+      width: 100%; padding: 10px 12px; background: var(--bg); border: 1px solid var(--line);
+      border-radius: 8px; font: inherit; font-size: 14px; color: var(--fg); outline: none;
+      transition: border-color .15s, box-shadow .15s;
     }
-    .form-group input:focus { border-color: var(--accent); }
+    .form-group input:focus, .form-group select:focus {
+      border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+    }
     .btn {
-      display: inline-flex; align-items: center; gap: 6px; padding: 9px 16px;
-      border-radius: var(--r-sm); border: 1px solid transparent; font: inherit;
-      font-size: 13px; font-weight: 500; cursor: pointer; text-decoration: none;
-      transition: background .15s, border-color .15s, color .15s; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px;
+      border-radius: 8px; border: 1px solid transparent; font: inherit;
+      font-family: var(--display); font-size: 13.5px; font-weight: 500; letter-spacing: -.01em;
+      cursor: pointer; text-decoration: none; white-space: nowrap;
+      transition: background .15s, border-color .15s, color .15s, transform .15s, filter .15s;
     }
-    .btn.primary { background: var(--accent); color: #fff; }
-    .btn.primary:hover { background: var(--accent-h); }
-    .btn.ghost { background: transparent; border-color: var(--line); color: var(--fg-2); }
-    .btn.ghost:hover { background: var(--bg-2); }
+    .btn .arrow { display: inline-block; transition: transform .2s; }
+    .btn:hover .arrow { transform: translateX(2px); }
+    .btn.primary { background: var(--accent); color: var(--accent-fg); }
+    .btn.primary:hover { filter: brightness(1.08); transform: translateY(-1px); }
+    .btn.ghost { background: transparent; border-color: var(--line-2); color: var(--fg-2); }
+    .btn.ghost:hover { background: var(--bg-3); border-color: var(--fg-2); color: var(--fg); }
     .btn.danger { background: transparent; border-color: var(--err); color: var(--err); }
     .btn.danger:hover { background: var(--err); color: #fff; }
     .btn.sm { padding: 5px 10px; font-size: 12px; }
     .btn.full { width: 100%; justify-content: center; margin-top: 8px; }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; transform: none; filter: none; }
     .error-msg { color: var(--err); font-size: 12px; margin-top: 8px; min-height: 16px; }
+    .login-switch { text-align: center; margin-top: 16px; font-size: 12.5px; color: var(--fg-3); }
+    .login-switch button {
+      background: none; border: none; color: var(--accent); cursor: pointer;
+      font: inherit; font-size: 12.5px; font-weight: 600; padding: 0;
+    }
+    .login-switch button:hover { text-decoration: underline; }
     #app { display: flex; flex-direction: column; height: 100%; }
     .topbar {
-      background: #fff; border-bottom: 1px solid var(--line);
-      display: flex; align-items: center; padding: 0 20px; height: 52px; gap: 16px; flex-shrink: 0;
+      position: sticky; top: 0; z-index: 40; height: 64px; flex-shrink: 0;
+      display: flex; align-items: center; padding: 0 24px; gap: 16px;
+      background: color-mix(in srgb, var(--bg) 82%, transparent);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--line);
     }
-    .topbar-brand { display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--fg); }
-    .topbar-brand-mark {
-      width: 22px; height: 22px; border: 1.5px solid var(--fg); border-radius: 50%;
-      position: relative; display: inline-block; flex-shrink: 0;
+    .topbar-brand {
+      display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--fg);
+      font-family: var(--display); font-weight: 600; font-size: 16px; letter-spacing: -.02em;
     }
-    .topbar-brand-mark::after {
-      content: ""; position: absolute; inset: 4px;
-      background: var(--accent); border-radius: 50%; animation: pulse 2.4s ease-in-out infinite;
-    }
-    @keyframes pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.55); opacity: 0.7; } }
-    .topbar-brand-name { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-    .topbar-brand-name span { font-weight: 300; }
+    .topbar-brand-name { font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
     .topbar-divider { width: 1px; height: 18px; background: var(--line); }
-    .topbar-sub { font-size: 12px; color: var(--fg-3); }
+    .topbar-sub {
+      font-family: var(--display); font-size: 12.5px; font-weight: 500;
+      color: var(--fg-3); letter-spacing: .01em;
+    }
+    .topbar-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 100px;
+      background: color-mix(in srgb, var(--bg-2) 80%, white 20%);
+      font-family: var(--display); font-size: 12px; font-weight: 500; color: var(--fg-2);
+    }
+    .topbar-pill .dot {
+      width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+    }
     .topbar-spacer { flex: 1; }
-    .topbar-user { font-size: 12px; color: var(--fg-3); }
-    .topbar-user strong { color: var(--fg-2); }
+    .topbar-user { font-size: 12.5px; color: var(--fg-3); }
+    .topbar-user strong { color: var(--fg-2); font-weight: 600; }
     .workspace { flex: 1; display: flex; min-height: 0; }
     .sidebar {
-      width: 260px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line);
+      width: 280px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--line);
       display: flex; flex-direction: column; overflow-y: auto;
     }
-    .sidebar-section { padding: 14px 12px 8px; }
+    .sidebar-brand {
+      display: flex; align-items: center; gap: 10px; padding: 18px 16px 10px;
+    }
+    .sidebar-brand-mark {
+      width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
+      background: var(--accent-soft); color: var(--accent);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .sidebar-brand-mark svg { width: 18px; height: 18px; }
+    .sidebar-brand-text { min-width: 0; }
+    .sidebar-brand-title {
+      font-family: var(--display); font-size: 13.5px; font-weight: 600;
+      letter-spacing: -.01em; color: var(--fg);
+    }
+    .sidebar-brand-sub { font-size: 11.5px; color: var(--fg-3); margin-top: 1px; }
+    .sidebar-section { padding: 10px 12px 6px; }
     .sidebar-label {
-      font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-      color: var(--fg-3); padding: 0 8px 8px;
+      font-family: var(--display); font-size: 11px; font-weight: 500;
+      letter-spacing: .04em; text-transform: uppercase; color: var(--fg-3);
+      padding: 0 8px 8px;
     }
     .nav-item {
-      display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
-      padding: 9px 10px; border: none; background: transparent; border-radius: var(--r-sm);
+      display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+      padding: 9px 10px; border: none; background: transparent; border-radius: 10px;
       cursor: pointer; font: inherit; font-size: 13px; color: var(--fg-2);
-      transition: background .12s, color .12s;
+      transition: background .15s, color .15s, box-shadow .15s;
     }
     .nav-item:hover { background: var(--bg-2); color: var(--fg); }
-    .nav-item.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
-    .nav-item .nav-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--fg-3); flex-shrink: 0; }
-    .nav-item.on .nav-dot, .nav-item.active-auto .nav-dot { background: var(--ok); }
-    .nav-item .nav-meta { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 500; }
+    .nav-item.on {
+      background: var(--accent-soft); color: var(--accent); font-weight: 600;
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent);
+    }
+    .nav-ico {
+      width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--bg-2); color: var(--fg-3);
+    }
+    .nav-ico svg { width: 16px; height: 16px; }
+    .nav-item.on .nav-ico { background: color-mix(in srgb, var(--accent) 16%, #fff); color: var(--accent); }
+    .nav-item.active-auto .nav-ico { color: var(--ok); background: #e8f5ef; }
+    .nav-item.on.active-auto .nav-ico { color: var(--accent); background: color-mix(in srgb, var(--accent) 16%, #fff); }
+    .nav-item .nav-label { flex: 1; min-width: 0; line-height: 1.25; }
+    .nav-item .nav-meta { margin-left: auto; font-size: 11px; color: var(--fg-3); font-weight: 500; font-family: var(--mono); }
     .nav-item .nav-badge {
       margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
       background: var(--accent); color: #fff; font-size: 10px; font-weight: 600;
       display: inline-flex; align-items: center; justify-content: center;
     }
-    .sidebar-foot { margin-top: auto; padding: 12px; border-top: 1px solid var(--line); }
-    .panel { flex: 1; overflow-y: auto; padding: 24px 20px; background: var(--bg); }
-    .panel-subtabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
+    .nav-empty {
+      padding: 10px 12px; font-size: 12.5px; color: var(--fg-3);
+      border: 1px dashed var(--line); border-radius: 10px; margin: 0 2px;
+    }
+    .sidebar-foot {
+      margin-top: auto; padding: 14px 16px; border-top: 1px solid var(--line);
+      font-size: 11.5px; color: var(--fg-3); line-height: 1.45;
+    }
+    .sidebar-foot em { font-family: var(--serif); font-style: italic; color: var(--fg-2); }
+    .panel {
+      flex: 1; overflow-y: auto; padding: 28px 28px 40px;
+      background:
+        radial-gradient(ellipse 50% 30% at 90% 0%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
+        var(--bg);
+    }
+    .panel-heading { font-size: 22px; font-weight: 500; letter-spacing: -.02em; margin-bottom: 4px; }
+    .panel-lede { color: var(--fg-3); font-size: 13.5px; margin-bottom: 20px; }
+    .panel-subtabs { display: flex; gap: 2px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
     .panel-subtab {
-      padding: 8px 12px; font-size: 13px; font-weight: 500; color: var(--fg-3);
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 10px 12px; font-size: 13px; font-weight: 500; color: var(--fg-3);
       border: none; background: transparent; cursor: pointer; border-bottom: 2px solid transparent;
-      font-family: inherit;
+      font-family: var(--display);
     }
     .panel-subtab:hover { color: var(--fg); }
     .panel-subtab.on { color: var(--fg); border-bottom-color: var(--accent); }
-    .mode-toggle {
-      display: flex; gap: 8px; flex-wrap: wrap;
-    }
+    .mode-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
     .mode-option {
-      flex: 1; min-width: 180px; padding: 14px; border: 1px solid var(--line); border-radius: var(--r-sm);
-      background: var(--bg); cursor: pointer; text-align: left; font: inherit;
-      transition: border-color .15s, background .15s;
+      flex: 1; min-width: 180px; padding: 14px; border: 1px solid var(--line); border-radius: 10px;
+      background: #fff; cursor: pointer; text-align: left; font: inherit;
+      transition: border-color .15s, background .15s, box-shadow .15s;
     }
-    .mode-option:hover { border-color: var(--accent); }
+    .mode-option:hover { border-color: var(--accent); box-shadow: var(--shadow-sm); }
     .mode-option.on { border-color: var(--accent); background: var(--accent-soft); }
-    .mode-option strong { display: block; font-size: 13px; margin-bottom: 4px; color: var(--fg); }
+    .mode-option strong { display: block; font-size: 13px; margin-bottom: 4px; color: var(--fg); font-family: var(--display); }
     .mode-option span { font-size: 12px; color: var(--fg-3); line-height: 1.4; }
     .draft-text {
-      width: 100%; min-height: 70px; padding: 8px; border: 1px solid var(--line);
-      border-radius: var(--r-sm); font: inherit; font-size: 13px; color: var(--fg);
+      width: 100%; min-height: 70px; padding: 10px; border: 1px solid var(--line);
+      border-radius: 8px; font: inherit; font-size: 13px; color: var(--fg);
       background: #fff; resize: vertical;
     }
-    .hist-row {
-      padding: 12px 0; border-bottom: 1px solid var(--line);
-    }
+    .hist-row { padding: 12px 0; border-bottom: 1px solid var(--line); }
     .hist-row:last-child { border-bottom: none; }
     .hist-meta { font-size: 12px; color: var(--fg-3); margin-bottom: 4px; }
     .hist-body { font-size: 13px; color: var(--fg-2); white-space: pre-wrap; }
-    @media (max-width: 720px) {
-      .workspace { flex-direction: column; }
-      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--line); max-height: 40vh; }
+    .card {
+      background: #fff; border: 1px solid var(--line); border-radius: 14px;
+      padding: 22px; margin-bottom: 16px; box-shadow: var(--shadow-sm);
     }
-    .card { background: #fff; border: 1px solid var(--line); border-radius: var(--r); padding: 20px; margin-bottom: 16px; }
-    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .card-title { font-size: 13px; font-weight: 600; }
-    .card-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
-    .auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
+    .card-title { font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
+    .card-sub { font-size: 12.5px; color: var(--fg-3); margin-top: 3px; }
+    .auto-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap: 14px; }
     .auto-card {
-      background: var(--bg); border: 1px solid var(--line); border-radius: var(--r);
-      padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: border-color .15s;
+      background: #fff; border: 1px solid var(--line); border-radius: 12px;
+      padding: 18px; display: flex; flex-direction: column; gap: 12px;
+      transition: border-color .15s, transform .18s, box-shadow .18s;
     }
-    .auto-card:hover { border-color: var(--accent); }
-    .auto-card-body { flex: 1; }
-    .auto-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
-    .auto-desc { font-size: 12px; color: var(--fg-3); line-height: 1.4; }
+    .auto-card:hover {
+      border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+      transform: translateY(-2px); box-shadow: var(--shadow-sm);
+    }
+    .auto-card-top { display: flex; align-items: flex-start; gap: 12px; }
+    .auto-ico {
+      width: 40px; height: 40px; border-radius: 11px; flex-shrink: 0;
+      background: var(--accent-soft); color: var(--accent);
+      display: inline-flex; align-items: center; justify-content: center;
+    }
+    .auto-ico svg { width: 20px; height: 20px; }
+    .auto-card-body { flex: 1; min-width: 0; }
+    .auto-name { font-weight: 500; font-size: 14.5px; margin-bottom: 4px; letter-spacing: -.01em; }
+    .auto-desc { font-size: 12.5px; color: var(--fg-3); line-height: 1.45; }
     .auto-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-    .auto-status { font-size: 11px; font-weight: 500; }
+    .auto-status { font-size: 11.5px; font-weight: 500; font-family: var(--display); }
     .auto-status.on { color: var(--ok); }
     .auto-status.off { color: var(--fg-3); }
     .auto-warn {
-      font-size: 11px; color: #8a6516; background: #faf0da;
-      border-radius: var(--r-sm); padding: 6px 10px;
+      font-size: 11.5px; color: #8a6516; background: #faf0da;
+      border-radius: 8px; padding: 7px 10px;
     }
     .auto-warn a { color: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
     .google-box {
-      border: 1px solid var(--line); border-radius: var(--r); padding: 24px;
-      background: var(--bg); display: flex; flex-direction: column; gap: 16px; max-width: 480px;
+      border: 1px solid var(--line); border-radius: 14px; padding: 24px;
+      background: #fff; display: flex; flex-direction: column; gap: 16px; max-width: 480px;
+      box-shadow: var(--shadow-sm);
     }
     .google-box-head { display: flex; align-items: center; gap: 10px; }
     .google-box-icon { width: 32px; height: 32px; flex-shrink: 0; }
@@ -190,18 +286,22 @@
       width: 32px; height: 32px; flex-shrink: 0; border-radius: 8px;
       display: inline-flex; align-items: center; justify-content: center;
     }
-    .google-box-title { font-size: 15px; font-weight: 600; }
+    .google-box-title { font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
     .google-box-sub { font-size: 12px; color: var(--fg-3); margin-top: 2px; }
     .google-box-body { font-size: 13px; color: var(--fg-2); line-height: 1.6; }
     .google-box-meta { font-size: 12px; color: var(--fg-3); }
-    .badge { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 11px; font-weight: 500; line-height: 1.5; }
+    .badge {
+      display: inline-block; padding: 2px 8px; border-radius: 100px;
+      font-size: 11px; font-weight: 500; line-height: 1.5; font-family: var(--display);
+    }
     .badge.ok { background: #e3f3eb; color: #1f6e49; }
     .badge.neu { background: var(--bg-2); color: var(--fg-3); }
-    .empty { text-align: center; padding: 48px 16px; color: var(--fg-3); font-size: 13px; }
+    .empty { text-align: center; padding: 48px 16px; color: var(--fg-3); font-size: 13.5px; }
     .loading { text-align: center; padding: 32px; color: var(--fg-3); font-size: 13px; }
     #toast {
       position: fixed; bottom: 24px; right: 24px; background: var(--fg); color: var(--bg);
-      border-radius: var(--r-sm); padding: 10px 16px; font-size: 13px; font-weight: 500;
+      border-radius: 10px; padding: 11px 16px; font-size: 13px; font-weight: 500;
+      font-family: var(--display); box-shadow: var(--shadow);
       transform: translateY(16px); opacity: 0; transition: transform .2s, opacity .2s;
       pointer-events: none; z-index: 200;
     }
@@ -210,7 +310,17 @@
     #toast.err { background: var(--err); }
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: 4px; }
+    @media (max-width: 720px) {
+      .topbar { padding: 0 14px; height: 56px; }
+      .topbar-sub, .topbar-pill { display: none; }
+      .workspace { flex-direction: column; }
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--line); max-height: 42vh; }
+      .panel { padding: 18px 14px 32px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
   </style>
 </head>
 <body>
@@ -235,9 +345,9 @@
         <input id="inp-password" type="password" autocomplete="current-password" placeholder="••••••••" />
       </div>
       <div class="error-msg" id="login-error"></div>
-      <button class="btn primary full" id="btn-login">Entrar â†’</button>
-      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
-        ¿Primera vez? <button onclick="showRegister()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Crear cuenta</button>
+      <button class="btn primary full" id="btn-login">Entrar <span class="arrow">→</span></button>
+      <div class="login-switch">
+        ¿Primera vez? <button type="button" onclick="showRegister()">Crear cuenta</button>
       </div>
     </div>
     <!-- Register view -->
@@ -257,9 +367,9 @@
         <input id="reg-password" type="password" placeholder="Mínimo 8 caracteres" />
       </div>
       <div class="error-msg" id="register-error"></div>
-      <button class="btn primary full" id="btn-register">Crear cuenta â†’</button>
-      <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
-        ¿Ya tienes cuenta? <button onclick="showLogin()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Entrar</button>
+      <button class="btn primary full" id="btn-register">Crear cuenta <span class="arrow">→</span></button>
+      <div class="login-switch">
+        ¿Ya tienes cuenta? <button type="button" onclick="showLogin()">Entrar</button>
       </div>
     </div>
   </div>
@@ -268,16 +378,16 @@
 <!-- App -->
 <div id="app">
   <div class="topbar">
-    <a class="topbar-brand" href="/">
-      <div class="topbar-brand-mark"></div>
+    <a class="topbar-brand" href="/" aria-label="ZeroManual inicio">
+      <div class="topbar-brand-mark" aria-hidden="true"></div>
       <div class="topbar-brand-name">Zero<span>Manual</span></div>
     </a>
-    <div class="topbar-divider"></div>
-    <div class="topbar-sub">Portal de cliente</div>
+    <div class="topbar-divider" aria-hidden="true"></div>
+    <div class="topbar-pill"><span class="dot" aria-hidden="true"></span> Portal de cliente</div>
     <div class="topbar-spacer"></div>
     <div class="topbar-user" id="lbl-business"></div>
-    <button class="btn ghost sm" id="btn-home">Volver a inicio</button>
-    <button class="btn ghost sm" id="btn-logout">Cerrar sesión</button>
+    <button class="btn ghost sm" id="btn-home">Inicio</button>
+    <button class="btn ghost sm" id="btn-logout">Salir</button>
   </div>
   <div class="workspace">
     <aside class="sidebar" id="sidebar"></aside>
@@ -301,6 +411,22 @@
   let reviewsSubtab = 'reviews'; // reviews | pending | history | settings
   let cachedAutos = null;
   let cachedBusinesses = [];
+
+
+  const ICO = (paths) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+  const NAV_ICONS = {
+    google_reviews: ICO('<path d="M12 2l2.4 7.2H22l-6 4.4 2.3 7.2L12 16.8 5.7 20.8 8 13.6 2 9.2h7.6z"/>'),
+    gmb_posts: ICO('<path d="M4 4h16v12H4z"/><path d="M8 20h8"/><path d="M12 16v4"/>'),
+    instagram_posts: ICO('<rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/>'),
+    newsletter: ICO('<path d="M4 6h16v12H4z"/><path d="M4 7l8 6 8-6"/>'),
+    dms: ICO('<path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>'),
+    catalog: ICO('<path d="M4 5h7v7H4z"/><path d="M13 5h7v7h-7z"/><path d="M4 14h7v7H4z"/><path d="M13 14h7v7h-7z"/>'),
+    accounts: ICO('<circle cx="12" cy="8" r="3.2"/><path d="M5 20c0-3.4 3-5.8 7-5.8s7 2.4 7 5.8"/>'),
+    portal: ICO('<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18"/><path d="M12 3a14 14 0 0 0 0 18"/>'),
+  };
+  function navIcon(key) {
+    return `<span class="nav-ico" aria-hidden="true">${NAV_ICONS[key] || NAV_ICONS.catalog}</span>`;
+  }
 
   const AUTOMATION_LABELS = {
     google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
@@ -376,7 +502,7 @@
     } catch (e) {
       $('login-error').textContent = e.message;
     } finally {
-      btn.disabled = false; btn.textContent = 'Entrar â†’';
+      btn.disabled = false; btn.innerHTML = 'Entrar <span class="arrow">→</span>';
     }
   }
 
@@ -481,26 +607,37 @@
     const items = [...byType.entries()].map(([type, rows]) => {
       const lbl = AUTOMATION_LABELS[type] || { name: type };
       const on = activeView === type ? ' on active-auto' : ' active-auto';
-      const badge = rows.length > 1 ? `<span class="nav-meta">${rows.length} negocios</span>` : '';
-      return `<button class="nav-item${on}" data-view="${escHtml(type)}">
-        <span class="nav-dot"></span>
-        <span>${escHtml(lbl.name)}</span>
+      const badge = rows.length > 1 ? `<span class="nav-meta">${rows.length}</span>` : '';
+      return `<button class="nav-item${on}" data-view="${escHtml(type)}" title="${escHtml(lbl.name)}">
+        ${navIcon(type)}
+        <span class="nav-label">${escHtml(lbl.name)}</span>
         ${badge}
       </button>`;
-    }).join('') || `<div style="padding:8px 10px;font-size:12px;color:var(--fg-3)">Ninguna suscrita aún</div>`;
+    }).join('') || `<div class="nav-empty">Ninguna suscrita aún — elige en Catálogo.</div>`;
 
     side.innerHTML = `
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-mark">${NAV_ICONS.portal}</div>
+        <div class="sidebar-brand-text">
+          <div class="sidebar-brand-title">Tu espacio</div>
+          <div class="sidebar-brand-sub">Automatizaciones activas</div>
+        </div>
+      </div>
       <div class="sidebar-section">
         <div class="sidebar-label">Mis automatizaciones</div>
         ${items}
       </div>
       <div class="sidebar-section">
         <div class="sidebar-label">Cuenta</div>
-        <button class="nav-item${activeView === 'catalog' ? ' on' : ''}" data-view="catalog">Catálogo / suscribir</button>
-        <button class="nav-item${activeView === 'google' || activeView === 'accounts' ? ' on' : ''}" data-view="accounts">Conectar cuentas</button>
+        <button class="nav-item${activeView === 'catalog' ? ' on' : ''}" data-view="catalog">
+          ${navIcon('catalog')}<span class="nav-label">Catálogo / suscribir</span>
+        </button>
+        <button class="nav-item${activeView === 'google' || activeView === 'accounts' ? ' on' : ''}" data-view="accounts">
+          ${navIcon('accounts')}<span class="nav-label">Conectar cuentas</span>
+        </button>
       </div>
       <div class="sidebar-foot">
-        <div style="font-size:11px;color:var(--fg-3);line-height:1.4">Selecciona una automatización para ver su panel.</div>
+        Selecciona una automatización para ver su panel. <em>ZeroManual</em> se encarga del resto.
       </div>`;
     side.querySelectorAll('[data-view]').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -543,11 +680,9 @@
       return;
     }
     const multiBiz = cachedBusinesses.length > 1;
-    c.innerHTML = `<div class="card">
-      <div class="card-head"><div>
-        <div class="card-title">Catálogo de automatizaciones</div>
-        <div class="card-sub">${available.length} disponible(s)${multiBiz ? ` · ${cachedBusinesses.length} negocios detectados — 20% dto. a partir del 2º` : ''}</div>
-      </div></div>
+    c.innerHTML = `<div class="panel-heading">Catálogo</div>
+      <div class="panel-lede">${available.length} automatización(es) disponible(s)${multiBiz ? ` · ${cachedBusinesses.length} negocios detectados — 20% dto. a partir del 2º` : ''}</div>
+      <div class="card">
       <div class="auto-grid" id="auto-grid"></div>
     </div>`;
     const grid = $('auto-grid');
@@ -559,9 +694,12 @@
       div.className = 'auto-card';
       div.dataset.type = type;
       div.innerHTML = `
-        <div class="auto-card-body">
-          <div class="auto-name">${escHtml(lbl.name)}</div>
-          <div class="auto-desc">${escHtml(lbl.desc)}</div>
+        <div class="auto-card-top">
+          <div class="auto-ico" aria-hidden="true">${NAV_ICONS[type] || NAV_ICONS.catalog}</div>
+          <div class="auto-card-body">
+            <div class="auto-name">${escHtml(lbl.name)}</div>
+            <div class="auto-desc">${escHtml(lbl.desc)}</div>
+          </div>
         </div>
         <div class="auto-footer">
           <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? `● Suscrito${rows.length > 1 ? ` (${rows.length} negocios)` : ''}` : '○ Sin suscripción'}</span>
@@ -708,17 +846,17 @@
       activeBusinessId = rows.length ? rows[0].business_id : null;
     }
     const bizSelector = rows.length > 1 ? `
-      <select id="biz-selector" style="margin-left:auto;padding:6px 10px;border:1px solid var(--line);border-radius:var(--r-sm);font:inherit;font-size:12px">
+      <select id="biz-selector" style="padding:8px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:12.5px;background:#fff;color:var(--fg);outline:none">
         ${rows.map(r => `<option value="${escHtml(r.business_id)}" ${r.business_id === activeBusinessId ? 'selected' : ''}>${escHtml(r.business_name || r.business_id)}</option>`).join('')}
       </select>` : '';
     c.innerHTML = `
-      <div class="card" style="margin-bottom:12px">
-        <div class="card-head" style="margin-bottom:0"><div>
-          <div class="card-title">Responder reseñas de Google</div>
-          <div class="card-sub">Revisa borradores, historial y modo de envío</div>
-        </div>${bizSelector}</div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:4px">
+        <div>
+          <div class="panel-heading">Responder reseñas de Google</div>
+          <div class="panel-lede" style="margin-bottom:0">Revisa borradores, historial y modo de envío</div>
+        </div>${bizSelector}
       </div>
-      <div class="panel-subtabs">
+      <div class="panel-subtabs" style="margin-top:16px">
         <button class="panel-subtab${reviewsSubtab === 'reviews' ? ' on' : ''}" data-sub="reviews">Reseñas</button>
         <button class="panel-subtab${reviewsSubtab === 'pending' ? ' on' : ''}" data-sub="pending">Pendientes</button>
         <button class="panel-subtab${reviewsSubtab === 'history' ? ' on' : ''}" data-sub="history">Historial</button>
@@ -998,11 +1136,9 @@
       const data = await api('GET', '/client/accounts/status');
       if (!data) return;
       const accounts = data.accounts || [];
-      c.innerHTML = `<div class="card">
-        <div class="card-head"><div>
-          <div class="card-title">Conectar cuentas</div>
-          <div class="card-sub">Vincula las plataformas que usan tus automatizaciones</div>
-        </div></div>
+      c.innerHTML = `<div class="panel-heading">Conectar cuentas</div>
+        <div class="panel-lede">Vincula las plataformas que usan tus automatizaciones</div>
+        <div class="card">
         <div id="accounts-list"></div>
       </div>`;
       const list = $('accounts-list');
@@ -1089,7 +1225,7 @@
     } catch (e) {
       $('register-error').textContent = e.message;
     } finally {
-      btn.disabled = false; btn.textContent = 'Crear cuenta â†’';
+      btn.disabled = false; btn.innerHTML = 'Crear cuenta <span class="arrow">→</span>';
     }
   }
 

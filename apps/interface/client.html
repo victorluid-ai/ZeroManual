@@ -1233,6 +1233,8 @@
   $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });
   $('btn-register').addEventListener('click', tryRegister);
   $('reg-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryRegister(); });
+  $('btn-show-register')?.addEventListener('click', showRegister);
+  $('btn-show-login')?.addEventListener('click', showLogin);
   $('btn-logout').addEventListener('click', doLogout);
   $('btn-home').addEventListener('click', () => { window.location.href = '/'; });
 

@@ -515,6 +515,79 @@ def test_settings_and_drafts_are_scoped_per_business(
     assert {d["review_id"] for d in drafts_biz2} == {"rev-biz2"}
 
 
+def test_list_google_reviews_updates_placeholder_business_location(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import apps.interface.api as api_module
+
+    reg = _register(client, "placeholder@example.com")
+    client_id = reg["client"]["client_id"]
+    auth = {"Authorization": f"Bearer {reg['token']}"}
+    api_module.runtime.store.save_google_creds(
+        client_id=client_id,
+        refresh_token="reftok",
+        access_token="tok",
+        token_expiry=None,
+        google_email="biz@example.com",
+        location_id=None,
+    )
+    business = api_module.runtime.store.ensure_default_business(client_id)
+    assert business["location_id"].startswith("default-")
+
+    def fake_fetch(creds, page_size=50, page_token=None, location_override=None):
+        assert location_override == "accounts/9/locations/7"
+        payload = {
+            "location_id": "accounts/9/locations/7",
+            "average_rating": 4.5,
+            "total_review_count": 1,
+            "next_page_token": None,
+            "reviews": [
+                {
+                    "review_id": "rev-1",
+                    "name": "accounts/9/locations/7/reviews/rev-1",
+                    "reviewer_name": "Cliente",
+                    "rating": 5,
+                    "star_rating": "FIVE",
+                    "comment": "Excelente",
+                    "create_time": "2026-01-01T00:00:00Z",
+                    "update_time": "2026-01-01T00:00:00Z",
+                    "reply_comment": None,
+                    "reply_update_time": None,
+                    "has_reply": False,
+                }
+            ],
+        }
+        return payload, "accounts/9/locations/7", None
+
+    def fake_sync(client_id_arg: str):
+        api_module.runtime.store.sync_businesses(
+            client_id_arg,
+            [
+                {
+                    "google_account_id": "accounts/9",
+                    "location_id": "accounts/9/locations/7",
+                    "business_name": "Negocio real",
+                }
+            ],
+        )
+        return api_module.runtime.store.list_businesses(client_id_arg)
+
+    monkeypatch.setattr(api_module, "_sync_businesses_from_google", fake_sync)
+    monkeypatch.setattr(api_module._google_business, "fetch_reviews_for_creds", fake_fetch)
+
+    resp = client.get(
+        f"/client/automations/google_reviews/reviews?business_id={business['business_id']}",
+        headers=auth,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_review_count"] == 1
+    assert body["reviews"][0]["comment"] == "Excelente"
+
+    updated = api_module.runtime.store.get_business(business["business_id"])
+    assert updated["location_id"] == "accounts/9/locations/7"
+
+
 def test_deactivate_automation_only_affects_selected_business(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

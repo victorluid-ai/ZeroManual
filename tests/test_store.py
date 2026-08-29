@@ -196,3 +196,60 @@ def test_list_ledger_entries_filtered_by_entity(store: DataStore) -> None:
     assert any(e["entry_id"] == id_default for e in default_entries)
     assert not any(e["entry_id"] == id_other for e in default_entries)
     assert any(e["entry_id"] == id_other for e in other_entries)
+
+
+def test_sync_businesses_reuses_placeholder_row(store: DataStore) -> None:
+    client = store.create_client("Biz", "sync@example.com", "secret123")
+    client_id = client["client_id"]
+    store.save_google_creds(
+        client_id=client_id,
+        refresh_token="rt",
+        access_token="at",
+        token_expiry=None,
+        google_email="biz@example.com",
+        location_id=None,
+    )
+    placeholder = store.ensure_default_business(client_id)
+    assert placeholder["location_id"].startswith("default-")
+
+    synced = store.sync_businesses(
+        client_id,
+        [
+            {
+                "google_account_id": "accounts/1",
+                "location_id": "accounts/1/locations/99",
+                "business_name": "Mi tienda",
+            }
+        ],
+    )
+    assert len(synced) == 1
+    assert synced[0]["business_id"] == placeholder["business_id"]
+    assert synced[0]["location_id"] == "accounts/1/locations/99"
+    assert synced[0]["business_name"] == "Mi tienda"
+
+
+def test_ensure_default_business_prefers_synced_location(store: DataStore) -> None:
+    client = store.create_client("Biz", "prefer@example.com", "secret123")
+    client_id = client["client_id"]
+    store.save_google_creds(
+        client_id=client_id,
+        refresh_token="rt",
+        access_token="at",
+        token_expiry=None,
+        google_email="biz@example.com",
+        location_id=None,
+    )
+    placeholder = store.ensure_default_business(client_id)
+    store.sync_businesses(
+        client_id,
+        [
+            {
+                "google_account_id": "accounts/1",
+                "location_id": "accounts/1/locations/42",
+                "business_name": "Real",
+            }
+        ],
+    )
+    chosen = store.ensure_default_business(client_id)
+    assert chosen["business_id"] == placeholder["business_id"]
+    assert chosen["location_id"] == "accounts/1/locations/42"

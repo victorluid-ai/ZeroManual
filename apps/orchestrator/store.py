@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from apps.integrations.google_business import is_valid_gbp_location_id
 from apps.integrations.settings import load_integration_settings
 from apps.orchestrator.models import DEFAULT_ENTITY_ID
 
@@ -1244,6 +1245,18 @@ class DataStore:
         """
         now = _utc_now()
         with self._connect() as conn:
+            placeholders = [
+                row["business_id"]
+                for row in conn.execute(
+                    "SELECT business_id, location_id FROM client_businesses WHERE client_id=?",
+                    (client_id,),
+                ).fetchall()
+                if not is_valid_gbp_location_id(row["location_id"])
+            ]
+            reuse_placeholder_id: str | None = None
+            if len(placeholders) == 1 and len(businesses) == 1:
+                reuse_placeholder_id = placeholders[0]
+
             for biz in businesses:
                 existing = conn.execute(
                     "SELECT business_id FROM client_businesses WHERE client_id=? AND location_id=?",
@@ -1255,6 +1268,18 @@ class DataStore:
                         " WHERE business_id=?",
                         (biz["business_name"], biz["google_account_id"], existing["business_id"]),
                     )
+                elif reuse_placeholder_id:
+                    conn.execute(
+                        "UPDATE client_businesses SET location_id=?, business_name=?, google_account_id=?"
+                        " WHERE business_id=?",
+                        (
+                            biz["location_id"],
+                            biz["business_name"],
+                            biz["google_account_id"],
+                            reuse_placeholder_id,
+                        ),
+                    )
+                    reuse_placeholder_id = None
                 else:
                     business_id = f"BIZ-{secrets.token_hex(6).upper()}"
                     conn.execute(
@@ -1302,11 +1327,35 @@ class DataStore:
         with self._connect() as conn:
             conn.execute("DELETE FROM client_businesses WHERE client_id=?", (client_id,))
 
+    def update_business_location(
+        self,
+        business_id: str,
+        *,
+        location_id: str,
+        business_name: str | None = None,
+        google_account_id: str | None = None,
+    ) -> None:
+        with self._connect() as conn:
+            if business_name is not None and google_account_id is not None:
+                conn.execute(
+                    "UPDATE client_businesses SET location_id=?, business_name=?, google_account_id=?"
+                    " WHERE business_id=?",
+                    (location_id, business_name, google_account_id, business_id),
+                )
+            else:
+                conn.execute(
+                    "UPDATE client_businesses SET location_id=? WHERE business_id=?",
+                    (location_id, business_id),
+                )
+
     def ensure_default_business(self, client_id: str) -> dict[str, Any]:
         """Return the client's first business, creating a placeholder from their Google
         creds if none has been discovered/synced yet. Keeps single-location clients working
         without forcing every caller to pick a business_id explicitly."""
         existing = self.list_businesses(client_id)
+        synced = [b for b in existing if is_valid_gbp_location_id(b.get("location_id"))]
+        if synced:
+            return synced[0]
         if existing:
             return existing[0]
         with self._connect() as conn:

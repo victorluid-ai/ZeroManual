@@ -32,6 +32,15 @@ _STAR = {
 }
 
 
+def is_valid_gbp_location_id(location_id: str | None) -> bool:
+    """True when ``location_id`` is a full Google Business Profile resource name."""
+    return bool(
+        location_id
+        and location_id.startswith("accounts/")
+        and "/locations/" in location_id
+    )
+
+
 class GoogleBusinessError(RuntimeError):
     """Raised when Google Business Profile calls fail."""
 
@@ -128,18 +137,27 @@ class GoogleBusinessClient:
         errors: list[str] = []
 
         url_info = LOCATIONS_URL.format(account=account_name)
-        r = httpx.get(
-            url_info,
-            headers=headers,
-            params={"readMask": "name,title,storefrontAddress"},
-            timeout=20,
-        )
-        if r.is_success:
-            return list(r.json().get("locations") or [])
-        errors.append(r.text)
+        locations: list[dict[str, Any]] = []
+        page_token: str | None = None
+        while True:
+            params: dict[str, Any] = {
+                "readMask": "name,title,storefrontAddress",
+                "pageSize": 100,
+            }
+            if page_token:
+                params["pageToken"] = page_token
+            r = httpx.get(url_info, headers=headers, params=params, timeout=20)
+            if not r.is_success:
+                errors.append(r.text)
+                break
+            data = r.json()
+            locations.extend(list(data.get("locations") or []))
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                return locations
 
         url_v4 = LOCATIONS_V4_URL.format(account=account_name)
-        r2 = httpx.get(url_v4, headers=headers, timeout=20)
+        r2 = httpx.get(url_v4, headers=headers, params={"pageSize": 100}, timeout=20)
         if r2.is_success:
             return list(r2.json().get("locations") or [])
         errors.append(r2.text)

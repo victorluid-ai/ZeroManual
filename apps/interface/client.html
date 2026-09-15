@@ -235,7 +235,7 @@
         <input id="inp-password" type="password" autocomplete="current-password" placeholder="••••••••" />
       </div>
       <div class="error-msg" id="login-error"></div>
-      <button class="btn primary full" id="btn-login">Entrar â†’</button>
+      <button class="btn primary full" id="btn-login">Entrar →</button>
       <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
         ¿Primera vez? <button onclick="showRegister()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Crear cuenta</button>
       </div>
@@ -257,7 +257,7 @@
         <input id="reg-password" type="password" placeholder="Mínimo 8 caracteres" />
       </div>
       <div class="error-msg" id="register-error"></div>
-      <button class="btn primary full" id="btn-register">Crear cuenta â†’</button>
+      <button class="btn primary full" id="btn-register">Crear cuenta →</button>
       <div style="text-align:center;margin-top:14px;font-size:12px;color:var(--fg-3)">
         ¿Ya tienes cuenta? <button onclick="showLogin()" style="background:none;border:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px;padding:0">Entrar</button>
       </div>
@@ -376,7 +376,7 @@
     } catch (e) {
       $('login-error').textContent = e.message;
     } finally {
-      btn.disabled = false; btn.textContent = 'Entrar â†’';
+      btn.disabled = false; btn.textContent = 'Entrar →';
     }
   }
 
@@ -1089,7 +1089,7 @@
     } catch (e) {
       $('register-error').textContent = e.message;
     } finally {
-      btn.disabled = false; btn.textContent = 'Crear cuenta â†’';
+      btn.disabled = false; btn.textContent = 'Crear cuenta →';
     }
   }
 

@@ -192,6 +192,23 @@ def test_admin_companies_route_removed(client: TestClient) -> None:
     assert client.get("/api/v1/admin/companies", headers=auth).status_code == 404
 
 
+def test_homepage_default_html_lang_is_spanish(client: TestClient) -> None:
+    resp = client.get("/")
+    assert resp.status_code == 200
+    assert '<html lang="es">' in resp.text
+    js = client.get("/assets/app.jsx")
+    assert js.status_code == 200
+    assert "document.documentElement.lang" in js.text
+
+
+def test_client_portal_login_button_has_utf8_arrow(client: TestClient) -> None:
+    resp = client.get("/client")
+    assert resp.status_code == 200
+    assert "Entrar â†’" not in resp.text
+    assert "Entrar →" in resp.text
+    assert "Crear cuenta →" in resp.text
+
+
 def test_homepage_activation_state_fetch(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("N8N_TEMPLATE_IDS", '{"google_reviews": "tpl-1"}')
     import apps.interface.api as api_module

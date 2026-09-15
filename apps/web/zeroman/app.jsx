@@ -631,6 +631,10 @@ function App() {
   const t = T[lang] || T.es;
 
   useEffect(() => {
+    document.documentElement.lang = lang === "es" ? "es" : "en";
+  }, [lang]);
+
+  useEffect(() => {
     document.body.style.overflow = drawerOpen || detailId ? "hidden" : "";
   }, [drawerOpen, detailId]);
 

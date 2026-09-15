@@ -41,6 +41,19 @@ def is_valid_gbp_location_id(location_id: str | None) -> bool:
     )
 
 
+GBP_LOCATION_REQUIRED_MESSAGE = (
+    "Selecciona un negocio de Google Business con una ficha válida antes de activar. "
+    "No se puede usar una ubicación provisional o incompleta."
+)
+
+
+def require_gbp_location_id(location_id: str | None) -> str:
+    """Return ``location_id`` if it is a full GBP resource name, else raise ValueError."""
+    if not is_valid_gbp_location_id(location_id):
+        raise ValueError(GBP_LOCATION_REQUIRED_MESSAGE)
+    return str(location_id)
+
+
 class GoogleBusinessError(RuntimeError):
     """Raised when Google Business Profile calls fail."""
 

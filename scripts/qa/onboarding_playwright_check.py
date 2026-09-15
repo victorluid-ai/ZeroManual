@@ -70,6 +70,16 @@ def start_server():
 
     importlib.reload(api_module)
     api_module._n8n.duplicate_template = lambda **kwargs: "wf-fake-playwright"
+    api_module._google_business.list_businesses_for_creds = lambda creds: (
+        [
+            {
+                "google_account_id": "accounts/1",
+                "location_id": "accounts/1/locations/1",
+                "business_name": "Café QA",
+            }
+        ],
+        None,
+    )
 
     import uvicorn
 

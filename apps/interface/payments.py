@@ -11,6 +11,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from apps.integrations import stripe_payments
+from apps.integrations.google_business import require_gbp_location_id
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ def activate_automation_for_client(
         raise RuntimeError("Template no configurado aún")
     business = store.get_business(resolved_business_id)
     location_id = (business or {}).get("location_id") or creds.get("location_id")
+    if automation_type == "google_reviews":
+        location_id = require_gbp_location_id(location_id)
     try:
         wf_id = n8n.duplicate_template(
             template_id=template_id,
@@ -67,6 +70,8 @@ def activate_automation_for_client(
             automation_type=automation_type,
             business_id=resolved_business_id,
         )
+    except ValueError:
+        raise
     except Exception as exc:
         raise RuntimeError(f"Error al activar en n8n: {exc}") from exc
     record = store.activate_automation(client_id, resolved_business_id, automation_type, wf_id)

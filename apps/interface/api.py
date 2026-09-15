@@ -613,6 +613,14 @@ def list_google_reviews(
     resolved_business_id = _resolve_business_id(client_id, business_id)
     business = runtime.store.get_business(resolved_business_id)
     location_override = _resolve_review_location(client_id, business, synced_businesses)
+    if not is_valid_gbp_location_id(location_override):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No se pudo determinar la ficha de Google Business para este negocio. "
+                "Selecciona un negocio concreto con una ubicación válida."
+            ),
+        )
     try:
         payload, location, token_update = _google_business.fetch_reviews_for_creds(
             creds, page_size=50, page_token=page_token, location_override=location_override

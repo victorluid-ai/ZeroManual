@@ -46,7 +46,7 @@ def _activate_google_reviews(client: TestClient, api_module, monkeypatch: pytest
         access_token="tok",
         token_expiry=None,
         google_email="biz@example.com",
-        location_id="loc-1",
+        location_id="accounts/1/locations/1",
     )
     monkeypatch.setattr(api_module._n8n, "duplicate_template", lambda **kwargs: "wf-reviews-1")
     resp = client.post("/client/automations/google_reviews/activate", headers=auth)

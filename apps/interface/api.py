@@ -7,6 +7,7 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,7 +15,11 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from apps.integrations.google_oauth import GoogleOAuthHelper
-from apps.integrations.google_business import GoogleBusinessClient, GoogleBusinessError
+from apps.integrations.google_business import (
+    GoogleBusinessClient,
+    GoogleBusinessError,
+    is_valid_gbp_location_id,
+)
 from apps.integrations.n8n_client import N8nClient
 from apps.integrations import stripe_payments
 from apps.interface.payments import activate_automation_for_client, register_payment_routes
@@ -149,7 +154,10 @@ def _sync_businesses_from_google(client_id: str) -> list[dict]:
         return runtime.store.list_businesses(client_id)
     try:
         businesses, token_update = _google_business.list_businesses_for_creds(creds)
-    except GoogleBusinessError:
+    except GoogleBusinessError as exc:
+        logging.getLogger(__name__).warning(
+            "Google business sync failed for %s: %s", client_id, exc
+        )
         return runtime.store.list_businesses(client_id)
     if token_update:
         runtime.store.update_google_access_token(
@@ -158,6 +166,40 @@ def _sync_businesses_from_google(client_id: str) -> list[dict]:
     if businesses:
         return runtime.store.sync_businesses(client_id, businesses)
     return runtime.store.list_businesses(client_id)
+
+
+def _resolve_review_location(
+    client_id: str,
+    business: dict[str, Any] | None,
+    synced_businesses: list[dict],
+) -> str | None:
+    """Pick the Google location resource name to read reviews from."""
+    location_id = (business or {}).get("location_id")
+    if is_valid_gbp_location_id(location_id):
+        return location_id
+
+    if business and location_id:
+        for synced in synced_businesses:
+            if synced.get("location_id") == location_id:
+                return synced["location_id"]
+            bare = str(location_id).rsplit("/", 1)[-1]
+            synced_loc = str(synced.get("location_id") or "")
+            if synced_loc.endswith(f"/{bare}") or synced_loc.rsplit("/", 1)[-1] == bare:
+                return synced["location_id"]
+
+    synced_locations = [
+        b["location_id"]
+        for b in synced_businesses
+        if is_valid_gbp_location_id(b.get("location_id"))
+    ]
+    if len(synced_locations) == 1:
+        return synced_locations[0]
+
+    creds = runtime.store.get_google_creds(client_id) or {}
+    preferred = creds.get("location_id")
+    if is_valid_gbp_location_id(preferred):
+        return preferred
+    return None
 
 
 @app.get("/health")
@@ -295,7 +337,9 @@ def google_callback(code: str, state: str) -> RedirectResponse:
             ).isoformat()
         runtime.store.save_google_creds(
             client_id=client_id,
-            refresh_token=tokens.get("refresh_token", ""),
+            refresh_token=tokens.get("refresh_token")
+            or (runtime.store.get_google_creds(client_id) or {}).get("refresh_token")
+            or "",
             access_token=tokens.get("access_token"),
             token_expiry=expiry,
             google_email=google_email,
@@ -565,13 +609,18 @@ def list_google_reviews(
             status_code=400,
             detail="Conecta primero tu cuenta de Google Business",
         )
+    synced_businesses = _sync_businesses_from_google(client_id)
     resolved_business_id = _resolve_business_id(client_id, business_id)
     business = runtime.store.get_business(resolved_business_id)
-    location_override = (business or {}).get("location_id")
-    if location_override and not location_override.startswith("accounts/"):
-        # Placeholder/legacy business rows may hold a bare id or none at all —
-        # fall back to normal resolution rather than sending a bogus name to Google.
-        location_override = None
+    location_override = _resolve_review_location(client_id, business, synced_businesses)
+    if not is_valid_gbp_location_id(location_override):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "No se pudo determinar la ficha de Google Business para este negocio. "
+                "Selecciona un negocio concreto con una ubicación válida."
+            ),
+        )
     try:
         payload, location, token_update = _google_business.fetch_reviews_for_creds(
             creds, page_size=50, page_token=page_token, location_override=location_override
@@ -583,8 +632,14 @@ def list_google_reviews(
         runtime.store.update_google_access_token(
             client_id, token_update["access_token"], token_update["token_expiry"]
         )
-    if location and location != creds.get("location_id"):
-        runtime.store.update_google_location_id(client_id, location)
+    if location:
+        if location != creds.get("location_id"):
+            runtime.store.update_google_location_id(client_id, location)
+        if business and not is_valid_gbp_location_id(business.get("location_id")):
+            runtime.store.update_business_location(
+                resolved_business_id,
+                location_id=location,
+            )
 
     drafts = runtime.store.list_drafts(client_id, "google_reviews", business_id=resolved_business_id)
     by_review: dict[str, dict] = {}

@@ -111,11 +111,32 @@ def test_google_callback_auto_activates_pending_automation(
         lambda code, state: (client_id, {"access_token": "tok", "refresh_token": "reftok", "expires_in": 3600}),
     )
     monkeypatch.setattr(api_module._google_oauth, "get_user_email", lambda token: "biz@example.com")
-    monkeypatch.setattr(api_module._n8n, "duplicate_template", lambda **kwargs: "wf-fake")
+    monkeypatch.setattr(
+        api_module._google_business,
+        "list_businesses_for_creds",
+        lambda creds: (
+            [
+                {
+                    "google_account_id": "accounts/1",
+                    "location_id": "accounts/1/locations/1",
+                    "business_name": "Mi negocio",
+                }
+            ],
+            None,
+        ),
+    )
+    captured: dict = {}
+
+    def fake_duplicate(**kwargs):
+        captured.update(kwargs)
+        return "wf-fake"
+
+    monkeypatch.setattr(api_module._n8n, "duplicate_template", fake_duplicate)
 
     resp = client.get("/client/google/callback?code=abc&state=xyz", follow_redirects=False)
     assert resp.status_code in (302, 307)
     assert "activated=google_reviews" in resp.headers.get("location", "")
+    assert captured["location_id"] == "accounts/1/locations/1"
 
 
 def test_google_callback_without_pending_automation_redirects_connected(
@@ -185,7 +206,7 @@ def test_homepage_activation_state_fetch(client: TestClient, monkeypatch: pytest
         access_token="tok",
         token_expiry=None,
         google_email="biz@example.com",
-        location_id=None,
+        location_id="accounts/1/locations/1",
     )
     monkeypatch.setattr(api_module._n8n, "duplicate_template", lambda **kwargs: "wf-fake-2")
 

@@ -7,6 +7,8 @@ from typing import Any
 
 import httpx
 
+from apps.integrations.google_business import require_gbp_location_id
+
 
 class N8nClient:
     """n8n API + webhook helpers for per-client automation workflows.
@@ -80,6 +82,8 @@ class N8nClient:
         client with multiple Google Business locations gets one independent workflow (and
         webhook paths) per business instead of colliding on the same paths.
         """
+        if automation_type == "google_reviews":
+            location_id = require_gbp_location_id(location_id)
         tpl = self.get_workflow(template_id)
         # The n8n create-workflow API rejects any body field it doesn't recognize
         # (400 "must NOT have additional properties"), so only pass through the

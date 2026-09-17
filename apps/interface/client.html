@@ -436,8 +436,9 @@
     try {
       const data = await api('GET', '/client/businesses');
       cachedBusinesses = (data && data.businesses) || [];
-    } catch {
+    } catch (e) {
       cachedBusinesses = [];
+      if (e && e.message) toast(e.message, 'err');
     }
     return cachedBusinesses;
   }

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from apps.integrations.google_business import (
     GBP_LOCATION_REQUIRED_MESSAGE,
+    GoogleBusinessError,
     is_valid_gbp_location_id,
     require_gbp_location_id,
 )
@@ -445,3 +446,35 @@ def test_google_callback_preserves_existing_refresh_token(
     assert creds is not None
     assert creds["refresh_token"] == "old-refresh-token"
     assert creds["access_token"] == "new-access"
+
+
+def test_google_callback_stays_connected_when_sync_raises(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OAuth callback must not fail the connection when GBP listing is down."""
+    import apps.interface.api as api_module
+
+    reg = _register(client, "callback-sync-fail@example.com")
+    client_id = reg["client"]["client_id"]
+    monkeypatch.setattr(
+        api_module._google_oauth,
+        "exchange_code",
+        lambda code, state: (
+            client_id,
+            {"access_token": "tok", "refresh_token": "reftok", "expires_in": 3600},
+        ),
+    )
+    monkeypatch.setattr(api_module._google_oauth, "get_user_email", lambda token: "biz@example.com")
+
+    def boom(_creds):
+        raise GoogleBusinessError("Cuentas Google Business: quota exceeded")
+
+    monkeypatch.setattr(api_module._google_business, "list_businesses_for_creds", boom)
+
+    resp = client.get("/client/google/callback?code=abc&state=xyz", follow_redirects=False)
+    assert resp.status_code in (302, 307)
+    assert "connected=1" in resp.headers.get("location", "")
+    assert "error=oauth_failed" not in resp.headers.get("location", "")
+    creds = api_module.runtime.store.get_google_creds(client_id)
+    assert creds is not None
+    assert creds["refresh_token"] == "reftok"

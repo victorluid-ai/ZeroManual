@@ -147,17 +147,26 @@ def _resolve_business_id(client_id: str, business_id: str | None) -> str:
     return runtime.store.ensure_default_business(client_id)["business_id"]
 
 
-def _sync_businesses_from_google(client_id: str) -> list[dict]:
-    """Best-effort refresh of a client's businesses/locations from Google."""
+def _sync_businesses_from_google(
+    client_id: str, *, raise_on_error: bool = False
+) -> list[dict]:
+    """Refresh a client's businesses/locations from Google.
+
+    Callback and review listing stay best-effort (``raise_on_error=False``) so an
+    OAuth success is not rolled back when GBP listing fails. The businesses
+    endpoint passes ``raise_on_error=True`` so the client sees the real blocker.
+    """
     creds = runtime.store.get_google_creds(client_id)
     if not creds:
         return runtime.store.list_businesses(client_id)
     try:
         businesses, token_update = _google_business.list_businesses_for_creds(creds)
     except GoogleBusinessError as exc:
-        logging.getLogger(__name__).warning(
+        logging.getLogger(__name__).exception(
             "Google business sync failed for %s: %s", client_id, exc
         )
+        if raise_on_error:
+            raise
         return runtime.store.list_businesses(client_id)
     if token_update:
         runtime.store.update_google_access_token(
@@ -372,7 +381,12 @@ def google_callback(code: str, state: str) -> RedirectResponse:
 @app.get("/client/businesses")
 def list_client_businesses(client: dict = Depends(get_client_user)) -> dict:
     """List every Google Business location detected for this client's account."""
-    businesses = _sync_businesses_from_google(client["client_id"])
+    try:
+        businesses = _sync_businesses_from_google(
+            client["client_id"], raise_on_error=True
+        )
+    except GoogleBusinessError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {"businesses": businesses}
 
 

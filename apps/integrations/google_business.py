@@ -68,21 +68,37 @@ def friendly_google_error(raw: str, *, context: str = "Google Business") -> str:
         status = str(err.get("status") or "")
         details = err.get("details") or []
         reason = ""
+        quota_limit_value = ""
         for d in details:
+            if not isinstance(d, dict):
+                continue
             for r in d.get("reason") and [d.get("reason")] or []:
                 reason = str(r)
-            for meta in d.get("metadata") or []:
-                pass
             if isinstance(d.get("metadata"), dict):
-                reason = reason or str(d["metadata"].get("serviceTitle") or "")
+                meta = d["metadata"]
+                reason = reason or str(meta.get("serviceTitle") or "")
+                quota_limit_value = quota_limit_value or str(
+                    meta.get("quota_limit_value") or ""
+                )
             for nested in d.get("errors") or []:
-                reason = reason or str(nested.get("reason") or "")
+                if isinstance(nested, dict):
+                    reason = reason or str(nested.get("reason") or "")
         joined = f"{status} {reason} {message}".upper()
         if "SERVICE_DISABLED" in joined or "HAS NOT BEEN USED" in joined or "DISABLED" in joined:
             return (
                 "Google Business aún no está listo en ZeroManual "
                 "(falta activar las APIs en el proyecto de la plataforma). "
                 "El equipo lo está configurando; no tienes que hacer nada en Google Cloud."
+            )
+        if (
+            "RESOURCE_EXHAUSTED" in joined
+            or "RATE_LIMIT" in joined
+            or quota_limit_value == "0"
+        ):
+            return (
+                "Google Business no puede listar fichas porque el proyecto GCP de "
+                "ZeroManual no tiene cuota de la API de Account Management. "
+                "Es un problema de la plataforma, no de tu cuenta de Google."
             )
         if "PERMISSION_DENIED" in joined or status == "PERMISSION_DENIED":
             return (

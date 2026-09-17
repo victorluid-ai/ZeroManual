@@ -3,12 +3,23 @@ from __future__ import annotations
 import os
 import secrets
 import time
+from urllib.parse import urlencode
 
 import httpx
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-SCOPES = "https://www.googleapis.com/auth/business.manage"
+
+PURPOSE_BUSINESS = "business"
+SCOPE_BUSINESS_MANAGE = "https://www.googleapis.com/auth/business.manage"
+SCOPE_USERINFO_EMAIL = "https://www.googleapis.com/auth/userinfo.email"
+SCOPE_OPENID = "openid"
+# userinfo.email + openid are required so get_user_email (oauth2/v3/userinfo) does
+# not 401 after a business-only consent. business.manage alone cannot read email.
+SCOPES_BY_PURPOSE = {
+    PURPOSE_BUSINESS: f"{SCOPE_BUSINESS_MANAGE} {SCOPE_USERINFO_EMAIL} {SCOPE_OPENID}",
+}
+SCOPES = SCOPES_BY_PURPOSE[PURPOSE_BUSINESS]
 
 
 class GoogleOAuthHelper:
@@ -32,8 +43,7 @@ class GoogleOAuthHelper:
             "prompt": "consent",
             "state": state,
         }
-        query = "&".join(f"{k}={v}" for k, v in params.items())
-        return f"{GOOGLE_AUTH_URL}?{query}"
+        return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
     def exchange_code(self, code: str, state: str) -> tuple[str, dict]:
         """Exchange an authorization code for tokens. Returns (client_id, token_dict)."""

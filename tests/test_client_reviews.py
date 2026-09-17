@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from apps.integrations.google_business import GoogleBusinessError, friendly_google_error
+
 
 @pytest.fixture(autouse=True)
 def no_ai(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -314,8 +316,6 @@ def test_normalize_review() -> None:
 
 
 def test_friendly_google_error_service_disabled() -> None:
-    from apps.integrations.google_business import friendly_google_error
-
     raw = json.dumps(
         {
             "error": {
@@ -329,6 +329,35 @@ def test_friendly_google_error_service_disabled() -> None:
     msg = friendly_google_error(raw)
     assert "Google Cloud" in msg or "plataforma" in msg
     assert "SERVICE_DISABLED" not in msg
+    assert "{" not in msg
+
+
+def test_friendly_google_error_quota_exhausted() -> None:
+    raw = json.dumps(
+        {
+            "error": {
+                "code": 429,
+                "message": "Quota exceeded for quota metric 'Requests' and limit "
+                "'Requests per minute' of service "
+                "'mybusinessaccountmanagement.googleapis.com' for consumer "
+                "'project_number:226655031420'.",
+                "status": "RESOURCE_EXHAUSTED",
+                "details": [
+                    {
+                        "reason": "RATE_LIMIT_EXCEEDED",
+                        "metadata": {
+                            "quota_limit_value": "0",
+                            "service": "mybusinessaccountmanagement.googleapis.com",
+                        },
+                    }
+                ],
+            }
+        }
+    )
+    msg = friendly_google_error(raw)
+    assert "cuota" in msg.lower()
+    assert "plataforma" in msg.lower()
+    assert "RESOURCE_EXHAUSTED" not in msg
     assert "{" not in msg
 
 
@@ -406,6 +435,45 @@ def test_list_businesses_discovers_multiple_locations(
     auth, client_id, businesses = _register_with_two_businesses(client, api_module, monkeypatch)
     names = {b["business_name"] for b in businesses}
     assert names == {"Sucursal Centro", "Sucursal Norte"}
+
+
+def test_list_businesses_returns_502_when_google_sync_fails(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import apps.interface.api as api_module
+
+    reg = _register(client, "sync-fail@example.com")
+    client_id = reg["client"]["client_id"]
+    auth = {"Authorization": f"Bearer {reg['token']}"}
+    api_module.runtime.store.save_google_creds(
+        client_id=client_id,
+        refresh_token="reftok",
+        access_token="tok",
+        token_expiry=None,
+        google_email=None,
+        location_id=None,
+    )
+    placeholder = api_module.runtime.store.ensure_default_business(client_id)
+    assert placeholder["location_id"].startswith("default-")
+
+    def boom(_creds):
+        raise GoogleBusinessError(
+            "Google Business no puede listar fichas porque el proyecto GCP de "
+            "ZeroManual no tiene cuota de la API de Account Management. "
+            "Es un problema de la plataforma, no de tu cuenta de Google."
+        )
+
+    monkeypatch.setattr(api_module._google_business, "list_businesses_for_creds", boom)
+
+    resp = client.get("/client/businesses", headers=auth)
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "cuota" in detail.lower()
+    assert "plataforma" in detail.lower()
+
+    leftover = api_module.runtime.store.list_businesses(client_id)
+    assert leftover
+    assert leftover[0]["location_id"].startswith("default-")
 
 
 def test_activate_automation_per_business_creates_separate_workflows(

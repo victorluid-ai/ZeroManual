@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Mantenimiento — Preventivo para restauración{% endblock %}
+{% block body_class %}landing-body{% endblock %}
+{% block shell %}
+<section class="hero">
+  <div class="hero-atmosphere" aria-hidden="true"></div>
+  <header class="hero-top">
+    <a class="brand brand-light" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span class="brand-text">Mantenimiento</span>
+    </a>
+    <a class="btn btn-ghost" href="/panel">Entrar al panel</a>
+  </header>
+  <div class="hero-copy">
+    <p class="brand-hero">Mantenimiento</p>
+    <h1>Preventivo claro para cada máquina del grupo</h1>
+    <p class="lede">
+      Inventario por restaurante, calendarios de revisión y alarmas
+      cuando un Josper, un combi o una cámara se adelantan al fallo.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="/panel">Abrir panel operativo</a>
+      <a class="btn btn-ghost" href="/alarmas">Ver alarmas</a>
+    </div>
+  </div>
+</section>
+<section class="landing-section">
+  <h2>Una sola visión del parque de equipos</h2>
+  <p>Locales, tipologías de máquina y próximos preventivos en el mismo sitio, respaldados por PostgreSQL en Supabase.</p>
+</section>
+{% endblock %}

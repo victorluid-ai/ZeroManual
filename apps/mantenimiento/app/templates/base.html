@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}{{ app_name }}{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  {% block shell %}
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-text">{{ app_name }}</span>
+      </a>
+      <p class="sidebar-group">{{ group.name }}</p>
+      <nav class="nav">
+        <a href="/panel" class="{{ 'is-active' if active == 'panel' else '' }}">Panel</a>
+        <a href="/restaurantes" class="{{ 'is-active' if active == 'restaurantes' else '' }}">Restaurantes</a>
+        <a href="/equipos" class="{{ 'is-active' if active == 'equipos' else '' }}">Equipos</a>
+        <a href="/preventivos" class="{{ 'is-active' if active == 'preventivos' else '' }}">Preventivos</a>
+        <a href="/alarmas" class="{{ 'is-active' if active == 'alarmas' else '' }}">
+          Alarmas
+          {% if alarm_badge %}<span class="badge">{{ alarm_badge }}</span>{% endif %}
+        </a>
+      </nav>
+      {% if is_demo %}
+      <p class="demo-flag">Modo demo (sin Supabase)</p>
+      {% endif %}
+    </aside>
+    <main class="main">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  {% endblock %}
+</body>
+</html>

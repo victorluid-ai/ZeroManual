@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Alarmas — {{ app_name }}{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Vigilancia</p>
+    <h1>Sistema de alarmas</h1>
+    <p class="lede-sm">
+      {{ open_alarms|length }} abiertas
+      {% if newly_created %} · {{ newly_created }} nuevas generadas{% endif %}
+    </p>
+  </div>
+  <form method="post" action="/alarmas/refrescar">
+    <button class="btn btn-primary" type="submit">Recalcular alarmas</button>
+  </form>
+</header>
+
+<section class="list-stack wide">
+  {% for alarm in alarms %}
+  <article class="alarm-row severity-{{ alarm.severity }} status-{{ alarm.status }}">
+    <div>
+      <p class="alarm-meta">{{ alarm.severity }} · {{ alarm.status }}{% if alarm.due_at %} · vence {{ alarm.due_at }}{% endif %}</p>
+      <h2>{{ alarm.title }}</h2>
+      <p>{{ alarm.message }}</p>
+    </div>
+    <div class="alarm-actions">
+      {% if alarm.status == 'abierta' %}
+      <form method="post" action="/alarmas/{{ alarm.id }}/estado">
+        <input type="hidden" name="status" value="reconocida" />
+        <button class="btn btn-ghost" type="submit">Reconocer</button>
+      </form>
+      {% endif %}
+      {% if alarm.status in ['abierta', 'reconocida'] %}
+      <form method="post" action="/alarmas/{{ alarm.id }}/estado">
+        <input type="hidden" name="status" value="resuelta" />
+        <button class="btn btn-primary" type="submit">Resolver</button>
+      </form>
+      <form method="post" action="/alarmas/{{ alarm.id }}/estado">
+        <input type="hidden" name="status" value="silenciada" />
+        <button class="btn btn-ghost" type="submit">Silenciar</button>
+      </form>
+      {% endif %}
+    </div>
+  </article>
+  {% else %}
+  <p class="empty">No hay alarmas registradas.</p>
+  {% endfor %}
+</section>
+{% endblock %}

@@ -37,18 +37,6 @@ python -m apps.triggers.runner
 
 Guía: `docs/triggers.md`
 
-## Mantenimiento (grupo restauración)
-
-Plataforma aparte en `apps/mantenimiento/` (FastAPI + Jinja2 + **Supabase**):
-inventario de equipos por restaurante, preventivos y alarmas.
-
-```bash
-export MANTENIMIENTO_DEMO_MODE=true   # o configura SUPABASE_URL + SERVICE_ROLE_KEY
-python -m apps.mantenimiento.app      # http://localhost:8100
-```
-
-Guía: `apps/mantenimiento/README.md`
-
 ## Documentación
 
 - `docs/brand.md` — web vs operaciones IA

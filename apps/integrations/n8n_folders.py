@@ -3,38 +3,58 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Any
 
 import httpx
 
+logger = logging.getLogger(__name__)
+
 FOLDER_NAME = "Zeromanual"
-FOLDER_API_MISSING = (
-    "La API de n8n no permite resolver la carpeta «Zeromanual». "
-    "Hace falta n8n >= 2.19 con GET/POST /api/v1/projects/{projectId}/folders "
-    "y parentFolderId en POST o PUT /api/v1/workflows. "
-    "No se crea el workflow fuera de esa carpeta."
+# Community instances and scoped API keys answer 401/403/404 on projects and
+# folders. That is a placement miss, not a failed activation.
+_FOLDER_SKIP_STATUSES = frozenset({401, 403, 404})
+FOLDER_PLACEMENT_SKIPPED = (
+    "Colocación en la carpeta «Zeromanual» omitida. "
+    "La activación continúa y el workflow se clona sin parentFolderId."
 )
+
+
+class FolderPlacementSkipped(Exception):
+    """Projects or folders API refused the call or does not exist."""
 
 
 class N8nFolderResolver:
     """Find or create the Zeromanual folder in the API key's project.
 
-    Behavior: if the folder is missing it is created (only that name, no other
-    writes). If the folders API is unavailable the call fails before any
-    workflow is created.
+    If the folder is missing and the folders API allows it, only that name is
+    created. A 401, 403, or 404 from projects or folders returns None so the
+    caller clones the workflow without ``parentFolderId``.
     """
 
     def __init__(self, base_url: str, headers: dict[str, str]) -> None:
         self._base = base_url.rstrip("/")
         self._headers = headers
 
-    def ensure_folder(self) -> str:
-        project_id = os.getenv("N8N_PROJECT_ID", "").strip() or self._resolve_project_id()
-        found = self._find_folder_id(project_id, FOLDER_NAME)
-        if found:
-            return found
-        return self._create_folder(project_id, FOLDER_NAME)
+    def ensure_folder(self) -> str | None:
+        try:
+            project_id = os.getenv("N8N_PROJECT_ID", "").strip() or self._resolve_project_id()
+            found = self._find_folder_id(project_id, FOLDER_NAME)
+            if found:
+                return found
+            return self._create_folder(project_id, FOLDER_NAME)
+        except FolderPlacementSkipped as exc:
+            logger.warning("%s (%s)", FOLDER_PLACEMENT_SKIPPED, exc)
+            return None
+
+    def _reject_if_folder_api_unavailable(self, response: httpx.Response) -> None:
+        if response.status_code not in _FOLDER_SKIP_STATUSES:
+            return
+        request = response.request
+        raise FolderPlacementSkipped(
+            f"HTTP {response.status_code} en {request.method} {request.url}"
+        )
 
     def _api(
         self,
@@ -69,8 +89,7 @@ class N8nFolderResolver:
         for _ in range(20):
             params: dict[str, Any] | None = {"cursor": cursor} if cursor else None
             response = self._api("GET", "/projects", params=params)
-            if response.status_code == 404:
-                raise RuntimeError(FOLDER_API_MISSING)
+            self._reject_if_folder_api_unavailable(response)
             response.raise_for_status()
             body = response.json()
             if isinstance(body, list):
@@ -94,11 +113,10 @@ class N8nFolderResolver:
             if use_filter:
                 params["filter"] = json.dumps({"name": name})
             response = self._api("GET", f"/projects/{project_id}/folders", params=params)
-            if response.status_code == 404:
-                raise RuntimeError(FOLDER_API_MISSING)
             if response.status_code == 400 and use_filter:
                 use_filter = False
                 continue
+            self._reject_if_folder_api_unavailable(response)
             response.raise_for_status()
             body = response.json()
             rows = body.get("data") if isinstance(body, dict) else body
@@ -123,8 +141,7 @@ class N8nFolderResolver:
             found = self._find_folder_id(project_id, name)
             if found:
                 return found
-        if response.status_code == 404:
-            raise RuntimeError(FOLDER_API_MISSING)
+        self._reject_if_folder_api_unavailable(response)
         response.raise_for_status()
         payload = response.json() if response.content else {}
         folder_id = str((payload or {}).get("id") or "")

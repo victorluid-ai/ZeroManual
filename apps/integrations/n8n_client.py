@@ -115,7 +115,8 @@ class N8nClient:
       ZeroManual does not call the Google API itself.
 
     New copies are named ``Cliente_NegocioNN_YYYYMMDD`` and placed in the folder
-    ``Zeromanual``.
+    ``Zeromanual`` when the projects/folders API allows it. A 401, 403, or 404
+    on that API skips the folder and still clones the workflow.
     """
 
     def __init__(self) -> None:
@@ -214,13 +215,17 @@ class N8nClient:
         if automation_type == "google_reviews":
             self._inject_draft_push_node(wf, client_id, automation_type, business_id)
             self._inject_publish_reply_webhook(wf, client_id, business_id)
-        created = self._submit_workflow(wf, folder_id)
+        created = self._submit_workflow(wf, folder_id) if folder_id else self.create_workflow(wf)
         wf_id = str(created["id"])
         self.activate_workflow(wf_id)
         return wf_id
 
-    def ensure_client_folder(self) -> str:
-        """Return the id of the n8n folder named exactly Zeromanual."""
+    def ensure_client_folder(self) -> str | None:
+        """Return the Zeromanual folder id, or None when placement is skipped.
+
+        401, 403, and 404 from the n8n projects or folders API are logged by
+        the resolver and do not abort activation.
+        """
         return N8nFolderResolver(self._base, self._headers).ensure_folder()
 
     def _submit_workflow(self, wf: dict, folder_id: str) -> dict:

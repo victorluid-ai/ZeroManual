@@ -109,10 +109,10 @@ Al crear la copia, `ensure_client_folder` resuelve la carpeta **por nombre exact
 1. Proyecto: `N8N_PROJECT_ID` si está definido; si no, `GET /api/v1/projects` y el primero con `type=personal`, o el primero de la lista.
 2. `GET /api/v1/projects/{projectId}/folders?filter={"name":"Zeromanual"}&skip=0&take=100`. Se acepta `{data:[{id,name}], count}` o una lista. El nombre tiene que coincidir exactamente. Si el filtro devuelve 400, se reintenta sin `filter` y se filtra en cliente.
 3. Si no existe: `POST /api/v1/projects/{projectId}/folders` con `{"name":"Zeromanual"}`. Solo se crea esa carpeta. Un 409 vuelve a listar por si hubo una carrera.
-4. `POST /api/v1/workflows` incluye `parentFolderId`. Si n8n responde 400 porque no admite el campo (`additional properties` / `parentFolderId`), se crea sin él y se hace `PUT /api/v1/workflows/{id}` con `name`, `nodes`, `connections`, `settings`, `staticData` y `parentFolderId`. Si el PUT falla, se borra la copia y la activación falla: no se deja el workflow en la raíz.
-5. Si `GET/POST …/folders` responde 404, la activación falla con un error que pide n8n >= 2.19. Tampoco se crea el workflow fuera de la carpeta.
+4. Si la carpeta se resolvió, `POST /api/v1/workflows` incluye `parentFolderId`. Si n8n responde 400 porque no admite el campo (`additional properties` / `parentFolderId`), se crea sin él y se hace `PUT /api/v1/workflows/{id}` con `name`, `nodes`, `connections`, `settings`, `staticData` y `parentFolderId`. Si el PUT falla, se borra la copia y la activación falla: no se deja el workflow en la raíz cuando sí había carpeta.
+5. Si `GET/POST /api/v1/projects` o `…/folders` responde 401, 403 o 404, se registra un aviso y la copia se crea **sin** `parentFolderId`. La activación sigue. Un 5xx, una plantilla ausente o un fallo de la API de workflows sigue abortando la activación.
 
-La API key necesita poder listar proyectos, listar/crear carpetas y crear/actualizar/activar workflows.
+La API key debería poder listar proyectos y carpetas. Si esa instancia no lo permite, el workflow queda en la raíz del proyecto y la activación no se bloquea.
 
 ## Importar y apuntar la plantilla
 

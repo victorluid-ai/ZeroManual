@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -15,7 +16,7 @@ from apps.integrations.n8n_client import (
     negocio_ordinal,
     sanitize_workflow_name_part,
 )
-from apps.integrations.n8n_folders import FOLDER_API_MISSING, FOLDER_NAME
+from apps.integrations.n8n_folders import FOLDER_NAME, FOLDER_PLACEMENT_SKIPPED
 
 TEMPLATE = Path("n8n/templates/google_reviews.json")
 LOCATION = "accounts/1/locations/2"
@@ -274,18 +275,163 @@ def json_mod(payload: dict) -> str:
     return json.dumps(payload)
 
 
-def test_folder_api_missing_fails_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("status", [403, 404])
+@pytest.mark.parametrize("project_id", [None, "proj-1"])
+def test_duplicate_template_skips_folder_on_projects_or_folders_denied(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    status: int,
+    project_id: str | None,
+) -> None:
+    """403/404 on projects or folders must not abort clone or activate."""
     monkeypatch.delenv("N8N_PROJECT_ID", raising=False)
+    if project_id:
+        monkeypatch.setenv("N8N_PROJECT_ID", project_id)
     n8n = N8nClient()
+    folder_calls: list[str] = []
+    created: list[dict] = []
+    activated: list[str] = []
+    template = {"name": "tpl", "nodes": [], "connections": {}, "settings": {}}
+
+    def request(method: str, url: str, headers=None, params=None, json=None, timeout=None):  # noqa: A002
+        folder_calls.append(url)
+        return _response(status, text="folder api denied")
+
+    def get(url: str, headers=None, timeout=None):
+        assert url.endswith("/workflows/tpl-1")
+        return _response(200, payload=template)
+
+    def post(url: str, headers=None, json=None, timeout=None):  # noqa: A002
+        if url.endswith("/activate"):
+            activated.append(url)
+            return _response(200, payload={})
+        created.append(json or {})
+        return _response(200, payload={"id": "wf-skipped"})
+
+    monkeypatch.setattr(httpx, "request", request)
+    monkeypatch.setattr(httpx, "get", get)
+    monkeypatch.setattr(httpx, "post", post)
+
+    with caplog.at_level(logging.WARNING, logger="apps.integrations.n8n_folders"):
+        assert n8n.ensure_client_folder() is None
+        wf_id = n8n.duplicate_template(
+            template_id="tpl-1",
+            client_id="CLI-A60A38F5",
+            client_name="CDV Trading",
+            refresh_token="refresh-not-a-secret-fixture",
+            location_id=LOCATION,
+            automation_type="google_reviews",
+            business_id="BIZ-1992869B7402",
+            business_ordinal=1,
+            activated_at=WHEN,
+        )
+
+    assert wf_id == "wf-skipped"
+    assert created and "parentFolderId" not in created[0]
+    assert created[0]["name"] == "CDVTrading_Negocio01_20261003"
+    assert activated == [f"{n8n._base}/workflows/wf-skipped/activate"]
+    assert any(FOLDER_PLACEMENT_SKIPPED in record.message for record in caplog.records)
+    if project_id:
+        assert any(url.endswith(f"/projects/{project_id}/folders") for url in folder_calls)
+    else:
+        assert any(url.endswith("/projects") for url in folder_calls)
+        assert not any("/folders" in url for url in folder_calls)
+
+
+@pytest.mark.parametrize("status", [403, 404])
+def test_folder_create_denied_still_clones_without_parent(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    monkeypatch.setenv("N8N_PROJECT_ID", "proj-1")
+    n8n = N8nClient()
+    created: list[dict] = []
+
+    def request(method: str, url: str, headers=None, params=None, json=None, timeout=None):  # noqa: A002
+        if method == "GET" and url.endswith("/projects/proj-1/folders"):
+            return _response(200, payload={"data": [], "count": 0})
+        if method == "POST" and url.endswith("/projects/proj-1/folders"):
+            return _response(status, text="cannot create folder")
+        raise AssertionError(f"unexpected {method} {url}")
+
+    def post(url: str, headers=None, json=None, timeout=None):  # noqa: A002
+        if url.endswith("/activate"):
+            return _response(200, payload={})
+        created.append(json or {})
+        return _response(200, payload={"id": "wf-root"})
+
+    monkeypatch.setattr(httpx, "request", request)
     monkeypatch.setattr(
         httpx,
-        "request",
-        lambda *a, **k: _response(404, text="not found"),
+        "get",
+        lambda *a, **k: _response(
+            200, payload={"name": "tpl", "nodes": [], "connections": {}, "settings": {}}
+        ),
     )
-    with pytest.raises(RuntimeError, match="Zeromanual") as exc:
-        n8n.ensure_client_folder()
-    assert "2.19" in str(exc.value)
-    assert str(exc.value) == FOLDER_API_MISSING
+    monkeypatch.setattr(httpx, "post", post)
+    wf_id = n8n.duplicate_template(
+        template_id="tpl-1",
+        client_id="CLI-1",
+        client_name="CDV Trading",
+        refresh_token="rt",
+        location_id=LOCATION,
+        automation_type="google_reviews",
+        business_id="BIZ-1",
+        business_ordinal=1,
+        activated_at=WHEN,
+    )
+    assert wf_id == "wf-root"
+    assert created and "parentFolderId" not in created[0]
+    assert n8n.ensure_client_folder() is None
+
+
+def test_projects_server_error_still_aborts_clone(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("N8N_PROJECT_ID", raising=False)
+    n8n = N8nClient()
+    created: list[str] = []
+
+    monkeypatch.setattr(httpx, "request", lambda *a, **k: _response(500, text="boom"))
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _response(200, payload={"nodes": []}))
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *a, **k: created.append("post") or _response(200, payload={"id": "nope"}),
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        n8n.duplicate_template(
+            template_id="tpl-1",
+            client_id="CLI-1",
+            client_name="CDV Trading",
+            refresh_token="rt",
+            location_id=LOCATION,
+            automation_type="google_reviews",
+            business_id="BIZ-1",
+        )
+    assert created == []
+
+
+def test_missing_template_still_fails_after_folder_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("N8N_PROJECT_ID", raising=False)
+    n8n = N8nClient()
+    created: list[str] = []
+    monkeypatch.setattr(httpx, "request", lambda *a, **k: _response(403, text="forbidden"))
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: _response(404, text="missing template"))
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda *a, **k: created.append("post") or _response(200, payload={"id": "nope"}),
+    )
+    with pytest.raises(httpx.HTTPStatusError):
+        n8n.duplicate_template(
+            template_id="tpl-missing",
+            client_id="CLI-1",
+            client_name="CDV Trading",
+            refresh_token="rt",
+            location_id=LOCATION,
+            automation_type="google_reviews",
+            business_id="BIZ-1",
+        )
+    assert n8n.ensure_client_folder() is None
+    assert created == []
 
 
 def test_activate_threads_ordinal_not_display_name(monkeypatch: pytest.MonkeyPatch) -> None:

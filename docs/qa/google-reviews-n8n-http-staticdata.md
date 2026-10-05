@@ -16,6 +16,7 @@ Este cambio **no** desactiva ni reactiva el workflow de CDV, ni aprueba reseñas
 | `location_id` | `business.location_id`. Sigue siendo obligatorio un resource name `accounts/…/locations/…` (`require_gbp_location_id`) |
 | `client_name` | Nombre del cliente |
 | `business_id` | Negocio activado |
+| `client_id` | Id del cliente. No es un secreto. `Build Draft Payload` lo lee para el POST al portal |
 
 `global` existe porque en n8n `$getWorkflowStaticData('global')` lee **solo** `staticData.global`. Las expresiones HTTP no ven `$workflow.staticData`: `$workflow` expone `id`, `name` y `active`.
 
@@ -44,16 +45,26 @@ En la plantilla:
 | `Normalize Review` | code | `review_name`, `reviewer_name`, `starRating`, `review_text` |
 | `Filter Unseen Reviews` | code | Salta ids ya borradoreados |
 | `Call LLM` | httpRequest | Chat completions |
-| `Generate AI Draft` | code | **Contrato.** Salida que consume `Push Draft to ZeroManual` |
-| `Remember Drafted Review` | code | Apunta el id en staticData |
+| `Generate AI Draft` | code | **Contrato.** Deja reseña + texto del modelo |
+| `Build Draft Payload` | code | Arma el JSON del portal desde `staticData.global` y el item |
+| `Push Draft to ZeroManual` | httpRequest | **Contrato.** `POST /internal/automations/google_reviews/drafts` con `X-Webhook-Secret` |
+| `Remember Drafted Review` | code | Apunta el id en staticData **después** de que el push responde bien |
+| `Publish Reply Webhook` | webhook | **Contrato.** Entrada `publish-reply`. En cada copia el path queda `publish-reply-{client}-{business}` |
 | `Post Reply to Google` | code | **Contrato.** Publica la respuesta. Hace los HTTP dentro del código |
 
-`duplicate_template` sigue inyectando, sin renombrar nada:
+Camino feliz, ya en el JSON (no depende de que la inyección añada nodos):
 
-- `Push Draft to ZeroManual` colgando de `Generate AI Draft`
-- `Publish Reply Webhook` → `Post Reply to Google`
+`Generate AI Draft` → `Build Draft Payload` → `Push Draft to ZeroManual` → `Remember Drafted Review`
 
-`Post Reply to Google` es un nodo Code y no un HTTP Request: la inyección cablea el webhook **directo** a ese nombre, y un HTTP Request no puede leer `staticData`. El código hace el mismo `POST` al token y el `PUT` de la respuesta. El webhook de n8n responde `onReceived`, así que ZeroManual no espera al `PUT`.
+`Publish Reply Webhook` → `Post Reply to Google`
+
+`duplicate_template` no vuelve a crear esos nodos si ya están. En grafos viejos que solo tienen `Generate AI Draft` → `Remember Drafted Review`, sigue añadiendo `Push Draft to ZeroManual` como rama extra y el webhook si faltan. Si `N8N_WEBHOOK_CRED_ID` está definido, sustituye el header `$env` del push por la credencial `httpHeaderAuth` (el secreto no entra en el JSON).
+
+Publicar no lo hace ZeroManual contra la API de Google. Al aceptar (con o sin edición) el portal llama a `trigger_publish_reply`: `POST {N8N_WEBHOOK_BASE_URL}/publish-reply-{client_id}-{business_id}` con `review_id` y `final_reply`. Rechazar no llama a ese webhook.
+
+`Post Reply to Google` es un nodo Code: un HTTP Request no puede leer `staticData`. El código hace el `POST` del token y el `PUT` de la respuesta. El webhook de n8n responde `onReceived`, así que ZeroManual no espera al `PUT`.
+
+`Remember Drafted Review` lee `$('Generate AI Draft')`, no la respuesta HTTP. Si el push falla, no corre y la reseña se reintenta. El portal es idempotente por `review_id`: un reintento no abre un segundo borrador ni republica uno ya resuelto.
 
 No hay nota adhesiva «CONFIGURACIÓN PENDIENTE» ni placeholders `YOUR_*`. No hay nodos de credencial OAuth de Google My Business. Google Sheets no está en el camino feliz: es opcional y no bloquea. Quien quiera un registro puede añadir un nodo Sheets en una rama lateral; no debe intercalarse antes de `Generate AI Draft`.
 
@@ -75,7 +86,7 @@ No commitear esos valores.
 
 LLM (compartido, no por cliente): `POST {$env.ZEROMANUAL_LLM_BASE_URL || http://127.0.0.1:11434/v1}/chat/completions`, modelo `$env.ZEROMANUAL_LLM_MODEL` o `qwen3:8b`. Si el endpoint exige API key, añadir en `Call LLM` el header `Authorization: Bearer {{$env.ZEROMANUAL_LLM_API_KEY}}`.
 
-`Generate AI Draft` deja en el item `review_name`, `reviewer_name`, `starRating`, `review_text` y `message.content` / `choices[0].message.content`, que es lo que lee el nodo inyectado `Push Draft to ZeroManual`.
+`Generate AI Draft` deja en el item `review_name`, `reviewer_name`, `starRating`, `review_text` y `message.content` / `choices[0].message.content`. `Build Draft Payload` convierte eso en el cuerpo del POST. En n8n hace falta `ZEROMANUAL_PUBLIC_URL` y `ZEROMANUAL_WEBHOOK_SECRET` (el mismo valor que en ZeroManual), además de `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. No commitear el secreto.
 
 ## Nombre del workflow
 
@@ -105,29 +116,37 @@ La API key necesita poder listar proyectos, listar/crear carpetas y crear/actual
 
 ## Importar y apuntar la plantilla
 
-La plantilla importada debe quedar **inactiva**. No tiene `staticData` de cliente; si se ejecuta, `Load Client Context` falla a propósito.
+La plantilla debe quedar **inactiva**. No tiene `staticData` de cliente; si se ejecuta, `Load Client Context` falla a propósito.
 
-1. En n8n: menú del workflow → Import from file → `n8n/templates/google_reviews.json`.
-2. No lo actives. Copia el id nuevo (no reutilices `oju0vufPh9qyRqQs` salvo que lo sustituyas entero).
-3. En el proceso de ZeroManual: `N8N_TEMPLATE_IDS={"google_reviews":"<id nuevo>"}` (y el resto de plantillas que ya hubiera).
-4. En el entorno de n8n: `ZEROMANUAL_GOOGLE_CLIENT_ID`, `ZEROMANUAL_GOOGLE_CLIENT_SECRET` y `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. Opcional: `ZEROMANUAL_LLM_BASE_URL`, `ZEROMANUAL_LLM_MODEL`, `ZEROMANUAL_LLM_API_KEY`.
-5. Reinicia la API de ZeroManual para que lea el id.
+La plantilla viva ya es `LZbxMigatCfYGGOn`. Este cambio **no** modifica `N8N_TEMPLATE_IDS`. Hay que hacer `PUT` de ese id (no crear otra plantilla ni reactivar CDV). El `PUT` público no acepta `meta` ni `pinData`.
 
-Sustituir el workflow `oju0vufPh9qyRqQs` por API (no ejecutado en este cambio; el `PUT` público no acepta `meta` ni `pinData`):
+En el entorno de **n8n** (no en el JSON):
+
+- `ZEROMANUAL_GOOGLE_CLIENT_ID`
+- `ZEROMANUAL_GOOGLE_CLIENT_SECRET`
+- `ZEROMANUAL_PUBLIC_URL` (URL pública de ZeroManual, sin barra final)
+- `ZEROMANUAL_WEBHOOK_SECRET` (el mismo valor que en ZeroManual)
+- `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`
+- Opcional: `ZEROMANUAL_LLM_BASE_URL`, `ZEROMANUAL_LLM_MODEL`, `ZEROMANUAL_LLM_API_KEY`
 
 ```bash
 jq '{name,nodes,connections,settings,staticData}' n8n/templates/google_reviews.json \
   > /tmp/google_reviews_api.json
-curl -X PUT "$N8N_API_URL/workflows/oju0vufPh9qyRqQs" \
+# Si el PUT rechaza staticData:null, sustituye esa clave por {}.
+curl -X PUT "$N8N_API_URL/workflows/LZbxMigatCfYGGOn" \
   -H "X-N8N-API-KEY: $N8N_API_KEY" \
   -H "Content-Type: application/json" \
   --data-binary @/tmp/google_reviews_api.json
 ```
 
-Si `staticData: null` molesta al PUT, cambia esa clave a `{}` en el JSON temporal. Tras un PUT sobre el id viejo, `N8N_TEMPLATE_IDS.google_reviews` puede seguir siendo `oju0vufPh9qyRqQs`.
+No llames a `/activate` sobre esa plantilla. No toques los workflows ya copiados para clientes.
 
-## Hay que reactivar CDV: sí
+En el proceso de ZeroManual, si aún no hay `N8N_WEBHOOK_CRED_ID`, el push usa `$env`. Si esa variable ya apunta a la credencial `httpHeaderAuth`, las activaciones nuevas la enganchan y quitan el header de entorno para no mandarlo vacío. Reiniciar la API solo hace falta si cambias variables de ZeroManual; el id de plantilla no cambia.
 
-La copia ya creada (por ejemplo `oju0vufPh9qyRqQs_CLI-A60A38F5_BIZ-1992869B7402`) es un workflow distinto. Sigue con los nodos OAuth de GMB y el nombre antiguo hasta que un operador la **desactive y vuelva a activar**. `duplicate_template` solo corre en la activación: clona la plantilla vigente, no parchea copias viejas.
+## Reactivar CDV: no en este cambio
 
-No hacerlo desde este cambio. Al reactivar, n8n borrará el workflow viejo (`delete_workflow` en la desactivación) y creará otro con nombre `Cliente_NegocioNN_YYYYMMDD` dentro de `Zeromanual`, ya sin credencial OAuth por cliente.
+Este cambio no desactiva ni reactiva el workflow de CDV, ni cambia `N8N_TEMPLATE_IDS`.
+
+La plantilla viva (id que ya usa el entorno, por ejemplo `LZbxMigatCfYGGOn`) hay que actualizarla **en su sitio** con el JSON nuevo y dejarla inactiva. Las copias ya activadas de clientes no se parchean solas. `duplicate_template` solo corre al activar.
+
+Cuando un operador decida reactivar CDV (fuera de este cambio): desactivar la automatización en el portal borra el workflow viejo y al volver a activar clona la plantilla vigente, con nombre `Cliente_NegocioNN_YYYYMMDD`, carpeta `Zeromanual`, push al portal y webhook de publicación. Hasta entonces esa copia sigue sin el bucle nuevo.

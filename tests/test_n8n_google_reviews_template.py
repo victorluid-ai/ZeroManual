@@ -65,7 +65,9 @@ def test_template_has_contract_nodes_and_no_oauth_placeholders() -> None:
     names = [node["name"] for node in wf["nodes"]]
     assert names.count("Generate AI Draft") == 1
     assert names.count("Post Reply to Google") == 1
-    assert "Publish Reply Webhook" not in names
+    assert names.count("Push Draft to ZeroManual") == 1
+    assert names.count("Publish Reply Webhook") == 1
+    assert names.count("Build Draft Payload") == 1
     assert "CONFIGURACIÓN PENDIENTE" not in raw
     assert "YOUR_" not in raw
     assert "stickyNote" not in raw
@@ -78,17 +80,63 @@ def test_template_has_contract_nodes_and_no_oauth_placeholders() -> None:
     assert "oauth2.googleapis.com/token" in by_name["Exchange Google Access Token"]["parameters"]["url"]
     assert "mybusiness.googleapis.com/v4/" in by_name["List Google Reviews"]["parameters"]["url"]
     assert "/reply" in by_name["Post Reply to Google"]["parameters"]["jsCode"]
-    assert wf["connections"]["Generate AI Draft"]["main"][0][0]["node"] == "Remember Drafted Review"
+    assert wf["connections"]["Generate AI Draft"]["main"][0][0]["node"] == "Build Draft Payload"
+    assert wf["connections"]["Build Draft Payload"]["main"][0][0]["node"] == "Push Draft to ZeroManual"
+    assert wf["connections"]["Push Draft to ZeroManual"]["main"][0][0]["node"] == "Remember Drafted Review"
+    assert wf["connections"]["Publish Reply Webhook"]["main"][0][0]["node"] == "Post Reply to Google"
+    push = by_name["Push Draft to ZeroManual"]["parameters"]
+    assert push["method"] == "POST"
+    assert "/internal/automations/google_reviews/drafts" in push["url"]
+    assert push["headerParameters"]["parameters"][0]["name"] == "X-Webhook-Secret"
+    assert "$env.ZEROMANUAL_WEBHOOK_SECRET" in push["headerParameters"]["parameters"][0]["value"]
+    assert by_name["Publish Reply Webhook"]["parameters"]["path"] == "publish-reply"
+    assert "Generate AI Draft" in by_name["Remember Drafted Review"]["parameters"]["jsCode"]
+    assert "change_me" not in raw
+    assert "sk-" not in raw
 
 
-def test_template_accepts_draft_and_publish_injection() -> None:
+def test_template_injection_does_not_duplicate_baked_nodes(monkeypatch: pytest.MonkeyPatch) -> None:
     wf = json.loads(TEMPLATE.read_text(encoding="utf-8"))
     n8n = N8nClient()
+    before = [node["name"] for node in wf["nodes"]]
     n8n._inject_draft_push_node(wf, "CLI-ABC", "google_reviews", "BIZ-1")
     n8n._inject_publish_reply_webhook(wf, "CLI-ABC", "BIZ-1")
-    targets = [edge["node"] for edge in wf["connections"]["Generate AI Draft"]["main"][0]]
-    assert "Push Draft to ZeroManual" in targets
+    assert [node["name"] for node in wf["nodes"]] == before
+    assert [edge["node"] for edge in wf["connections"]["Generate AI Draft"]["main"][0]] == [
+        "Build Draft Payload"
+    ]
     assert wf["connections"]["Publish Reply Webhook"]["main"][0][0]["node"] == "Post Reply to Google"
+
+    monkeypatch.setenv("N8N_WEBHOOK_CRED_ID", "cred-header-1")
+    n8n._inject_draft_push_node(wf, "CLI-ABC", "google_reviews", "BIZ-1")
+    push = next(node for node in wf["nodes"] if node["name"] == "Push Draft to ZeroManual")
+    assert push["credentials"]["httpHeaderAuth"]["id"] == "cred-header-1"
+    assert "headerParameters" not in push["parameters"]
+    assert push["parameters"]["sendHeaders"] is False
+    assert names_once(wf, "Push Draft to ZeroManual")
+
+
+def names_once(wf: dict, name: str) -> bool:
+    return sum(1 for node in wf["nodes"] if node["name"] == name) == 1
+
+
+def test_injection_still_adds_push_on_legacy_graph() -> None:
+    n8n = N8nClient()
+    wf = {
+        "nodes": [
+            {"name": "Generate AI Draft", "type": "n8n-nodes-base.code", "parameters": {}},
+            {"name": "Remember Drafted Review", "type": "n8n-nodes-base.code", "parameters": {}},
+        ],
+        "connections": {
+            "Generate AI Draft": {
+                "main": [[{"node": "Remember Drafted Review", "type": "main", "index": 0}]]
+            }
+        },
+    }
+    n8n._inject_draft_push_node(wf, "CLI-ABC", "google_reviews", "BIZ-1")
+    targets = [edge["node"] for edge in wf["connections"]["Generate AI Draft"]["main"][0]]
+    assert targets == ["Remember Drafted Review", "Push Draft to ZeroManual"]
+    assert sum(1 for node in wf["nodes"] if node["name"] == "Push Draft to ZeroManual") == 1
 
 
 def test_duplicate_template_names_static_data_and_folder(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,7 +173,14 @@ def test_duplicate_template_names_static_data_and_folder(monkeypatch: pytest.Mon
     assert wf["staticData"]["refresh_token"] == "refresh-not-a-secret-fixture"
     assert wf["staticData"]["global"]["location_id"] == LOCATION
     assert wf["staticData"]["global"]["client_name"] == "CDV Trading"
-    assert any(node["name"] == "Push Draft to ZeroManual" for node in wf["nodes"])
+    assert wf["staticData"]["client_id"] == "CLI-A60A38F5"
+    assert wf["staticData"]["global"]["client_id"] == "CLI-A60A38F5"
+    assert wf["staticData"]["global"]["business_id"] == "BIZ-1"
+    push_nodes = [node for node in wf["nodes"] if node["name"] == "Push Draft to ZeroManual"]
+    assert len(push_nodes) == 1
+    webhook = next(node for node in wf["nodes"] if node["name"] == "Publish Reply Webhook")
+    assert webhook["parameters"]["path"] == "publish-reply-cli-a60a38f5-biz-1"
+    assert wf["connections"]["Generate AI Draft"]["main"][0][0]["node"] == "Build Draft Payload"
     assert wf["connections"]["Publish Reply Webhook"]["main"][0][0]["node"] == "Post Reply to Google"
 
 

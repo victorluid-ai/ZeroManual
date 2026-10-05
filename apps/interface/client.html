@@ -884,7 +884,8 @@
           <div class="auto-card-body">
             <div class="auto-name">${escHtml(d.reviewer_name || 'Anónimo')}${d.rating ? ' · ' + escHtml(d.rating) : ''}</div>
             <div class="auto-desc" style="margin-bottom:8px">${escHtml(d.source_text || '')}</div>
-            <textarea class="draft-text">${escHtml(d.suggested_reply)}</textarea>
+            <textarea class="draft-text" aria-label="Respuesta sugerida">${escHtml(d.suggested_reply)}</textarea>
+            <div class="card-sub" style="margin-top:6px">Puedes editar el texto. Aprobar lo publica en Google; rechazar no lo publica.</div>
           </div>
           <div class="auto-footer">
             <span class="auto-status off">○ Pendiente</span>
@@ -898,7 +899,7 @@
         list.appendChild(div);
       });
     } catch (e) {
-      body.innerHTML = `<div class="card"><div class="empty">Error cargando borradores.</div></div>`;
+      body.innerHTML = `<div class="card"><div class="empty">${escHtml(e.message || 'Error cargando borradores.')}</div></div>`;
     }
   }
 

@@ -3,11 +3,95 @@ from __future__ import annotations
 import copy
 import os
 import uuid
+from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
 from apps.integrations.google_business import require_gbp_location_id
+from apps.integrations.n8n_folders import N8nFolderResolver
+
+_MADRID = ZoneInfo("Europe/Madrid")
+_NAME_MAX = 128
+
+
+def sanitize_workflow_name_part(value: str | None, fallback: str) -> str:
+    """Keep Unicode letters and digits. Drop spaces and symbols."""
+    kept = "".join(ch for ch in (value or "") if ch.isalnum())
+    return kept or fallback
+
+
+def negocio_segment(ordinal: int) -> str:
+    """Stable label: Negocio01, Negocio02, … Never a street or brand name."""
+    number = ordinal if ordinal and ordinal > 0 else 1
+    return f"Negocio{number:02d}"
+
+
+def negocio_ordinal(businesses: list[dict[str, Any]] | None, business_id: str | None) -> int:
+    """1-based index of ``business_id`` among the client's businesses.
+
+    Sort is ``created_at`` then ``business_id``. A client with zero or one
+    business always gets 1 (``Negocio01``), even when the display name is a street.
+    The same business_id keeps its index while the set of rows does not lose an
+    earlier sibling. Deleting an older business can renumber the rest on the
+    next activation.
+    """
+    ordered = sorted(
+        businesses or [],
+        key=lambda row: (str(row.get("created_at") or ""), str(row.get("business_id") or "")),
+    )
+    if len(ordered) <= 1:
+        return 1
+    for index, row in enumerate(ordered, start=1):
+        if business_id and row.get("business_id") == business_id:
+            return index
+    return len(ordered) + 1
+
+
+def build_client_workflow_name(
+    client_name: str,
+    *,
+    ordinal: int = 1,
+    activated_at: datetime | None = None,
+) -> str:
+    """``NombreCliente_NegocioNN_YYYYMMDD`` in Europe/Madrid."""
+    cliente = sanitize_workflow_name_part(client_name, "Cliente")
+    segment = negocio_segment(ordinal)
+    when = activated_at or datetime.now(_MADRID)
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    fecha = when.astimezone(_MADRID).strftime("%Y%m%d")
+    suffix = f"_{segment}_{fecha}"
+    if len(cliente) + len(suffix) > _NAME_MAX:
+        cliente = cliente[: _NAME_MAX - len(suffix)] or "Cliente"
+    return f"{cliente}{suffix}"
+
+
+def client_static_data(
+    *,
+    refresh_token: str,
+    location_id: str | None,
+    client_name: str,
+    business_id: str | None,
+) -> dict[str, Any]:
+    """Flat keys plus a ``global`` mirror.
+
+    n8n's ``$getWorkflowStaticData('global')`` reads ``staticData.global`` only.
+    ``$workflow`` in HTTP expressions exposes id/name/active, not staticData.
+    """
+    payload = {
+        "refresh_token": refresh_token,
+        "location_id": location_id,
+        "client_name": client_name,
+        "business_id": business_id,
+    }
+    return {**payload, "global": dict(payload)}
+
+
+def _body_rejects_parent_folder(text: str) -> bool:
+    lowered = (text or "").lower()
+    return "parentfolderid" in lowered or "additional propert" in lowered
 
 
 class N8nClient:
@@ -17,6 +101,9 @@ class N8nClient:
     - ``Generate AI Draft`` — LLM node whose output is pushed to ZeroManual.
     - ``Post Reply to Google`` (optional) — publishes the approved reply; when present,
       the injected ``Publish Reply Webhook`` is wired into it.
+
+    New copies are named ``Cliente_NegocioNN_YYYYMMDD`` and placed in the folder
+    ``Zeromanual``.
     """
 
     def __init__(self) -> None:
@@ -75,41 +162,97 @@ class N8nClient:
         location_id: str | None,
         automation_type: str | None = None,
         business_id: str | None = None,
+        business_ordinal: int | None = None,
+        activated_at: datetime | None = None,
     ) -> str:
         """Copy a template workflow, inject client credentials, activate it, and return the new workflow ID.
 
         ``business_id`` scopes the workflow to a single business/location — required so a
         client with multiple Google Business locations gets one independent workflow (and
         webhook paths) per business instead of colliding on the same paths.
+
+        ``business_ordinal`` selects the NegocioNN segment (1 → Negocio01). A missing
+        ordinal is treated as 1. The calendar date is Europe/Madrid.
         """
         if automation_type == "google_reviews":
             location_id = require_gbp_location_id(location_id)
+        folder_id = self.ensure_client_folder()
         tpl = self.get_workflow(template_id)
         # The n8n create-workflow API rejects any body field it doesn't recognize
         # (400 "must NOT have additional properties"), so only pass through the
         # fields it actually accepts rather than the full GET /workflows/{id} shape.
-        wf_name_suffix = f"{client_id}_{business_id}" if business_id else client_id
+        ordinal = 1 if not business_ordinal or business_ordinal < 1 else business_ordinal
         wf = {
-            "name": f"{template_id}_{wf_name_suffix}",
+            "name": build_client_workflow_name(
+                client_name, ordinal=ordinal, activated_at=activated_at
+            ),
             "nodes": copy.deepcopy(tpl.get("nodes", [])),
             "connections": copy.deepcopy(tpl.get("connections", {})),
             "settings": copy.deepcopy(tpl.get("settings", {})),
-            "staticData": {
-                "refresh_token": refresh_token,
-                "location_id": location_id,
-                "client_name": client_name,
-                "business_id": business_id,
-            },
+            "staticData": client_static_data(
+                refresh_token=refresh_token,
+                location_id=location_id,
+                client_name=client_name,
+                business_id=business_id,
+            ),
         }
         webhook_suffix = f"{client_id.lower()}-{business_id.lower()}" if business_id else client_id.lower()
         self._uniquify_webhooks(wf, webhook_suffix)
         if automation_type == "google_reviews":
             self._inject_draft_push_node(wf, client_id, automation_type, business_id)
             self._inject_publish_reply_webhook(wf, client_id, business_id)
-        created = self.create_workflow(wf)
+        created = self._submit_workflow(wf, folder_id)
         wf_id = str(created["id"])
         self.activate_workflow(wf_id)
         return wf_id
+
+    def ensure_client_folder(self) -> str:
+        """Return the id of the n8n folder named exactly Zeromanual."""
+        return N8nFolderResolver(self._base, self._headers).ensure_folder()
+
+    def _submit_workflow(self, wf: dict, folder_id: str) -> dict:
+        """Create the workflow inside ``folder_id``.
+
+        Prefer ``parentFolderId`` on POST. If this n8n rejects that field, create
+        at the project root and PUT the same body with ``parentFolderId``. A failed
+        move deletes the copy so it is not left outside Zeromanual.
+        """
+        payload = dict(wf)
+        payload["parentFolderId"] = folder_id
+        response = httpx.post(
+            f"{self._base}/workflows",
+            headers=self._headers,
+            json=payload,
+            timeout=15,
+        )
+        if response.status_code == 400 and _body_rejects_parent_folder(response.text):
+            created = self.create_workflow(wf)
+            wf_id = str(created["id"])
+            if not self._move_workflow_to_folder(wf_id, wf, folder_id):
+                self.delete_workflow(wf_id)
+                raise RuntimeError(
+                    "n8n rechazó mover el workflow a la carpeta Zeromanual; se eliminó la copia."
+                )
+            return created
+        response.raise_for_status()
+        return response.json()
+
+    def _move_workflow_to_folder(self, workflow_id: str, wf: dict, folder_id: str) -> bool:
+        body = {
+            "name": wf.get("name"),
+            "nodes": wf.get("nodes") or [],
+            "connections": wf.get("connections") or {},
+            "settings": wf.get("settings") or {},
+            "staticData": wf.get("staticData") or {},
+            "parentFolderId": folder_id,
+        }
+        response = httpx.put(
+            f"{self._base}/workflows/{workflow_id}",
+            headers=self._headers,
+            json=body,
+            timeout=15,
+        )
+        return response.is_success
 
     def trigger_publish_reply(
         self, client_id: str, business_id: str, payload: dict[str, Any]

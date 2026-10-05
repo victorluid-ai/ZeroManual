@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from apps.integrations import stripe_payments
 from apps.integrations.google_business import require_gbp_location_id
+from apps.integrations.n8n_client import negocio_ordinal
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ def activate_automation_for_client(
     if automation_type == "google_reviews":
         location_id = require_gbp_location_id(location_id)
     try:
+        ordinal = negocio_ordinal(store.list_businesses(client_id), resolved_business_id)
         wf_id = n8n.duplicate_template(
             template_id=template_id,
             client_id=client_id,
@@ -69,6 +71,7 @@ def activate_automation_for_client(
             location_id=location_id,
             automation_type=automation_type,
             business_id=resolved_business_id,
+            business_ordinal=ordinal,
         )
     except ValueError:
         raise

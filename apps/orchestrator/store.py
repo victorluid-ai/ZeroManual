@@ -1602,19 +1602,61 @@ class DataStore:
         rating: str | None = None,
         source_text: str | None = None,
     ) -> dict[str, Any]:
-        draft_id = f"DRF-{secrets.token_hex(6).upper()}"
+        """Insert a pending draft, or reuse the row for the same review.
+
+        Idempotency key: ``client_id`` + ``automation_type`` + ``review_id``.
+        A pending or failed row is refreshed and left pending. A resolved row
+        (approved, edited, rejected, auto_sent) is returned unchanged so a
+        retried n8n POST does not open a second draft or publish again.
+        """
         now = _utc_now()
+        draft_id = ""
         with self._connect() as conn:
-            conn.execute(
-                """INSERT INTO automation_drafts
-                   (draft_id, client_id, business_id, automation_type, review_id, reviewer_name, rating,
-                    source_text, suggested_reply, final_reply, status, created_at, updated_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,NULL,'pending',?,?)""",
-                (
-                    draft_id, client_id, business_id, automation_type, review_id, reviewer_name, rating,
-                    source_text, suggested_reply, now, now,
-                ),
-            )
+            existing = None
+            if review_id:
+                row = conn.execute(
+                    """SELECT * FROM automation_drafts
+                       WHERE client_id=? AND automation_type=? AND review_id=?
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (client_id, automation_type, review_id),
+                ).fetchone()
+                existing = dict(row) if row else None
+            if existing and existing["status"] not in ("pending", "failed"):
+                draft_id = existing["draft_id"]
+            elif existing:
+                conn.execute(
+                    """UPDATE automation_drafts
+                       SET business_id=COALESCE(?, business_id),
+                           reviewer_name=COALESCE(?, reviewer_name),
+                           rating=COALESCE(?, rating),
+                           source_text=COALESCE(?, source_text),
+                           suggested_reply=?,
+                           status='pending',
+                           updated_at=?
+                       WHERE draft_id=?""",
+                    (
+                        business_id,
+                        reviewer_name,
+                        rating,
+                        source_text,
+                        suggested_reply,
+                        now,
+                        existing["draft_id"],
+                    ),
+                )
+                draft_id = existing["draft_id"]
+            else:
+                draft_id = f"DRF-{secrets.token_hex(6).upper()}"
+                conn.execute(
+                    """INSERT INTO automation_drafts
+                       (draft_id, client_id, business_id, automation_type, review_id, reviewer_name, rating,
+                        source_text, suggested_reply, final_reply, status, created_at, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,NULL,'pending',?,?)""",
+                    (
+                        draft_id, client_id, business_id, automation_type, review_id, reviewer_name, rating,
+                        source_text, suggested_reply, now, now,
+                    ),
+                )
         return self.get_draft(draft_id)  # type: ignore[return-value]
 
     def get_draft(self, draft_id: str) -> dict[str, Any] | None:

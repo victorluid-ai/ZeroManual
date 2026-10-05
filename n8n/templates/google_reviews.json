@@ -208,13 +208,75 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2520,
-        80
+        3080,
+        180
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "const data = $getWorkflowStaticData('global');\nconst seen = Array.isArray(data.drafted_review_ids) ? data.drafted_review_ids.slice() : [];\nfor (const item of $input.all()) {\n  const id = item.json && item.json.review_name;\n  if (id && seen.indexOf(id) === -1) seen.push(id);\n}\ndata.drafted_review_ids = seen.slice(-400);\nreturn $input.all();"
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst seen = Array.isArray(data.drafted_review_ids) ? data.drafted_review_ids.slice() : [];\nlet items = [];\ntry {\n  items = $('Generate AI Draft').all();\n} catch (err) {\n  items = [];\n}\nif (!items.length) items = $input.all();\nfor (const item of items) {\n  const id = item.json && item.json.review_name;\n  if (id && seen.indexOf(id) === -1) seen.push(id);\n}\ndata.drafted_review_ids = seen.slice(-400);\nreturn items;"
       }
+    },
+    {
+      "id": "a1b2c3d4-0013-4000-8000-000000000013",
+      "name": "Build Draft Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst item = $input.item.json || {};\nconst fromMessage = item.message && item.message.content;\nconst fromChoice = item.choices && item.choices[0] && item.choices[0].message && item.choices[0].message.content;\nconst reply = fromMessage || fromChoice || '';\nif (!data.client_id) {\n  throw new Error('Falta staticData.global.client_id. ZeroManual lo inyecta al activar.');\n}\nreturn [{\n  json: {\n    client_id: data.client_id,\n    business_id: data.business_id || '',\n    review_id: item.review_name || '',\n    reviewer_name: item.reviewer_name || '',\n    rating: item.starRating || item.rating || '',\n    source_text: item.review_text || '',\n    suggested_reply: String(reply)\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0014-4000-8000-000000000014",
+      "name": "Push Draft to ZeroManual",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2800,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.ZEROMANUAL_PUBLIC_URL || 'http://127.0.0.1:8090').replace(/\\/$/, '') + '/internal/automations/google_reviews/drafts' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Webhook-Secret",
+              "value": "={{ $env.ZEROMANUAL_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "notes": "No guarda el secreto. El header sale de $env.ZEROMANUAL_WEBHOOK_SECRET en n8n. Si ZeroManual tiene N8N_WEBHOOK_CRED_ID, duplicate_template sustituye este header por la credencial httpHeaderAuth."
+    },
+    {
+      "id": "a1b2c3d4-0015-4000-8000-000000000015",
+      "name": "Publish Reply Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        480
+      ],
+      "webhookId": "c0ffee00-0015-4000-8000-000000000015",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publish-reply",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "notes": "ZeroManual llama a publish-reply-{client_id}-{business_id} tras aprobar. duplicate_template añade el sufijo. El cuerpo es review_id + final_reply."
     },
     {
       "id": "a1b2c3d4-0012-4000-8000-000000000012",
@@ -335,7 +397,40 @@
       "main": [
         [
           {
+            "node": "Build Draft Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Draft Payload": {
+      "main": [
+        [
+          {
+            "node": "Push Draft to ZeroManual",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Push Draft to ZeroManual": {
+      "main": [
+        [
+          {
             "node": "Remember Drafted Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Publish Reply Webhook": {
+      "main": [
+        [
+          {
+            "node": "Post Reply to Google",
             "type": "main",
             "index": 0
           }

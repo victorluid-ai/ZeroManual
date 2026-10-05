@@ -701,6 +701,10 @@ def push_automation_draft(
         rating=body.rating,
         source_text=body.source_text,
     )
+    # Resolved rows are returned as-is (idempotent retry). Only a pending draft
+    # may auto-publish. Approval mode leaves it pending for /client.
+    if draft.get("status") != "pending":
+        return {"status": "ok", "draft": draft}
     auto = runtime.store.get_automation(body.client_id, business_id, automation_type)
     reply_mode = (auto or {}).get("reply_mode") or "approval"
     if reply_mode == "auto":
@@ -739,6 +743,8 @@ def approve_client_draft(
     if draft.get("status") != "pending":
         raise HTTPException(status_code=400, detail="El borrador ya fue resuelto")
     final_reply = body.final_reply if body.final_reply is not None else draft["suggested_reply"]
+    if not str(final_reply or "").strip():
+        raise HTTPException(status_code=400, detail="La respuesta no puede estar vacía")
     status = "edited" if final_reply != draft["suggested_reply"] else "approved"
     try:
         _publish_draft_via_n8n(draft, final_reply)
@@ -759,6 +765,8 @@ def reject_client_draft(draft_id: str, client: dict = Depends(get_client_user)) 
     draft = runtime.store.get_draft(draft_id)
     if draft is None or draft["client_id"] != client["client_id"]:
         raise HTTPException(status_code=404, detail="Borrador no encontrado")
+    if draft.get("status") != "pending":
+        raise HTTPException(status_code=400, detail="El borrador ya fue resuelto")
     updated = runtime.store.resolve_draft(draft_id, "rejected", None)
     return {"draft": updated}
 

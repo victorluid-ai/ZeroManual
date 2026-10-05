@@ -74,17 +74,23 @@ def client_static_data(
     location_id: str | None,
     client_name: str,
     business_id: str | None,
+    client_id: str | None = None,
 ) -> dict[str, Any]:
     """Flat keys plus a ``global`` mirror.
 
     n8n's ``$getWorkflowStaticData('global')`` reads ``staticData.global`` only.
     ``$workflow`` in HTTP expressions exposes id/name/active, not staticData.
+
+    ``client_id`` is not a secret. The baked ``Build Draft Payload`` node reads
+    it from ``staticData.global`` so the portal POST works without rewriting the
+    template body on every copy.
     """
     payload = {
         "refresh_token": refresh_token,
         "location_id": location_id,
         "client_name": client_name,
         "business_id": business_id,
+        "client_id": client_id,
     }
     return {**payload, "global": dict(payload)}
 
@@ -98,9 +104,15 @@ class N8nClient:
     """n8n API + webhook helpers for per-client automation workflows.
 
     google_reviews template contract (node names):
-    - ``Generate AI Draft`` — LLM node whose output is pushed to ZeroManual.
-    - ``Post Reply to Google`` (optional) — publishes the approved reply; when present,
-      the injected ``Publish Reply Webhook`` is wired into it.
+    - ``Generate AI Draft`` — shapes the review plus the model reply.
+    - ``Push Draft to ZeroManual`` — POSTs that draft to the portal. Baked into
+      the template after ``Build Draft Payload``. Injection adds it only when
+      the copy does not already have the node.
+    - ``Publish Reply Webhook`` — inbound path ``publish-reply``. On each client
+      copy the path becomes ``publish-reply-{client}-{business}``, which is
+      what ``trigger_publish_reply`` calls. Wired to ``Post Reply to Google``.
+    - ``Post Reply to Google`` — publishes the approved reply inside n8n.
+      ZeroManual does not call the Google API itself.
 
     New copies are named ``Cliente_NegocioNN_YYYYMMDD`` and placed in the folder
     ``Zeromanual``.
@@ -194,6 +206,7 @@ class N8nClient:
                 location_id=location_id,
                 client_name=client_name,
                 business_id=business_id,
+                client_id=client_id,
             ),
         }
         webhook_suffix = f"{client_id.lower()}-{business_id.lower()}" if business_id else client_id.lower()
@@ -276,13 +289,62 @@ class N8nClient:
             params["path"] = f"{base_path}-{suffix}"
             node["webhookId"] = str(uuid.uuid4())
 
+    def _append_main_edge(self, wf: dict, source: str, target: str) -> None:
+        conns = wf.setdefault("connections", {})
+        source_conn = conns.setdefault(source, {"main": [[]]})
+        main = source_conn.setdefault("main", [[]])
+        if not main:
+            main.append([])
+        branch = main[0] if main[0] is not None else []
+        main[0] = branch
+        if any(isinstance(edge, dict) and edge.get("node") == target for edge in branch):
+            return
+        branch.append({"index": 0, "node": target, "type": "main"})
+
+    def _ensure_push_auth(self, node: dict) -> None:
+        """Attach the n8n header credential when configured.
+
+        The template sends ``X-Webhook-Secret`` from ``$env.ZEROMANUAL_WEBHOOK_SECRET``
+        so a copy works without embedding the secret. If ``N8N_WEBHOOK_CRED_ID`` is
+        set, that credential replaces the env header so the two do not collide.
+        """
+        cred_id = os.getenv("N8N_WEBHOOK_CRED_ID", "")
+        if not cred_id:
+            return
+        params = node.setdefault("parameters", {})
+        params["authentication"] = "genericCredentialType"
+        params["genericAuthType"] = "httpHeaderAuth"
+        node["credentials"] = {
+            "httpHeaderAuth": {"id": cred_id, "name": "ZeroManual Webhook Secret"}
+        }
+        header_block = params.get("headerParameters") or {}
+        headers = [
+            header
+            for header in (header_block.get("parameters") or [])
+            if header.get("name") != "X-Webhook-Secret"
+        ]
+        if headers:
+            params["headerParameters"] = {"parameters": headers}
+            params["sendHeaders"] = True
+        else:
+            params.pop("headerParameters", None)
+            params["sendHeaders"] = False
+
     def _inject_draft_push_node(
         self, wf: dict, client_id: str, automation_type: str, business_id: str | None
     ) -> None:
-        """Add a node that POSTs the AI-generated draft to ZeroManual after 'Generate AI Draft',
-        so the client can review/approve it from the client portal instead of only by email."""
+        """POST the AI draft to ZeroManual after 'Generate AI Draft'.
+
+        The shipped template already contains ``Push Draft to ZeroManual``.
+        Adding another node would POST the same review twice, so this only
+        fills the node in for older graphs and attaches header auth.
+        """
         nodes = wf.get("nodes", [])
         if not any(n.get("name") == "Generate AI Draft" for n in nodes):
+            return
+        existing = next((n for n in nodes if n.get("name") == "Push Draft to ZeroManual"), None)
+        if existing is not None:
+            self._ensure_push_auth(existing)
             return
         public_url = os.getenv("ZEROMANUAL_PUBLIC_URL", "http://localhost:8090").rstrip("/")
         cred_id = os.getenv("N8N_WEBHOOK_CRED_ID", "")
@@ -320,20 +382,23 @@ class N8nClient:
             }
         nodes.append(push_node)
         wf["nodes"] = nodes
-        conns = wf.setdefault("connections", {})
-        gen_conn = conns.setdefault("Generate AI Draft", {"main": [[]]})
-        gen_conn["main"][0].append({"index": 0, "node": "Push Draft to ZeroManual", "type": "main"})
+        self._append_main_edge(wf, "Generate AI Draft", "Push Draft to ZeroManual")
 
     def _inject_publish_reply_webhook(
         self, wf: dict, client_id: str, business_id: str | None
     ) -> None:
-        """Inject a webhook ZeroManual calls after approval / auto-send to publish on Google.
+        """Webhook ZeroManual calls after approval / auto-send.
 
-        Expected downstream node name: ``Post Reply to Google``. If missing, the webhook
-        is still added so the path exists; the template owner must wire it.
+        The template bakes ``Publish Reply Webhook`` → ``Post Reply to Google``.
+        ``_uniquify_webhooks`` turns the path ``publish-reply`` into
+        ``publish-reply-{client}-{business}`` before this runs. If the node is
+        already present, only the downstream edge is repaired.
         """
         nodes = wf.get("nodes", [])
+        post_name = "Post Reply to Google"
         if any(n.get("name") == "Publish Reply Webhook" for n in nodes):
+            if any(n.get("name") == post_name for n in nodes):
+                self._append_main_edge(wf, "Publish Reply Webhook", post_name)
             return
         path = self.publish_reply_path(client_id, business_id or "default")
         webhook: dict = {
@@ -352,8 +417,5 @@ class N8nClient:
         }
         nodes.append(webhook)
         wf["nodes"] = nodes
-        post_name = "Post Reply to Google"
         if any(n.get("name") == post_name for n in nodes):
-            conns = wf.setdefault("connections", {})
-            wh_conn = conns.setdefault("Publish Reply Webhook", {"main": [[]]})
-            wh_conn["main"][0].append({"index": 0, "node": post_name, "type": "main"})
+            self._append_main_edge(wf, "Publish Reply Webhook", post_name)

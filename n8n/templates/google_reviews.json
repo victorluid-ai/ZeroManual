@@ -1,0 +1,359 @@
+{
+  "name": "GMB Review Responder (HTTP)",
+  "nodes": [
+    {
+      "id": "a1b2c3d4-0001-4000-8000-000000000001",
+      "name": "Every 15 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        280
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0002-4000-8000-000000000002",
+      "name": "Manual Smoke",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        80
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "a1b2c3d4-0003-4000-8000-000000000003",
+      "name": "Load Client Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $getWorkflowStaticData('global');\nif (!data.refresh_token || !data.location_id) {\n  throw new Error('Faltan staticData.global.refresh_token o location_id. ZeroManual los inyecta al activar.');\n}\nreturn [{\n  json: {\n    refresh_token: data.refresh_token,\n    location_id: data.location_id,\n    client_name: data.client_name || '',\n    business_id: data.business_id || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0004-4000-8000-000000000004",
+      "name": "Exchange Google Access Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        560,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://oauth2.googleapis.com/token",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "client_id",
+              "value": "={{ $env.ZEROMANUAL_GOOGLE_CLIENT_ID }}"
+            },
+            {
+              "name": "client_secret",
+              "value": "={{ $env.ZEROMANUAL_GOOGLE_CLIENT_SECRET }}"
+            },
+            {
+              "name": "refresh_token",
+              "value": "={{ $json.refresh_token }}"
+            },
+            {
+              "name": "grant_type",
+              "value": "refresh_token"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "notes": "refresh_token sale del item de Load Client Context (copia de staticData.global). El client OAuth es el de ZeroManual, via env de n8n, no una credencial GMB por cliente."
+    },
+    {
+      "id": "a1b2c3d4-0005-4000-8000-000000000005",
+      "name": "List Google Reviews",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        840,
+        180
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://mybusiness.googleapis.com/v4/{{ $('Load Client Context').item.json.location_id }}/reviews",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.access_token }}"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "pageSize",
+              "value": "50"
+            },
+            {
+              "name": "orderBy",
+              "value": "updateTime desc"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "a1b2c3d4-0006-4000-8000-000000000006",
+      "name": "Split Unreplied Reviews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1120,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const reviews = ($input.first().json.reviews) || [];\nreturn reviews\n  .filter((review) => !(review.reviewReply && review.reviewReply.comment))\n  .map((review) => ({ json: review }));"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0007-4000-8000-000000000007",
+      "name": "Normalize Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const review = $input.item.json || {};\nconst reviewer = review.reviewer || {};\nreturn [{\n  json: {\n    review_name: review.name || '',\n    reviewer_name: reviewer.displayName || 'Anónimo',\n    starRating: review.starRating || '',\n    review_text: review.comment || ''\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0008-4000-8000-000000000008",
+      "name": "Filter Unseen Reviews",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst seen = new Set(Array.isArray(data.drafted_review_ids) ? data.drafted_review_ids : []);\nreturn $input.all().filter((item) => {\n  const id = item.json && item.json.review_name;\n  return Boolean(id) && !seen.has(id);\n});"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0009-4000-8000-000000000009",
+      "name": "Call LLM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        180
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ ($env.ZEROMANUAL_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\\/$/, '') + '/chat/completions' }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $env.ZEROMANUAL_LLM_MODEL || 'qwen3:8b', messages: [{ role: 'system', content: 'Redacta una respuesta breve y profesional en español a esta reseña de Google. No inventes datos ni ofrezcas compensaciones.' }, { role: 'user', content: 'Cliente: ' + ($json.reviewer_name || 'Anónimo') + '\\nNota: ' + ($json.starRating || '') + '\\nTexto: ' + ($json.review_text || '(sin texto)') }] }) }}",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "notes": "LLM compartido (Ollama u OpenAI-compatible). Si hace falta API key, añade el header Authorization Bearer con $env.ZEROMANUAL_LLM_API_KEY. No es una credencial por cliente."
+    },
+    {
+      "id": "a1b2c3d4-0010-4000-8000-000000000010",
+      "name": "Generate AI Draft",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const review = $('Normalize Review').item.json;\nconst llm = $input.item.json || {};\nconst choice = llm.choices && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content;\nconst content = (llm.message && llm.message.content) || choice || '';\nreturn [{\n  json: {\n    review_name: review.review_name,\n    reviewer_name: review.reviewer_name,\n    starRating: review.starRating,\n    review_text: review.review_text,\n    message: { content: content },\n    choices: [{ message: { content: content } }]\n  }\n}];"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0011-4000-8000-000000000011",
+      "name": "Remember Drafted Review",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2520,
+        80
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst seen = Array.isArray(data.drafted_review_ids) ? data.drafted_review_ids.slice() : [];\nfor (const item of $input.all()) {\n  const id = item.json && item.json.review_name;\n  if (id && seen.indexOf(id) === -1) seen.push(id);\n}\ndata.drafted_review_ids = seen.slice(-400);\nreturn $input.all();"
+      }
+    },
+    {
+      "id": "a1b2c3d4-0012-4000-8000-000000000012",
+      "name": "Post Reply to Google",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        480
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "if (typeof fetch !== 'function') {\n  throw new Error('Post Reply to Google necesita fetch en el nodo Code (Node 18+).');\n}\nconst data = $getWorkflowStaticData('global');\nconst clientId = $env.ZEROMANUAL_GOOGLE_CLIENT_ID;\nconst clientSecret = $env.ZEROMANUAL_GOOGLE_CLIENT_SECRET;\nif (!data.refresh_token || !clientId || !clientSecret) {\n  throw new Error('Faltan staticData.global.refresh_token o ZEROMANUAL_GOOGLE_CLIENT_ID/SECRET en n8n.');\n}\nconst tokenRes = await fetch('https://oauth2.googleapis.com/token', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },\n  body: new URLSearchParams({\n    client_id: clientId,\n    client_secret: clientSecret,\n    refresh_token: data.refresh_token,\n    grant_type: 'refresh_token'\n  })\n});\nif (!tokenRes.ok) {\n  throw new Error('Token Google: ' + (await tokenRes.text()));\n}\nconst token = await tokenRes.json();\nconst item = ($input.first() && $input.first().json) || {};\nconst body = item.body && typeof item.body === 'object' ? item.body : item;\nconst reply = body.final_reply || '';\nlet reviewName = String(body.review_id || '');\nif (!reply || !reviewName) {\n  throw new Error('El webhook debe enviar review_id y final_reply.');\n}\nif (!reviewName.startsWith('accounts/')) {\n  const loc = String(data.location_id || '').replace(/\\/$/, '');\n  reviewName = loc + '/reviews/' + reviewName.replace(/^\\//, '');\n}\nconst url = 'https://mybusiness.googleapis.com/v4/' + reviewName + '/reply';\nconst putRes = await fetch(url, {\n  method: 'PUT',\n  headers: {\n    Authorization: 'Bearer ' + token.access_token,\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({ comment: reply })\n});\nconst raw = await putRes.text();\nif (!putRes.ok) {\n  throw new Error('Reply Google: ' + raw);\n}\nlet google = {};\ntry { google = JSON.parse(raw); } catch (err) { google = { raw: raw }; }\nreturn [{ json: { ok: true, review_name: reviewName, google: google } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Every 15 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Load Client Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Smoke": {
+      "main": [
+        [
+          {
+            "node": "Load Client Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Client Context": {
+      "main": [
+        [
+          {
+            "node": "Exchange Google Access Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Exchange Google Access Token": {
+      "main": [
+        [
+          {
+            "node": "List Google Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Google Reviews": {
+      "main": [
+        [
+          {
+            "node": "Split Unreplied Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Unreplied Reviews": {
+      "main": [
+        [
+          {
+            "node": "Normalize Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Review": {
+      "main": [
+        [
+          {
+            "node": "Filter Unseen Reviews",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Unseen Reviews": {
+      "main": [
+        [
+          {
+            "node": "Call LLM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Draft",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Draft": {
+      "main": [
+        [
+          {
+            "node": "Remember Drafted Review",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Europe/Madrid"
+  },
+  "staticData": null,
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "zeromanual": {
+      "replacesTemplateId": "oju0vufPh9qyRqQs",
+      "automation": "google_reviews"
+    }
+  }
+}

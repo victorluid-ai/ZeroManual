@@ -1,0 +1,284 @@
+"""Contrato de la plantilla google_reviews (HTTP + staticData) y del nombre n8n."""
+
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+import httpx
+import pytest
+
+from apps.integrations.n8n_client import (
+    N8nClient,
+    build_client_workflow_name,
+    negocio_ordinal,
+    sanitize_workflow_name_part,
+)
+from apps.integrations.n8n_folders import FOLDER_API_MISSING, FOLDER_NAME
+
+TEMPLATE = Path("n8n/templates/google_reviews.json")
+LOCATION = "accounts/1/locations/2"
+WHEN = datetime(2026, 10, 3, 12, 0, tzinfo=timezone.utc)
+
+
+def _response(status: int, *, payload: dict | list | None = None, text: str | None = None) -> httpx.Response:
+    request = httpx.Request("GET", "http://n8n.test/api/v1")
+    if text is not None:
+        return httpx.Response(status, text=text, request=request)
+    return httpx.Response(status, json=payload if payload is not None else {}, request=request)
+
+
+def test_sanitize_and_single_business_name() -> None:
+    assert sanitize_workflow_name_part("CDV Trading!!", "Cliente") == "CDVTrading"
+    assert sanitize_workflow_name_part("---", "Cliente") == "Cliente"
+    assert sanitize_workflow_name_part("José García", "Cliente") == "JoséGarcía"
+    name = build_client_workflow_name("CDV Trading", ordinal=1, activated_at=WHEN)
+    assert name == "CDVTrading_Negocio01_20261003"
+    assert "Paris" not in name
+    assert "Calle" not in name
+
+
+def test_multi_business_ordinal_and_madrid_date() -> None:
+    businesses = [
+        {"business_id": "B-2", "created_at": "2026-02-01T00:00:00", "business_name": "Norte"},
+        {"business_id": "B-1", "created_at": "2026-01-01T00:00:00", "business_name": "Calle Paris 1"},
+    ]
+    assert negocio_ordinal(businesses, "B-1") == 1
+    assert negocio_ordinal(businesses, "B-2") == 2
+    assert negocio_ordinal([{"business_id": "ONLY", "business_name": "Calle Paris 1"}], "ONLY") == 1
+    tied = [
+        {"business_id": "B-2", "created_at": "2026-01-01"},
+        {"business_id": "B-1", "created_at": "2026-01-01"},
+    ]
+    assert negocio_ordinal(tied, "B-1") == 1
+    assert negocio_ordinal(tied, "B-2") == 2
+    late = datetime(2026, 10, 3, 23, 30, tzinfo=timezone.utc)
+    assert build_client_workflow_name("CDV Trading", ordinal=2, activated_at=late).endswith(
+        "_Negocio02_20261004"
+    )
+
+
+def test_template_has_contract_nodes_and_no_oauth_placeholders() -> None:
+    raw = TEMPLATE.read_text(encoding="utf-8")
+    wf = json.loads(raw)
+    names = [node["name"] for node in wf["nodes"]]
+    assert names.count("Generate AI Draft") == 1
+    assert names.count("Post Reply to Google") == 1
+    assert "Publish Reply Webhook" not in names
+    assert "CONFIGURACIÓN PENDIENTE" not in raw
+    assert "YOUR_" not in raw
+    assert "stickyNote" not in raw
+    for node in wf["nodes"]:
+        assert "credentials" not in node
+        assert "google" not in node["type"].lower()
+        assert "oauth" not in node["type"].lower()
+    by_name = {node["name"]: node for node in wf["nodes"]}
+    assert by_name["Exchange Google Access Token"]["type"] == "n8n-nodes-base.httpRequest"
+    assert "oauth2.googleapis.com/token" in by_name["Exchange Google Access Token"]["parameters"]["url"]
+    assert "mybusiness.googleapis.com/v4/" in by_name["List Google Reviews"]["parameters"]["url"]
+    assert "/reply" in by_name["Post Reply to Google"]["parameters"]["jsCode"]
+    assert wf["connections"]["Generate AI Draft"]["main"][0][0]["node"] == "Remember Drafted Review"
+
+
+def test_template_accepts_draft_and_publish_injection() -> None:
+    wf = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    n8n = N8nClient()
+    n8n._inject_draft_push_node(wf, "CLI-ABC", "google_reviews", "BIZ-1")
+    n8n._inject_publish_reply_webhook(wf, "CLI-ABC", "BIZ-1")
+    targets = [edge["node"] for edge in wf["connections"]["Generate AI Draft"]["main"][0]]
+    assert "Push Draft to ZeroManual" in targets
+    assert wf["connections"]["Publish Reply Webhook"]["main"][0][0]["node"] == "Post Reply to Google"
+
+
+def test_duplicate_template_names_static_data_and_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    n8n = N8nClient()
+    template = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    submitted: dict = {}
+    monkeypatch.setattr(n8n, "ensure_client_folder", lambda: "fld-zeromanual")
+    monkeypatch.setattr(n8n, "get_workflow", lambda template_id: template)
+    monkeypatch.setattr(n8n, "activate_workflow", lambda workflow_id: submitted.setdefault("activated", workflow_id))
+
+    def submit(wf: dict, folder_id: str) -> dict:
+        submitted["wf"] = wf
+        submitted["folder"] = folder_id
+        return {"id": "wf-new"}
+
+    monkeypatch.setattr(n8n, "_submit_workflow", submit)
+    wf_id = n8n.duplicate_template(
+        template_id="oju0vufPh9qyRqQs",
+        client_id="CLI-A60A38F5",
+        client_name="CDV Trading",
+        refresh_token="refresh-not-a-secret-fixture",
+        location_id=LOCATION,
+        automation_type="google_reviews",
+        business_id="BIZ-1",
+        business_ordinal=1,
+        activated_at=WHEN,
+    )
+    assert wf_id == "wf-new"
+    assert submitted["folder"] == "fld-zeromanual"
+    assert submitted["activated"] == "wf-new"
+    wf = submitted["wf"]
+    assert wf["name"] == "CDVTrading_Negocio01_20261003"
+    assert "oju0vufPh9qyRqQs" not in wf["name"]
+    assert wf["staticData"]["refresh_token"] == "refresh-not-a-secret-fixture"
+    assert wf["staticData"]["global"]["location_id"] == LOCATION
+    assert wf["staticData"]["global"]["client_name"] == "CDV Trading"
+    assert any(node["name"] == "Push Draft to ZeroManual" for node in wf["nodes"])
+    assert wf["connections"]["Publish Reply Webhook"]["main"][0][0]["node"] == "Post Reply to Google"
+
+
+def test_submit_falls_back_to_put_parent_folder(monkeypatch: pytest.MonkeyPatch) -> None:
+    n8n = N8nClient()
+    calls: list[tuple[str, str]] = []
+
+    def post(url: str, headers=None, json=None, timeout=None):  # noqa: A002
+        calls.append(("POST", url))
+        if json and "parentFolderId" in json:
+            return _response(400, text='{"message":"must NOT have additional properties parentFolderId"}')
+        return _response(200, payload={"id": "wf-9"})
+
+    def put(url: str, headers=None, json=None, timeout=None):  # noqa: A002
+        calls.append(("PUT", url))
+        assert json["parentFolderId"] == "fld-1"
+        assert json["name"] == "CDVTrading_Negocio01_20261003"
+        return _response(200, payload={"id": "wf-9"})
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(httpx, "put", put)
+    created = n8n._submit_workflow(
+        {"name": "CDVTrading_Negocio01_20261003", "nodes": [], "connections": {}, "settings": {}},
+        "fld-1",
+    )
+    assert created["id"] == "wf-9"
+    assert ("PUT", f"{n8n._base}/workflows/wf-9") in calls
+
+
+def test_submit_deletes_copy_when_move_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    n8n = N8nClient()
+    deleted: list[str] = []
+
+    def post(url: str, headers=None, json=None, timeout=None):  # noqa: A002
+        if json and "parentFolderId" in json:
+            return _response(400, text="parentFolderId additional properties")
+        return _response(200, payload={"id": "wf-orphan"})
+
+    monkeypatch.setattr(httpx, "post", post)
+    monkeypatch.setattr(httpx, "put", lambda *a, **k: _response(404, text="missing"))
+    monkeypatch.setattr(n8n, "delete_workflow", lambda workflow_id: deleted.append(workflow_id))
+    with pytest.raises(RuntimeError, match="Zeromanual"):
+        n8n._submit_workflow({"name": "n", "nodes": [], "connections": {}, "settings": {}}, "fld")
+    assert deleted == ["wf-orphan"]
+
+
+def test_folder_lookup_creates_when_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("N8N_PROJECT_ID", raising=False)
+    n8n = N8nClient()
+    seen: list[tuple[str, str]] = []
+
+    def request(method: str, url: str, headers=None, params=None, json=None, timeout=None):  # noqa: A002
+        seen.append((method, url))
+        if method == "GET" and url.endswith("/projects"):
+            return _response(200, payload={"data": [{"id": "proj-1", "type": "personal"}], "nextCursor": None})
+        if method == "GET" and url.endswith("/projects/proj-1/folders"):
+            return _response(200, payload={"data": [], "count": 0})
+        if method == "POST" and url.endswith("/projects/proj-1/folders"):
+            assert json == {"name": FOLDER_NAME}
+            return _response(201, payload={"id": "fld-new", "name": FOLDER_NAME})
+        raise AssertionError(f"unexpected {method} {url}")
+
+    monkeypatch.setattr(httpx, "request", request)
+    assert n8n.ensure_client_folder() == "fld-new"
+    assert any(method == "POST" for method, _url in seen)
+
+
+def test_folder_reuses_exact_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("N8N_PROJECT_ID", "proj-9")
+    n8n = N8nClient()
+
+    def request(method: str, url: str, headers=None, params=None, json=None, timeout=None):  # noqa: A002
+        assert method == "GET"
+        assert params["filter"] == json_mod({"name": "Zeromanual"})
+        return _response(
+            200,
+            payload={
+                "count": 2,
+                "data": [
+                    {"id": "other", "name": "Otra"},
+                    {"id": "fld-z", "name": "Zeromanual"},
+                ],
+            },
+        )
+
+    monkeypatch.setattr(httpx, "request", request)
+    assert n8n.ensure_client_folder() == "fld-z"
+
+
+def json_mod(payload: dict) -> str:
+    return json.dumps(payload)
+
+
+def test_folder_api_missing_fails_clearly(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("N8N_PROJECT_ID", raising=False)
+    n8n = N8nClient()
+    monkeypatch.setattr(
+        httpx,
+        "request",
+        lambda *a, **k: _response(404, text="not found"),
+    )
+    with pytest.raises(RuntimeError, match="Zeromanual") as exc:
+        n8n.ensure_client_folder()
+    assert "2.19" in str(exc.value)
+    assert str(exc.value) == FOLDER_API_MISSING
+
+
+def test_activate_threads_ordinal_not_display_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    from apps.interface.payments import activate_automation_for_client
+
+    monkeypatch.setattr(
+        "apps.interface.payments.stripe_payments.stripe_enabled",
+        lambda settings=None: False,
+    )
+    monkeypatch.setenv("N8N_TEMPLATE_IDS", '{"google_reviews": "tpl-1"}')
+    captured: dict = {}
+
+    class Store:
+        def get_google_creds(self, client_id: str) -> dict:
+            return {"refresh_token": "rt", "location_id": LOCATION}
+
+        def get_automation(self, *args, **kwargs):
+            return None
+
+        def get_business(self, business_id: str) -> dict:
+            return {
+                "business_id": business_id,
+                "location_id": LOCATION,
+                "business_name": "Calle Paris 1",
+            }
+
+        def list_businesses(self, client_id: str) -> list[dict]:
+            return [
+                {"business_id": "B-1", "created_at": "2026-01-01", "business_name": "Calle Paris 1"},
+                {"business_id": "B-2", "created_at": "2026-02-01", "business_name": "Norte"},
+            ]
+
+        def activate_automation(self, *args, **kwargs) -> dict:
+            return {"status": "active"}
+
+    class N8n:
+        def duplicate_template(self, **kwargs):
+            captured.update(kwargs)
+            return "wf-1"
+
+    activate_automation_for_client(
+        store=Store(),
+        n8n=N8n(),
+        client_id="CLI-1",
+        client_name="CDV Trading",
+        automation_type="google_reviews",
+        business_id="B-2",
+    )
+    assert captured["business_ordinal"] == 2
+    assert "business_name" not in captured
+    assert captured["location_id"] == LOCATION

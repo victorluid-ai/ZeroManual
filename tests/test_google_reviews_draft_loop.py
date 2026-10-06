@@ -213,5 +213,17 @@ def test_client_ui_offers_edit_accept_and_reject() -> None:
     assert 'class="draft-text"' in html
     assert "/approve" in html
     assert "/reject" in html
-    assert "data-action=\"approve\"" in html
-    assert "data-action=\"reject\"" in html
+    assert 'data-action="approve"' in html
+    assert 'data-action="reject"' in html
+    assert "Aprobar y publicar" in html
+    assert "Aceptar todas (" in html
+    assert "Respuestas automáticas" in html
+    assert "Buscar por nombre" in html
+    assert "Aprobada por ti" in html
+    assert "Editada por ti" in html
+    assert "Automática" in html
+    assert "¿Activar respuestas automáticas?" in html
+    assert "Activar y publicar pendientes" in html
+    assert "topbar-brand-mark" in html
+    assert 'reply_mode' in html
+    assert "Se publicarán en Google" in html

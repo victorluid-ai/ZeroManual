@@ -101,13 +101,17 @@
     .m-brandbar { display: none; }
     .sidebar {
       width: var(--sidebar-w); flex-shrink: 0; background: #fff; border-right: 1px solid var(--line);
-      display: flex; flex-direction: column; padding: 18px 12px 14px; overflow-y: auto;
+      display: flex; flex-direction: column; padding: 18px 12px 14px; overflow: visible;
     }
     .sidebar .topbar-brand { padding: 4px 8px 20px; }
-    .sidebar-section { margin-bottom: 18px; }
-    .sidebar-label {
-      font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-      color: var(--fg-3); padding: 0 10px 8px;
+    .sidebar-nav { flex: 1; min-height: 0; overflow-y: auto; }
+    .nav-chev { margin-left: auto; width: 14px; height: 14px; display: inline-flex; color: var(--fg-3); }
+    .nav-chev svg { width: 14px; height: 14px; }
+    .nav-item.open .nav-chev { transform: rotate(90deg); color: var(--accent); }
+    .nav-sub { padding: 2px 0 8px 12px; }
+    .nav-sub .nav-item { position: relative; padding: 7px 10px 7px 14px; font-size: 12.5px; }
+    .nav-sub .nav-item::before {
+      content: ""; position: absolute; left: 0; top: 50%; width: 8px; height: 1px; background: var(--line);
     }
     .nav-item {
       display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
@@ -124,8 +128,30 @@
       background: var(--accent); color: #fff; font-size: 10px; font-weight: 600;
       display: inline-flex; align-items: center; justify-content: center;
     }
-    .sidebar-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); }
-    .user-chip { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+    .sidebar-foot { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--line); position: relative; }
+    .user-chip {
+      display: flex; align-items: center; gap: 10px; padding: 8px 10px; width: 100%;
+      border: none; background: transparent; border-radius: var(--r-sm); cursor: pointer;
+      font: inherit; color: inherit; text-align: left;
+    }
+    .user-chip:hover, .user-chip.open { background: var(--bg-2); }
+    .user-chip .chev-up { width: 14px; height: 14px; color: var(--fg-3); flex-shrink: 0; margin-left: auto; }
+    .user-chip .chev-up svg { width: 14px; height: 14px; }
+    .avatar-menu {
+      position: absolute; bottom: calc(100% + 6px); left: 0; right: 0; background: #fff;
+      border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 28px rgba(14,17,22,.12);
+      padding: 6px; z-index: 40;
+    }
+    .avatar-menu[hidden] { display: none; }
+    .avatar-menu button {
+      display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
+      padding: 10px 12px; border: none; background: transparent; border-radius: 8px;
+      font: inherit; font-size: 13px; font-weight: 500; color: var(--fg-2); cursor: pointer;
+    }
+    .avatar-menu button svg { width: 16px; height: 16px; color: var(--fg-3); }
+    .avatar-menu button:hover { background: var(--bg-2); color: var(--fg); }
+    .avatar-menu button.danger, .avatar-menu button.danger svg { color: var(--err); }
+    .avatar-menu .sep { height: 1px; background: var(--line); margin: 4px 6px; }
     .avatar {
       width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft);
       display: grid; place-items: center; font-size: 11px; font-weight: 600; color: var(--accent); flex-shrink: 0;
@@ -146,8 +172,39 @@
       grid-template-areas: "title toggle" "lead hint" "biz biz";
       column-gap: 20px; row-gap: 4px; align-items: start;
     }
-    .reviews-head > h1 { grid-area: title; }
+    .reviews-titlebar {
+      grid-area: title; display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 12px; min-width: 0; flex-wrap: wrap;
+    }
+    .reviews-titlebar h1 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; }
     .reviews-head > .page-lead { grid-area: lead; margin-top: 0; }
+    .sub-manage { display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-left: auto; }
+    .link-subtle {
+      background: none; border: none; font: inherit; font-size: 12px; font-weight: 500;
+      color: var(--fg-3); cursor: pointer; padding: 6px 8px; border-radius: 6px;
+    }
+    .link-subtle:hover { color: var(--accent); }
+    .btn-icon {
+      width: 34px; height: 34px; padding: 0; border-radius: 9px; border: 1px solid var(--line);
+      background: #fff; display: grid; place-items: center; cursor: pointer; color: var(--fg-2);
+    }
+    .btn-icon:hover { background: var(--bg-2); }
+    .btn-icon svg { width: 16px; height: 16px; }
+    .more-wrap { position: relative; }
+    .more-menu {
+      position: absolute; right: 0; top: calc(100% + 6px); background: #fff; border: 1px solid var(--line);
+      border-radius: 12px; box-shadow: 0 8px 28px rgba(14,17,22,.12); padding: 6px;
+      min-width: 240px; z-index: 30;
+    }
+    .more-menu[hidden] { display: none; }
+    .more-menu button {
+      display: block; width: 100%; text-align: left; padding: 9px 12px; border: none; background: transparent;
+      border-radius: 8px; font: inherit; font-size: 13px; font-weight: 500; color: var(--fg-2); cursor: pointer;
+    }
+    .more-menu button:hover { background: var(--bg-2); }
+    .more-menu button.danger { color: var(--err); }
+    .more-menu button.muted { color: var(--fg-3); font-size: 12px; }
+    .more-menu .sep { height: 1px; background: var(--line); margin: 4px 6px; }
     .reviews-head > .biz-slot { grid-area: biz; margin-top: 6px; }
     .toggle-wrap { display: contents; }
     .toggle-card {
@@ -326,6 +383,72 @@
     .badge { display: inline-block; padding: 2px 7px; border-radius: 20px; font-size: 11px; font-weight: 500; line-height: 1.5; }
     .badge.ok { background: #e3f3eb; color: #1f6e49; }
     .badge.neu { background: var(--bg-2); color: var(--fg-3); }
+    .hub-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; }
+    .hub-head h2 { font-family: var(--display); font-size: 15px; font-weight: 600; }
+    .hub-card {
+      background: #fff; border: 1px solid #c7cbe8; border-radius: var(--r); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow);
+      padding: 18px 20px; display: flex; align-items: center; gap: 16px; margin-bottom: 12px;
+      width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer;
+    }
+    .hub-card:hover { border-color: var(--accent); }
+    .hub-ico {
+      width: 44px; height: 44px; border-radius: 12px; background: var(--accent-soft);
+      display: grid; place-items: center; color: var(--accent); flex-shrink: 0;
+    }
+    .hub-ico svg { width: 20px; height: 20px; }
+    .hub-body { flex: 1; min-width: 0; }
+    .hub-body strong { display: block; font-size: 14.5px; font-weight: 600; }
+    .hub-body span { font-size: 12.5px; color: var(--fg-3); }
+    .pill { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; flex-shrink: 0; }
+    .pill.ok { background: var(--ok-soft); color: var(--ok); }
+    .pill.soon { background: var(--bg-2); color: var(--fg-3); }
+    .pill.have { background: var(--accent-soft); color: var(--accent); }
+    .explore-cta {
+      margin-top: 8px; padding: 18px 20px; border: 1.5px dashed #d0d5dd; border-radius: var(--r);
+      background: #fafbfd; display: flex; align-items: center; gap: 14px;
+    }
+    .explore-cta .plus {
+      width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid var(--line);
+      display: grid; place-items: center; color: var(--accent); flex-shrink: 0;
+    }
+    .explore-cta .plus svg { width: 18px; height: 18px; }
+    .explore-cta .explore-copy { flex: 1; min-width: 0; }
+    .explore-cta strong { display: block; font-size: 13.5px; font-weight: 600; }
+    .explore-cta span { font-size: 12.5px; color: var(--fg-3); }
+    .mob-only, .explore-cta strong.mob-only, .explore-cta span.mob-only { display: none; }
+    .explore-section { margin-top: 28px; }
+    .sec-label {
+      font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase;
+      color: var(--fg-3); margin-bottom: 12px;
+    }
+    .product-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .product-card {
+      background: #fff; border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow);
+      padding: 18px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .product-card .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; }
+    .product-card .ico svg { width: 18px; height: 18px; }
+    .product-card .ico.indigo { background: var(--accent-soft); color: var(--accent); }
+    .product-card .ico.teal { background: var(--ok-soft); color: var(--ok); }
+    .product-card .ico.amber { background: #faf0da; color: var(--warn); }
+    .product-card h3 { font-family: var(--display); font-size: 14px; font-weight: 600; }
+    .product-card p { font-size: 12.5px; color: var(--fg-3); line-height: 1.45; flex: 1; }
+    .product-card .foot { display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 8px; }
+    .acct-list { display: flex; flex-direction: column; gap: 10px; max-width: 640px; }
+    .acct-row {
+      background: #fff; border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow);
+      padding: 16px 18px; display: flex; align-items: center; gap: 14px;
+    }
+    .acct-logo {
+      width: 40px; height: 40px; border-radius: 10px; background: #fff; border: 1px solid var(--line);
+      display: grid; place-items: center; flex-shrink: 0;
+    }
+    .acct-logo svg, .acct-logo .google-box-icon { width: 22px; height: 22px; }
+    .acct-info { flex: 1; min-width: 0; }
+    .acct-info strong { display: block; font-size: 14px; font-weight: 600; }
+    .acct-info span { font-size: 12.5px; color: var(--fg-3); }
+    .acct-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+    .sheet-root { display: none; }
     .empty { text-align: center; padding: 48px 16px; color: var(--fg-3); font-size: 13px; }
     .loading { text-align: center; padding: 32px; color: var(--fg-3); font-size: 13px; }
     #toast {
@@ -349,8 +472,11 @@
       .m-brandbar .topbar-brand-name { font-size: 14px; }
       .workspace { min-height: 0; }
       .page-head { padding: 8px 14px 10px; }
-      .page-head h1, .reviews-head > h1 { font-size: 16px; }
+      .page-head h1, .reviews-titlebar h1 { font-size: 16px; }
       .reviews-head { grid-template-areas: "title toggle" "hint hint" "biz biz"; column-gap: 10px; }
+      .reviews-titlebar { flex-direction: column; align-items: flex-start; gap: 2px; }
+      .sub-manage { margin-left: 0; }
+      .link-subtle { padding-left: 0; }
       .reviews-head > .page-lead { display: none; }
       .toggle-card { background: none; border: none; padding: 0; flex-direction: column; align-items: flex-end; gap: 2px; }
       .toggle-state { display: none; }
@@ -381,6 +507,39 @@
       .reviewer-av { width: 28px; height: 28px; font-size: 10px; }
       .reviewer-name { font-size: 13px; }
       .stat-grid { grid-template-columns: 1fr; }
+      .mob-only, .explore-cta strong.mob-only, .explore-cta span.mob-only { display: block; }
+      .desk-only, .explore-cta strong.desk-only, .explore-cta span.desk-only { display: none; }
+      .hub-head { display: none; }
+      .explore-cta { flex-direction: column; text-align: center; padding: 16px; }
+      .explore-cta .plus { display: none; }
+      .explore-cta .explore-copy { flex: none; }
+      .product-grid { grid-template-columns: 1fr; gap: 10px; }
+      .product-card { padding: 14px; }
+      .acct-row { padding: 14px; }
+      .sheet-root.show { display: block; position: fixed; inset: 0; z-index: 50; }
+      .sheet-backdrop { position: absolute; inset: 0; background: rgba(14,17,22,.35); }
+      .sheet {
+        position: absolute; left: 0; right: 0; bottom: 0; background: #fff;
+        border-radius: 16px 16px 0 0; padding: 10px 14px 28px;
+        box-shadow: 0 -8px 32px rgba(14,17,22,.12);
+      }
+      .sheet-handle { width: 36px; height: 4px; border-radius: 2px; background: #d0d5dd; margin: 4px auto 14px; }
+      .sheet-user { display: flex; align-items: center; gap: 12px; padding: 8px 6px 14px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+      .sheet-user .avatar { width: 40px; height: 40px; font-size: 13px; }
+      .sheet-user strong { display: block; font-size: 14px; font-weight: 600; }
+      .sheet-user span { font-size: 12px; color: var(--fg-3); }
+      .sheet button.sheet-action {
+        display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+        padding: 14px 10px; border: none; background: transparent; border-radius: 10px;
+        font: inherit; font-size: 14px; font-weight: 500; color: var(--fg-2); cursor: pointer;
+      }
+      .sheet button.sheet-action svg { width: 18px; height: 18px; color: var(--fg-3); }
+      .sheet button.sheet-action.danger, .sheet button.sheet-action.danger svg { color: var(--err); }
+      .bnav .av-mini {
+        width: 22px; height: 22px; border-radius: 50%; background: var(--accent-soft);
+        display: grid; place-items: center; font-size: 9px; font-weight: 700; color: var(--accent);
+      }
+      .bnav.on .av-mini { box-shadow: 0 0 0 2px var(--accent); }
       .bottom-nav {
         display: flex; flex-shrink: 0; background: #fff; border-top: 1px solid var(--line);
         padding: 8px 4px 10px; z-index: 20;
@@ -465,6 +624,7 @@
   <nav class="bottom-nav" id="bottom-nav" aria-label="Navegación"></nav>
 </div>
 
+<div id="more-sheet" class="sheet-root" hidden></div>
 <div id="toast"></div>
 
 <script>
@@ -474,7 +634,7 @@
   const TOKEN_KEY = 'mz_client_token';
   const CART_HANDOFF_KEY = 'zm_pending_activations';
   const STAR_WORDS = { ONE: 1, TWO: 2, THREE: 3, FOUR: 4, FIVE: 5 };
-  const STATIC_VIEWS = new Set(['home', 'catalog', 'accounts', 'google', 'settings', 'google_reviews']);
+  const STATIC_VIEWS = new Set(['home', 'automations', 'explore', 'catalog', 'accounts', 'google', 'settings', 'google_reviews']);
 
   let token = localStorage.getItem(TOKEN_KEY) || null;
   let currentClient = null;
@@ -492,6 +652,10 @@
   let draftEdits = {};
   let expandedDrafts = {};
   let modeBusy = false;
+  let autosOpen = false;
+  let menuOpen = false;
+  let sheetOpen = false;
+  let settingsAnchor = '';
 
   const AUTOMATION_LABELS = {
     google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
@@ -501,12 +665,33 @@
     dms:            { name: 'Responder DMs y comentarios',   desc: 'Contesta mensajes directos y comentarios automáticamente.' },
   };
 
-  const NAV = [
-    { section: 'Principal', view: 'home', label: 'Inicio', short: 'Inicio', icon: 'home' },
-    { section: 'Principal', view: 'google_reviews', label: 'Reseñas de Google', short: 'Reseñas', icon: 'star', badge: true },
-    { section: 'Principal', view: 'catalog', label: 'Catálogo', short: 'Catálogo', icon: 'grid' },
-    { section: 'Cuenta', view: 'accounts', label: 'Conectar cuentas', short: 'Cuentas', icon: 'users' },
-    { section: 'Cuenta', view: 'settings', label: 'Ajustes', short: 'Ajustes', icon: 'gear' },
+  const TOP_NAV = [
+    { view: 'home', label: 'Inicio', icon: 'home' },
+    { view: 'automations', label: 'Automatizaciones', icon: 'bolt' },
+    { view: 'accounts', label: 'Cuentas', icon: 'link' },
+  ];
+
+  const AUTO_SHORT = {
+    google_reviews: 'Reseñas de Google',
+    gmb_posts: 'Google Business',
+    instagram_posts: 'Instagram',
+    newsletter: 'Newsletter',
+    dms: 'Mensajes',
+  };
+
+  const MARKETING = [
+    {
+      key: 'google_reviews', name: 'Reseñas de Google', tone: 'indigo', icon: 'star',
+      desc: 'Respuestas con IA a reseñas nuevas. Tú apruebas antes de publicar.',
+    },
+    {
+      key: 'newsletter', name: 'Newsletter', tone: 'teal', icon: 'mail',
+      desc: 'Campañas mensuales a tu lista, con borradores listos para enviar.',
+    },
+    {
+      key: 'appointments', name: 'Recordatorios de cita', tone: 'amber', icon: 'cal', soon: true,
+      desc: 'SMS y WhatsApp automáticos para reducir no-shows.',
+    },
   ];
 
   function svg(inner, width) {
@@ -516,8 +701,16 @@
   const ICO = {
     home: svg('<path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>'),
     star: svg('<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'),
+    bolt: svg('<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>'),
+    link: svg('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'),
+    mail: svg('<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>'),
+    cal: svg('<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>'),
+    plus: svg('<path d="M5 12h14"/><path d="M12 5v14"/>', '2'),
+    chev: svg('<polyline points="9 18 15 12 9 6"/>', '2'),
+    chevUp: svg('<polyline points="18 15 12 9 6 15"/>', '2'),
+    logout: svg('<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>'),
+    dots: `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>`,
     grid: svg('<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>'),
-    users: svg('<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>'),
     gear: svg('<circle cx="12" cy="12" r="3"/><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>'),
     check: svg('<polyline points="20 6 9 17 4 12"/>', '2.25'),
     search: svg('<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>', '2'),
@@ -839,59 +1032,143 @@
     }
   }
 
-  function navIsOn(view) {
-    if (view === 'accounts') return activeView === 'accounts' || activeView === 'google';
-    return activeView === view;
+  function contractedTypes() {
+    const active = ((cachedAutos && cachedAutos.active) || []).filter(a => a.status === 'active');
+    const seen = [];
+    active.forEach(a => {
+      if (a.automation_type && !seen.includes(a.automation_type)) seen.push(a.automation_type);
+    });
+    return seen;
+  }
+
+  function shortAutoName(type) {
+    return AUTO_SHORT[type] || (AUTOMATION_LABELS[type] && AUTOMATION_LABELS[type].name) || type;
+  }
+
+  function inAutosArea() {
+    if (activeView === 'automations' || activeView === 'explore' || activeView === 'google_reviews') return true;
+    return contractedTypes().includes(activeView);
+  }
+
+  function closeChromeMenus() {
+    menuOpen = false;
+    sheetOpen = false;
   }
 
   function renderNav() {
     const badge = badgeText(pendingReviewCount);
-    const sections = ['Principal', 'Cuenta'];
-    const side = $('sidebar');
-    const blocks = sections.map(section => {
-      const items = NAV.filter(item => item.section === section).map(item => {
-        const mark = badge && item.badge ? `<span class="nav-badge">${escHtml(badge)}</span>` : '';
-        return `<button class="nav-item${navIsOn(item.view) ? ' on' : ''}" type="button" data-view="${item.view}">
-          ${ICO[item.icon]}<span>${escHtml(item.label)}</span>${mark}
-        </button>`;
-      }).join('');
-      return `<div class="sidebar-section"><div class="sidebar-label">${escHtml(section)}</div>${items}</div>`;
+    const types = contractedTypes();
+    const parentOn = activeView === 'automations' || activeView === 'explore';
+    const showSub = autosOpen && types.length > 0;
+    const sub = showSub ? `<div class="nav-sub">${types.map(type => {
+      const on = activeView === type;
+      const mark = type === 'google_reviews' && badge ? `<span class="nav-badge">${escHtml(badge)}</span>` : '';
+      const icon = type === 'google_reviews' ? ICO.star : ICO.bolt;
+      return `<button class="nav-item${on ? ' on' : ''}" type="button" data-view="${escHtml(type)}">${icon}<span>${escHtml(shortAutoName(type))}</span>${mark}</button>`;
+    }).join('')}</div>` : '';
+    const items = TOP_NAV.map(item => {
+      let on = false;
+      if (item.view === 'home') on = activeView === 'home';
+      else if (item.view === 'accounts') on = activeView === 'accounts' || activeView === 'google';
+      else if (item.view === 'automations') on = parentOn;
+      const open = item.view === 'automations' && showSub ? ' open' : '';
+      const chev = item.view === 'automations' && types.length
+        ? `<span class="nav-chev" data-toggle-autos="1">${ICO.chev}</span>` : '';
+      const extra = item.view === 'automations' ? sub : '';
+      return `<button class="nav-item${on ? ' on' : ''}${open}" type="button" data-view="${item.view}">${ICO[item.icon]}<span>${escHtml(item.label)}</span>${chev}</button>${extra}`;
     }).join('');
     const name = clientLabel();
     const email = (currentClient && currentClient.email) || '';
+    const side = $('sidebar');
     side.innerHTML = `
       <a class="topbar-brand" href="/">
         <div class="topbar-brand-mark"></div>
         <div class="topbar-brand-name">Zero<span>Manual</span></div>
       </a>
-      ${blocks}
+      <div class="sidebar-nav">${items}</div>
       <div class="sidebar-foot">
-        <div class="user-chip">
+        <div class="avatar-menu" id="avatar-menu" ${menuOpen ? '' : 'hidden'}>
+          <button type="button" data-view="settings">${ICO.gear}<span>Ajustes</span></button>
+          <div class="sep"></div>
+          <button type="button" class="danger" id="menu-logout">${ICO.logout}<span>Cerrar sesión</span></button>
+        </div>
+        <button class="user-chip${menuOpen ? ' open' : ''}" id="user-chip" type="button" aria-expanded="${menuOpen ? 'true' : 'false'}" aria-haspopup="menu">
           <div class="avatar">${escHtml(initials(name))}</div>
           <div class="user-meta"><strong>${escHtml(name)}</strong><span>${escHtml(email)}</span></div>
-        </div>
+          <span class="chev-up">${ICO.chevUp}</span>
+        </button>
       </div>`;
     const bottom = $('bottom-nav');
-    bottom.innerHTML = NAV.map(item => {
-      const mark = badge && item.badge ? `<span class="bnav-badge">${escHtml(badge)}</span>` : '';
-      return `<button class="bnav${navIsOn(item.view) ? ' on' : ''}" type="button" data-view="${item.view}">
-        ${ICO[item.icon]}<span>${escHtml(item.short)}</span>${mark}
-      </button>`;
-    }).join('');
-    document.querySelectorAll('#sidebar [data-view], #bottom-nav [data-view]').forEach(btn => {
+    const moreOn = activeView === 'settings' || sheetOpen;
+    bottom.innerHTML = TOP_NAV.map(item => {
+      const on = item.view === 'automations' ? inAutosArea() : (item.view === 'accounts' ? (activeView === 'accounts' || activeView === 'google') : activeView === item.view);
+      return `<button class="bnav${on ? ' on' : ''}" type="button" data-view="${item.view}">${ICO[item.icon]}<span>${escHtml(item.label)}</span></button>`;
+    }).join('') + `<button class="bnav${moreOn ? ' on' : ''}" type="button" id="bnav-more" aria-label="Más"><span class="av-mini">${escHtml(initials(name))}</span><span>Más</span></button>`;
+    const sheet = $('more-sheet');
+    sheet.classList.toggle('show', sheetOpen);
+    sheet.hidden = !sheetOpen;
+    sheet.innerHTML = `
+      <div class="sheet-backdrop" data-close-sheet="1"></div>
+      <div class="sheet" role="dialog" aria-label="Cuenta">
+        <div class="sheet-handle"></div>
+        <div class="sheet-user">
+          <div class="avatar">${escHtml(initials(name))}</div>
+          <div><strong>${escHtml(name)}</strong><span>${escHtml(email)}</span></div>
+        </div>
+        <button class="sheet-action" type="button" data-view="settings">${ICO.gear}<span>Ajustes</span></button>
+        <button class="sheet-action danger" type="button" id="sheet-logout">${ICO.logout}<span>Cerrar sesión</span></button>
+      </div>`;
+    document.querySelectorAll('#sidebar [data-view], #bottom-nav [data-view], #more-sheet [data-view]').forEach(btn => {
       btn.addEventListener('click', () => goView(btn.dataset.view));
+    });
+    const chev = side.querySelector('[data-toggle-autos]');
+    if (chev) chev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      autosOpen = !autosOpen;
+      renderNav();
+    });
+    $('user-chip').addEventListener('click', (e) => {
+      e.stopPropagation();
+      menuOpen = !menuOpen;
+      sheetOpen = false;
+      renderNav();
+    });
+    $('menu-logout').addEventListener('click', (e) => {
+      e.stopPropagation();
+      doLogout();
+    });
+    $('bnav-more').addEventListener('click', (e) => {
+      e.stopPropagation();
+      sheetOpen = !sheetOpen;
+      menuOpen = false;
+      renderNav();
+    });
+    const sheetLogout = $('sheet-logout');
+    if (sheetLogout) sheetLogout.addEventListener('click', (e) => {
+      e.stopPropagation();
+      doLogout();
+    });
+    const backdrop = sheet.querySelector('[data-close-sheet]');
+    if (backdrop) backdrop.addEventListener('click', () => {
+      sheetOpen = false;
+      renderNav();
     });
   }
 
   function goView(view, subtab) {
-    activeView = view === 'google' ? 'accounts' : view;
+    closeChromeMenus();
+    if (view === 'google') view = 'accounts';
+    if (view === 'catalog') view = 'explore';
+    activeView = view;
     if (activeView === 'google_reviews') reviewsSubtab = subtab || 'pending';
+    if (activeView === 'automations' || activeView === 'google_reviews' || activeView === 'explore') autosOpen = true;
     loadWorkspace();
   }
 
   async function renderPanel(c, data) {
     if (activeView === 'home') { renderHome(c); return; }
-    if (activeView === 'catalog') { renderCatalog(c, data); return; }
+    if (activeView === 'automations') { renderAutomations(c, data); return; }
+    if (activeView === 'explore' || activeView === 'catalog') { renderExplore(c, data); return; }
     if (activeView === 'accounts' || activeView === 'google') { await renderAccounts(c); return; }
     if (activeView === 'settings') { renderSettings(c); return; }
     if (activeView === 'google_reviews') { renderGoogleReviews(c); return; }
@@ -917,14 +1194,15 @@
           <button class="btn sm ghost" type="button" data-open="${escHtml(a.automation_type)}">Abrir</button>
         </div>
       </div>`;
-    }).join('') || '<div class="card"><div class="empty">Todavía no tienes automatizaciones activas. Empieza por el catálogo.</div></div>';
+    }).join('') || '<div class="card"><div class="empty">Todavía no tienes automatizaciones activas. <button class="btn sm primary" type="button" data-go="explore" style="margin-top:12px">Explorar</button></div></div>';
     c.innerHTML = pageChrome('Inicio', 'Resumen de tus automatizaciones.') + `<div class="page-body">
       <div class="stat-grid">
-        <button class="stat" type="button" data-go="catalog"><strong>${active.length}</strong><span>Automatizaciones activas</span></button>
+        <button class="stat" type="button" data-go="automations"><strong>${active.length}</strong><span>Automatizaciones activas</span></button>
         <button class="stat" type="button" data-go="google_reviews" data-tab="pending"><strong>${pendingReviewCount}</strong><span>Propuestas pendientes</span></button>
         <button class="stat" type="button" data-go="google_reviews" data-tab="history"><strong>${published}</strong><span>Publicadas este mes</span></button>
       </div>
       ${rows}
+      <div style="margin-top:8px"><button class="btn ghost" type="button" data-go="explore">${ICO.plus}Explorar</button></div>
     </div>`;
     c.querySelectorAll('[data-go]').forEach(btn => {
       btn.addEventListener('click', () => goView(btn.dataset.go, btn.dataset.tab));
@@ -934,45 +1212,108 @@
     });
   }
 
-  function renderCatalog(c, data) {
-    const available = data.available || [];
-    const active = data.active || [];
+  function activeRowsFor(type) {
+    return ((cachedAutos && cachedAutos.active) || []).filter(
+      a => a.automation_type === type && a.status === 'active'
+    );
+  }
+
+  function marketingItems(data) {
+    const available = new Set(data.available || []);
+    const items = MARKETING.map(item => Object.assign({}, item, { available: available.has(item.key) }));
+    (data.available || []).forEach(type => {
+      if (!items.some(item => item.key === type)) {
+        const lbl = AUTOMATION_LABELS[type] || { name: type, desc: '' };
+        items.push({ key: type, name: shortAutoName(type), desc: lbl.desc, tone: 'indigo', icon: 'bolt', available: true });
+      }
+    });
+    return items;
+  }
+
+  function productCardHtml(item, interactive) {
+    const owned = activeRowsFor(item.key).length > 0;
+    const subscribable = !owned && !item.soon && item.available;
+    let foot = '<span class="pill soon">Próximamente</span>';
+    if (owned) {
+      foot = `<span class="pill have">Ya la tienes</span>${interactive ? `<button class="btn sm ghost" type="button" data-open="${escHtml(item.key)}">Abrir</button>` : ''}`;
+    } else if (subscribable) {
+      foot = `<button class="btn sm primary" type="button" data-type="${escHtml(item.key)}" data-on="false">Suscribirse</button>`;
+    }
+    const icon = ICO[item.icon] || ICO.bolt;
+    return `<article class="product-card" data-product="${escHtml(item.key)}">
+      <div class="ico ${escHtml(item.tone || 'indigo')}">${icon}</div>
+      <h3>${escHtml(item.name)}</h3>
+      <p>${escHtml(item.desc)}</p>
+      <div class="foot">${foot}</div>
+    </article>`;
+  }
+
+  function bindProductGrid(root) {
+    root.querySelectorAll('[data-type]').forEach(btn => btn.addEventListener('click', handleAutoBtn));
+    root.querySelectorAll('[data-open]').forEach(btn => btn.addEventListener('click', () => goView(btn.dataset.open)));
+    root.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => goView(btn.dataset.go)));
+  }
+
+  function productSection(data, interactive) {
+    const cards = marketingItems(data).map(item => productCardHtml(item, interactive)).join('');
+    return `<section class="explore-section">
+      <div class="sec-label"><span class="desk-only">Disponibles para tu negocio</span><span class="mob-only">Catálogo</span></div>
+      <div class="product-grid">${cards}</div>
+    </section>`;
+  }
+
+  function hubCardsHtml() {
+    const types = contractedTypes();
+    if (!types.length) {
+      return '<p class="page-lead" style="margin-bottom:12px">Todavía no tienes automatizaciones contratadas.</p>';
+    }
+    return types.map(type => {
+      const owned = activeRowsFor(type);
+      let sub = 'Activa';
+      if (type === 'google_reviews') {
+        const n = pendingReviewCount;
+        const pending = n === 1 ? '1 respuesta pendiente' : `${n} respuestas pendientes`;
+        sub = `${pending} · Activa`;
+      } else if (owned.length > 1) {
+        sub = `${owned.length} negocios · Activa`;
+      }
+      return `<button class="hub-card" type="button" data-open="${escHtml(type)}">
+        <div class="hub-ico">${type === 'google_reviews' ? ICO.star : ICO.bolt}</div>
+        <div class="hub-body"><strong>${escHtml(shortAutoName(type))}</strong><span>${escHtml(sub)}</span></div>
+        <span class="pill ok">Activa</span>
+      </button>`;
+    }).join('');
+  }
+
+  function renderAutomations(c, data) {
+    c.innerHTML = pageChrome('Automatizaciones', 'Gestiona lo que tienes contratado y descubre más.') + `<div class="page-body">
+      <div class="hub-head">
+        <h2>Tus automatizaciones</h2>
+        <button class="btn ghost" type="button" data-go="explore">${ICO.plus}Explorar</button>
+      </div>
+      ${hubCardsHtml()}
+      <div class="explore-cta">
+        <div class="plus">${ICO.plus}</div>
+        <div class="explore-copy">
+          <strong class="desk-only">Añadir automatización</strong>
+          <strong class="mob-only">¿Quieres más?</strong>
+          <span class="desk-only">Explora el catálogo: newsletter, citas, redes…</span>
+          <span class="mob-only">Newsletter, citas y redes llegarán pronto.</span>
+        </div>
+        <button class="btn primary" type="button" data-go="explore">${ICO.plus}Explorar</button>
+      </div>
+      ${productSection(data, false)}
+    </div>`;
+    bindProductGrid(c);
+  }
+
+  function renderExplore(c, data) {
     const multiBiz = cachedBusinesses.length > 1;
     const lead = multiBiz
       ? `${cachedBusinesses.length} negocios detectados — 20% dto. a partir del 2º`
-      : 'Suscribe las automatizaciones que quieras activar.';
-    if (!available.length) {
-      c.innerHTML = pageChrome('Catálogo', lead) + '<div class="page-body"><div class="card"><div class="empty">Las automatizaciones estarán disponibles próximamente.</div></div></div>';
-      return;
-    }
-    c.innerHTML = pageChrome('Catálogo', lead) + `<div class="page-body"><div class="auto-grid" id="auto-grid"></div></div>`;
-    const grid = $('auto-grid');
-    available.forEach(type => {
-      const rows = active.filter(a => a.automation_type === type && a.status === 'active');
-      const isOn = rows.length > 0;
-      const lbl = AUTOMATION_LABELS[type] || { name: type, desc: '' };
-      const div = document.createElement('div');
-      div.className = 'auto-card';
-      div.dataset.type = type;
-      div.innerHTML = `
-        <div class="auto-card-body">
-          <div class="auto-name">${escHtml(lbl.name)}</div>
-          <div class="auto-desc">${escHtml(lbl.desc)}</div>
-        </div>
-        <div class="auto-footer">
-          <span class="auto-status ${isOn ? 'on' : 'off'}">${isOn ? `● Suscrito${rows.length > 1 ? ` (${rows.length} negocios)` : ''}` : '○ Sin suscripción'}</span>
-          <div style="display:flex;gap:8px">
-            ${isOn ? `<button class="btn sm ghost" type="button" data-open="${escHtml(type)}">Abrir</button>` : ''}
-            <button class="btn sm ${isOn ? 'ghost' : 'primary'}" type="button" data-type="${escHtml(type)}" data-on="${isOn}">
-              ${isOn ? 'Desuscribirse' : 'Suscribirse'}
-            </button>
-          </div>
-        </div>`;
-      div.querySelector('[data-type]').addEventListener('click', handleAutoBtn);
-      const openBtn = div.querySelector('[data-open]');
-      if (openBtn) openBtn.addEventListener('click', () => goView(type));
-      grid.appendChild(div);
-    });
+      : 'Lo que ya tienes y lo que llegará pronto.';
+    c.innerHTML = pageChrome('Explorar', lead) + `<div class="page-body">${productSection(data, true)}</div>`;
+    bindProductGrid(c);
   }
 
   async function handleAutoBtn(e) {
@@ -990,7 +1331,7 @@
           await api('DELETE', withQuery(`/client/automations/${encodeURIComponent(type)}`, bizQuery(bid)));
         }
         toast('Suscripción cancelada', 'ok');
-        if (activeView === type) activeView = 'catalog';
+        if (activeView === type) activeView = 'explore';
       } else if (cachedBusinesses.length > 1) {
         await openBusinessPicker(type, btn);
         return;
@@ -1012,10 +1353,11 @@
       await loadWorkspace();
     } catch (err) {
       if (err.message && err.message.toLowerCase().includes('google')) {
-        const card = btn.closest('.auto-card');
+        const card = btn.closest('.product-card') || btn.closest('.auto-card');
+        if (!card) { toast(err.message, 'err'); btn.disabled = false; return; }
         const warn = document.createElement('div');
         warn.className = 'auto-warn';
-        warn.innerHTML = `Conecta primero tu cuenta de Google. <a class="goto-google">Ir a Conectar cuentas →</a>`;
+        warn.innerHTML = `Conecta primero tu cuenta de Google. <a class="goto-google">Ir a Cuentas →</a>`;
         warn.querySelector('.goto-google').addEventListener('click', () => goView('accounts'));
         card.appendChild(warn);
       } else {
@@ -1026,7 +1368,7 @@
   }
 
   async function openBusinessPicker(type, btn) {
-    const card = btn.closest('.auto-card');
+    const card = btn.closest('.product-card') || btn.closest('.auto-card');
     const activeForType = (cachedAutos && cachedAutos.active || []).filter(
       a => a.automation_type === type && a.status === 'active'
     );
@@ -1087,60 +1429,80 @@
   function renderSettings(c) {
     const name = clientLabel();
     const email = (currentClient && currentClient.email) || '—';
-    const rows = activeReviewRows();
-    const subscribed = rows.length > 0;
-    const bizLine = subscribed
-      ? rows.map(r => escHtml(r.business_name || r.business_id)).join(', ')
-      : 'Sin suscripción activa';
-    c.innerHTML = pageChrome('Ajustes', 'La baja y la pausa viven aquí. El interruptor de respuestas automáticas no cancela la suscripción.') + `<div class="page-body">
+    const types = contractedTypes();
+    const subs = types.length ? types.map(type => {
+      const rows = activeRowsFor(type);
+      const where = rows.map(r => escHtml(r.business_name || r.business_id)).join(', ');
+      const manage = type === 'google_reviews'
+        ? `<button class="btn sm ghost" type="button" data-go="google_reviews">Gestionar en Reseñas</button>`
+        : `<button class="btn sm ghost" type="button" data-type="${escHtml(type)}" data-on="true">Cancelar suscripción</button>`;
+      return `<div class="acct-row" style="margin-top:10px">
+        <div class="acct-info"><strong>${escHtml(shortAutoName(type))}</strong><span>${where || 'Activa'}</span></div>
+        ${manage}
+      </div>`;
+    }).join('') : '<p class="card-sub" style="margin-top:8px">No hay suscripciones activas.</p>';
+    c.innerHTML = pageChrome('Ajustes', 'Cuenta y un espejo de tus suscripciones. Pausar o cancelar un producto se hace en su ficha.') + `<div class="page-body">
       <div class="card">
         <div class="card-title">Cuenta</div>
-        <div class="card-sub" style="margin:8px 0 14px">${escHtml(name)} · ${escHtml(email)}</div>
-        <button class="btn ghost" type="button" id="btn-logout">Cerrar sesión</button>
+        <div class="card-sub" style="margin-top:8px">${escHtml(name)} · ${escHtml(email)}</div>
       </div>
-      <div class="card">
-        <div class="card-title">Pausar</div>
-        <p class="card-sub" style="margin:8px 0 14px;line-height:1.5">Para dejar de publicar respuestas solas, desactiva «Respuestas automáticas» en Reseñas de Google. Eso no te da de baja ni cancela Stripe.</p>
-        <button class="btn ghost" type="button" id="btn-goto-reviews">Ir a Reseñas</button>
-      </div>
-      <div class="card">
-        <div class="card-title">Darse de baja</div>
-        <p class="card-sub" style="margin:8px 0 6px;line-height:1.5">Cancela la suscripción de Reseñas de Google${rows.length > 1 ? ` (${rows.length} negocios)` : ''}. Es independiente del interruptor.</p>
-        <div class="card-sub" style="margin-bottom:14px">${bizLine}</div>
-        <button class="btn danger" type="button" id="btn-unsubscribe" ${subscribed ? '' : 'disabled'}>Darse de baja</button>
+      <div class="card" id="settings-subs">
+        <div class="card-title">Suscripciones</div>
+        <p class="card-sub" style="margin-top:8px;line-height:1.5">La baja de Reseñas de Google está en Gestionar suscripción, dentro de la automatización. El interruptor de respuestas automáticas no cancela Stripe.</p>
+        ${subs}
       </div>
     </div>`;
-    $('btn-logout').addEventListener('click', doLogout);
-    $('btn-goto-reviews').addEventListener('click', () => goView('google_reviews'));
-    const unsub = $('btn-unsubscribe');
-    if (unsub && subscribed) {
-      unsub.addEventListener('click', async () => {
-        const msg = rows.length > 1
-          ? `¿Darte de baja de Reseñas de Google en ${rows.length} negocios? Se cancela la suscripción.`
-          : '¿Darte de baja de Reseñas de Google? Se cancela la suscripción.';
-        if (!window.confirm(msg)) return;
-        unsub.disabled = true;
-        try {
-          for (const row of rows) {
-            await api('DELETE', withQuery('/client/automations/google_reviews', bizQuery(row.business_id)));
-          }
-          toast('Suscripción cancelada', 'ok');
-          activeView = 'settings';
-          await loadWorkspace();
-        } catch (err) {
-          toast(err.message, 'err');
-          unsub.disabled = false;
-        }
-      });
+    c.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => goView(btn.dataset.go)));
+    c.querySelectorAll('[data-type]').forEach(btn => btn.addEventListener('click', (e) => {
+      if (btn.dataset.on === 'true' && !window.confirm('¿Cancelar esta suscripción?')) return;
+      handleAutoBtn(e);
+    }));
+    if (settingsAnchor === 'subs') {
+      settingsAnchor = '';
+      const box = $('settings-subs');
+      if (box) box.scrollIntoView({ block: 'start' });
+    }
+  }
+
+  async function pauseReviewsAutomation() {
+    if (replyMode === 'auto') {
+      const ok = await setReplyMode('approval');
+      if (ok) toast('Publicación automática en pausa. La suscripción sigue activa.', 'ok');
+      return;
+    }
+    toast('Las respuestas ya no se publican solas. La suscripción sigue activa.', 'ok');
+  }
+
+  async function cancelReviewsSubscription(trigger) {
+    const rows = activeReviewRows();
+    if (!rows.length) {
+      toast('No hay suscripción activa de Reseñas de Google', 'err');
+      return;
+    }
+    const msg = rows.length > 1
+      ? `¿Cancelar la suscripción de Reseñas de Google en ${rows.length} negocios?`
+      : '¿Cancelar la suscripción de Reseñas de Google?';
+    if (!window.confirm(msg)) return;
+    if (trigger) trigger.disabled = true;
+    try {
+      for (const row of rows) {
+        await api('DELETE', withQuery('/client/automations/google_reviews', bizQuery(row.business_id)));
+      }
+      toast('Suscripción cancelada', 'ok');
+      activeView = 'automations';
+      await loadWorkspace();
+    } catch (err) {
+      toast(err.message, 'err');
+      if (trigger) trigger.disabled = false;
     }
   }
 
   function renderGoogleReviews(c) {
     const rows = activeReviewRows();
     if (!rows.length) {
-      c.innerHTML = pageChrome('Reseñas de Google', 'Activa la automatización para revisar y publicar respuestas.') + `<div class="page-body"><div class="card"><div class="empty">Todavía no tienes Reseñas de Google activas.<br/><button class="btn primary" type="button" id="goto-catalog" style="margin-top:12px">Ir al catálogo</button></div></div></div>`;
-      const goto = $('goto-catalog');
-      if (goto) goto.addEventListener('click', () => goView('catalog'));
+      c.innerHTML = pageChrome('Reseñas de Google', 'Activa la automatización para revisar y publicar respuestas.') + `<div class="page-body"><div class="card"><div class="empty">Todavía no tienes Reseñas de Google activas.<br/><button class="btn primary" type="button" id="goto-explore" style="margin-top:12px">Explorar</button></div></div></div>`;
+      const goto = $('goto-explore');
+      if (goto) goto.addEventListener('click', () => goView('explore'));
       return;
     }
     const row = currentReviewRow();
@@ -1157,7 +1519,21 @@
     }).join('');
     c.innerHTML = `
       <header class="page-head reviews-head">
-        <h1>Reseñas de Google</h1>
+        <div class="reviews-titlebar">
+          <h1>Reseñas de Google</h1>
+          <div class="sub-manage" id="sub-manage">
+            <button class="link-subtle" type="button" id="btn-manage-sub">Gestionar suscripción</button>
+            <div class="more-wrap">
+              <button class="btn-icon" type="button" id="btn-more-sub" aria-label="Más opciones de suscripción" aria-expanded="false">${ICO.dots}</button>
+              <div class="more-menu" id="sub-menu" hidden>
+                <button type="button" id="btn-pause-auto">Pausar automatización</button>
+                <button type="button" class="danger" id="btn-cancel-sub">Cancelar suscripción</button>
+                <div class="sep"></div>
+                <button type="button" class="muted" id="btn-mirror-settings">También en Ajustes → Suscripciones</button>
+              </div>
+            </div>
+          </div>
+        </div>
         <p class="page-lead" id="reviews-lead">${escHtml(reviewsLead())}</p>
         <div class="biz-slot">${biz}</div>
         <div class="toggle-wrap">
@@ -1221,6 +1597,31 @@
       paintReviewList();
     });
     $('reply-mode-switch').addEventListener('change', onReplySwitch);
+    const subMenu = $('sub-menu');
+    const moreBtn = $('btn-more-sub');
+    function toggleSubMenu(e) {
+      e.stopPropagation();
+      const open = subMenu.hidden;
+      subMenu.hidden = !open;
+      moreBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    $('btn-manage-sub').addEventListener('click', toggleSubMenu);
+    moreBtn.addEventListener('click', toggleSubMenu);
+    $('btn-pause-auto').addEventListener('click', (e) => {
+      e.stopPropagation();
+      subMenu.hidden = true;
+      pauseReviewsAutomation();
+    });
+    $('btn-cancel-sub').addEventListener('click', (e) => {
+      e.stopPropagation();
+      subMenu.hidden = true;
+      cancelReviewsSubscription(e.currentTarget);
+    });
+    $('btn-mirror-settings').addEventListener('click', (e) => {
+      e.stopPropagation();
+      settingsAnchor = 'subs';
+      goView('settings');
+    });
     const selector = $('biz-selector');
     if (selector) selector.addEventListener('change', async () => {
       activeBusinessId = selector.value;
@@ -1478,7 +1879,7 @@
     backdrop.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-labelledby="auto-modal-title">
       <div class="modal-icon">${ICO.alert}</div>
       <h2 id="auto-modal-title">¿Activar respuestas automáticas?</h2>
-      <p>ZeroManual publicará en Google sin tu revisión. Podrás desactivarlo cuando quieras; la baja y la pausa siguen en Ajustes.</p>
+      <p>ZeroManual publicará en Google sin tu revisión. Podrás desactivarlo cuando quieras; pausar o cancelar la suscripción está en Gestionar suscripción.</p>
       ${check}
       <div class="modal-actions">
         <button class="btn ghost" type="button" id="auto-cancel">Cancelar</button>
@@ -1561,18 +1962,29 @@
     <path d="M12 5.9c1.5 0 2.8.5 3.8 1.5l2.8-2.8A10 10 0 0 0 12 2 10 10 0 0 0 3 7.5l3.4 2.6C7.2 7.7 9.4 5.9 12 5.9z" fill="#EA4335"/>
   </svg>`;
 
+  const IGSVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs><linearGradient id="igBrand" x1="0%" y1="100%" x2="100%" y2="0%"><stop offset="0%" stop-color="#F58529"/><stop offset="30%" stop-color="#DD2A7B"/><stop offset="60%" stop-color="#8134AF"/><stop offset="100%" stop-color="#515BD4"/></linearGradient></defs>
+    <rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="url(#igBrand)" stroke-width="1.8"/>
+    <circle cx="12" cy="12" r="4.2" fill="none" stroke="url(#igBrand)" stroke-width="1.8"/>
+    <circle cx="17.2" cy="6.8" r="1.1" fill="#DD2A7B"/>
+  </svg>`;
+
+  const TTSVG = `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <path fill="#25F4EE" d="M16.6 5.82A4.23 4.23 0 0 1 15.24 3h-3.18v12.4a2.58 2.58 0 1 1-2.58-2.6c.2 0 .4.02.58.06v-3.23a5.76 5.76 0 0 0-.58-.03A5.8 5.8 0 1 0 14.7 15.4V9.15a7.4 7.4 0 0 0 4.28 1.35V7.3a4.24 4.24 0 0 1-2.38-1.48z"/>
+    <path fill="#FE2C55" d="M15.5 6.3A4.23 4.23 0 0 1 14.14 3.5h-2.1v12.4a2.58 2.58 0 1 1-2.58-2.6c.2 0 .4.02.58.06V10.1a5.8 5.8 0 1 0 4.2 5.55V9.15a7.4 7.4 0 0 0 4.28 1.35V7.3a4.24 4.24 0 0 1-3.02-1z" opacity=".9"/>
+    <path fill="#111" d="M15.7 5.5A4.23 4.23 0 0 1 14.34 2.7H11.2v12.4a2.58 2.58 0 1 1-2.58-2.6c.2 0 .4.02.58.06V9.33a5.76 5.76 0 0 0-.58-.03A5.8 5.8 0 1 0 13.8 15V8.85a7.4 7.4 0 0 0 4.28 1.35V6.98a4.24 4.24 0 0 1-2.38-1.48z"/>
+  </svg>`;
+
   const ACCOUNT_ICONS = {
     google: GSVG,
-    instagram: `<div class="acct-icon" style="background:linear-gradient(45deg,#f09433,#e6683c,#dc2743,#cc2366,#bc1888);color:#fff;font-weight:700;font-size:11px">IG</div>`,
-    tiktok: `<div class="acct-icon" style="background:#0e1116;color:#fff;font-weight:700;font-size:11px">TT</div>`,
-    email: `<div class="acct-icon" style="background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:11px">@</div>`,
+    instagram: IGSVG,
+    tiktok: TTSVG,
   };
 
-  const ACCOUNT_DESC = {
-    google: 'Necesario para reseñas, publicaciones en Google Business y más.',
-    instagram: 'Para publicar y responder en Instagram.',
-    tiktok: 'Para publicar contenido en TikTok.',
-    email: 'Para newsletters y respuestas por email.',
+  const ACCOUNT_COPY = {
+    google: { title: 'Google', idle: 'Business Profile' },
+    instagram: { title: 'Instagram', idle: 'Necesario para automatizaciones de redes' },
+    tiktok: { title: 'TikTok', idle: 'Necesario para automatizaciones de redes' },
   };
 
   async function connectGoogle() {
@@ -1595,50 +2007,40 @@
     try {
       const data = await api('GET', '/client/accounts/status');
       if (!data) return;
-      const accounts = data.accounts || [];
-      c.innerHTML = pageChrome('Conectar cuentas', 'Vincula las plataformas que usan tus automatizaciones') + '<div class="page-body"><div id="accounts-list"></div></div>';
+      const accounts = (data.accounts || []).filter(acc => ACCOUNT_COPY[acc.provider]);
+      c.innerHTML = pageChrome('Cuentas', 'Conecta las plataformas que usan tus automatizaciones.') + '<div class="page-body"><div class="acct-list" id="accounts-list"></div></div>';
       const list = $('accounts-list');
       accounts.forEach(acc => {
+        const copy = ACCOUNT_COPY[acc.provider];
         const icon = ACCOUNT_ICONS[acc.provider] || '';
-        const desc = ACCOUNT_DESC[acc.provider] || '';
         const div = document.createElement('div');
-        div.className = 'auto-card';
-        div.style.marginBottom = '12px';
-        let actions = '';
-        if (acc.connected) actions = `<button class="btn sm danger" type="button" data-disconnect="${escHtml(acc.provider)}">Desconectar</button>`;
-        else if (acc.connectable && acc.provider === 'google') actions = `<button class="btn sm primary" type="button" data-connect="google">Conectar →</button>`;
-        else actions = `<button class="btn sm ghost" type="button" disabled>Próximamente</button>`;
+        div.className = 'acct-row';
+        let detail = copy.idle;
+        if (acc.provider === 'google' && acc.connected) {
+          detail = `Business Profile · ${acc.account_label || 'conectada'}`;
+        }
+        let side = '';
+        if (acc.connected) {
+          side = `<div class="acct-side"><span class="pill ok">Conectado</span>${acc.provider === 'google' ? '<button class="btn-link" type="button" data-disconnect="google">Desconectar</button>' : ''}</div>`;
+        } else if (acc.connectable && acc.provider === 'google') {
+          side = `<button class="btn ghost" type="button" data-connect="google">Conectar</button>`;
+        } else {
+          side = `<button class="btn ghost" type="button" data-soon="${escHtml(acc.provider)}">Conectar</button>`;
+        }
         div.innerHTML = `
-          <div class="auto-card-body">
-            <div class="google-box-head" style="margin-bottom:8px">
-              ${icon}
-              <div>
-                <div class="auto-name">${escHtml(acc.label)}</div>
-                <div class="auto-desc">${escHtml(desc)}</div>
-              </div>
-            </div>
-            ${acc.connected ? `<div class="google-box-meta">
-              Cuenta: <strong>${escHtml(acc.account_label || '—')}</strong><br/>
-              Conectado el: ${dateStr(acc.connected_at)}
-            </div>` : ''}
-          </div>
-          <div class="auto-footer">
-            <span class="auto-status ${acc.connected ? 'on' : 'off'}">${acc.connected ? '● Conectado' : '○ No conectado'}</span>
-            ${actions}
-          </div>`;
+          <div class="acct-logo">${icon}</div>
+          <div class="acct-info"><strong>${escHtml(copy.title)}</strong><span>${escHtml(detail)}</span></div>
+          ${side}`;
         const connectBtn = div.querySelector('[data-connect="google"]');
         if (connectBtn) connectBtn.addEventListener('click', connectGoogle);
+        const soonBtn = div.querySelector('[data-soon]');
+        if (soonBtn) soonBtn.addEventListener('click', () => toast('Conexión disponible próximamente', 'ok'));
         const discBtn = div.querySelector('[data-disconnect]');
-        if (discBtn) {
-          discBtn.addEventListener('click', () => {
-            if (discBtn.dataset.disconnect === 'google') disconnectGoogle();
-            else toast('Desconexión no disponible todavía', 'err');
-          });
-        }
+        if (discBtn) discBtn.addEventListener('click', disconnectGoogle);
         list.appendChild(div);
       });
     } catch (e) {
-      c.innerHTML = pageChrome('Conectar cuentas', '') + '<div class="page-body"><div class="card"><div class="empty">Error cargando cuentas. Recarga la página.</div></div></div>';
+      c.innerHTML = pageChrome('Cuentas', '') + '<div class="page-body"><div class="card"><div class="empty">Error cargando cuentas. Recarga la página.</div></div></div>';
     }
   }
 
@@ -1680,6 +2082,22 @@
       btn.disabled = false; btn.textContent = 'Crear cuenta →';
     }
   }
+
+  document.addEventListener('click', (e) => {
+    const menu = $('avatar-menu');
+    const chip = $('user-chip');
+    if (menuOpen && menu && chip && !menu.contains(e.target) && !chip.contains(e.target)) {
+      menuOpen = false;
+      renderNav();
+    }
+    const sub = $('sub-menu');
+    const manage = $('sub-manage');
+    if (sub && !sub.hidden && manage && !manage.contains(e.target)) {
+      sub.hidden = true;
+      const more = $('btn-more-sub');
+      if (more) more.setAttribute('aria-expanded', 'false');
+    }
+  });
 
   $('btn-login').addEventListener('click', tryLogin);
   $('inp-password').addEventListener('keydown', e => { if (e.key === 'Enter') tryLogin(); });

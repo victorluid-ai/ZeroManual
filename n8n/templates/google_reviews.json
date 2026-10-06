@@ -150,7 +150,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const review = $input.item.json || {};\nconst reviewer = review.reviewer || {};\nreturn [{\n  json: {\n    review_name: review.name || '',\n    reviewer_name: reviewer.displayName || 'Anónimo',\n    starRating: review.starRating || '',\n    review_text: review.comment || ''\n  }\n}];"
+        "jsCode": "const review = $input.item.json || {};\nconst reviewer = review.reviewer || {};\nreturn {\n  json: {\n    review_name: review.name || '',\n    reviewer_name: reviewer.displayName || 'Anónimo',\n    starRating: review.starRating || '',\n    review_text: review.comment || ''\n  }\n};"
       }
     },
     {
@@ -178,15 +178,26 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "={{ ($env.ZEROMANUAL_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').replace(/\\/$/, '') + '/chat/completions' }}",
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: $env.ZEROMANUAL_LLM_MODEL || 'qwen3:8b', messages: [{ role: 'system', content: 'Redacta una respuesta breve y profesional en español a esta reseña de Google. No inventes datos ni ofrezcas compensaciones.' }, { role: 'user', content: 'Cliente: ' + ($json.reviewer_name || 'Anónimo') + '\\nNota: ' + ($json.starRating || '') + '\\nTexto: ' + ($json.review_text || '(sin texto)') }] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'nvidia/nemotron-3-super-120b-a12b:free', models: ['gemma-4-31b-it:free', 'gemma-4-26b-a4b-it:free'], messages: [{ role: 'system', content: 'Responde en el idioma de la reseña. Si la reseña no tiene texto, responde en español de España. Redacta una respuesta breve y profesional. No inventes datos ni ofrezcas compensaciones.' }, { role: 'user', content: 'Cliente: ' + ($json.reviewer_name || 'Anónimo') + '\\nNota: ' + ($json.starRating || '') + '\\nTexto: ' + ($json.review_text || '(sin texto)') }] }) }}",
         "options": {
           "timeout": 60000
         }
       },
-      "notes": "LLM compartido (Ollama u OpenAI-compatible). Si hace falta API key, añade el header Authorization Bearer con $env.ZEROMANUAL_LLM_API_KEY. No es una credencial por cliente."
+      "credentials": {
+        "openAiApi": {
+          "id": "HF8ZRnBsv79RuSZH",
+          "name": "OpenRouter - ZeroManual"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Credencial n8n openAiApi de nombre OpenRouter - ZeroManual. El id HF8ZRnBsv79RuSZH es el de producción para que un PUT de esta plantilla no suelte el enlace; no es una API key. La clave vive solo en n8n. En otra instancia, crea la credencial con ese nombre y sustituye el id."
     },
     {
       "id": "a1b2c3d4-0010-4000-8000-000000000010",
@@ -199,7 +210,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const review = $('Normalize Review').item.json;\nconst llm = $input.item.json || {};\nconst choice = llm.choices && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content;\nconst content = (llm.message && llm.message.content) || choice || '';\nreturn [{\n  json: {\n    review_name: review.review_name,\n    reviewer_name: review.reviewer_name,\n    starRating: review.starRating,\n    review_text: review.review_text,\n    message: { content: content },\n    choices: [{ message: { content: content } }]\n  }\n}];"
+        "jsCode": "const review = $('Normalize Review').item.json;\nconst llm = $input.item.json || {};\nconst choice = llm.choices && llm.choices[0] && llm.choices[0].message && llm.choices[0].message.content;\nlet content = (llm.message && llm.message.content) || choice || '';\ncontent = String(content).replace(/<think>[\\s\\S]*?<\\/think>/gi, '').trim();\nreturn {\n  json: {\n    review_name: review.review_name,\n    reviewer_name: review.reviewer_name,\n    starRating: review.starRating,\n    review_text: review.review_text,\n    message: { content: content },\n    choices: [{ message: { content: content } }]\n  }\n};"
       }
     },
     {
@@ -227,7 +238,7 @@
       ],
       "parameters": {
         "mode": "runOnceForEachItem",
-        "jsCode": "const data = $getWorkflowStaticData('global');\nconst item = $input.item.json || {};\nconst fromMessage = item.message && item.message.content;\nconst fromChoice = item.choices && item.choices[0] && item.choices[0].message && item.choices[0].message.content;\nconst reply = fromMessage || fromChoice || '';\nif (!data.client_id) {\n  throw new Error('Falta staticData.global.client_id. ZeroManual lo inyecta al activar.');\n}\nreturn [{\n  json: {\n    client_id: data.client_id,\n    business_id: data.business_id || '',\n    review_id: item.review_name || '',\n    reviewer_name: item.reviewer_name || '',\n    rating: item.starRating || item.rating || '',\n    source_text: item.review_text || '',\n    suggested_reply: String(reply)\n  }\n}];"
+        "jsCode": "const data = $getWorkflowStaticData('global');\nconst item = $input.item.json || {};\nconst fromMessage = item.message && item.message.content;\nconst fromChoice = item.choices && item.choices[0] && item.choices[0].message && item.choices[0].message.content;\nconst reply = fromMessage || fromChoice || '';\nif (!data.client_id) {\n  throw new Error('Falta staticData.global.client_id. ZeroManual lo inyecta al activar.');\n}\nreturn {\n  json: {\n    client_id: data.client_id,\n    business_id: data.business_id || '',\n    review_id: item.review_name || '',\n    reviewer_name: item.reviewer_name || '',\n    rating: item.starRating || item.rating || '',\n    source_text: item.review_text || '',\n    suggested_reply: String(reply)\n  }\n};"
       }
     },
     {

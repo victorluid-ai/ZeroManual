@@ -73,9 +73,16 @@ def test_template_has_contract_nodes_and_no_oauth_placeholders() -> None:
     assert "YOUR_" not in raw
     assert "stickyNote" not in raw
     for node in wf["nodes"]:
-        assert "credentials" not in node
         assert "google" not in node["type"].lower()
         assert "oauth" not in node["type"].lower()
+        if node["name"] == "Call LLM":
+            creds = node["credentials"]
+            assert set(creds) == {"openAiApi"}
+            assert creds["openAiApi"]["name"] == "OpenRouter - ZeroManual"
+            assert creds["openAiApi"]["id"] == "HF8ZRnBsv79RuSZH"
+            assert "apiKey" not in creds["openAiApi"]
+        else:
+            assert "credentials" not in node
     by_name = {node["name"]: node for node in wf["nodes"]}
     assert by_name["Exchange Google Access Token"]["type"] == "n8n-nodes-base.httpRequest"
     assert "oauth2.googleapis.com/token" in by_name["Exchange Google Access Token"]["parameters"]["url"]
@@ -94,6 +101,43 @@ def test_template_has_contract_nodes_and_no_oauth_placeholders() -> None:
     assert "Generate AI Draft" in by_name["Remember Drafted Review"]["parameters"]["jsCode"]
     assert "change_me" not in raw
     assert "sk-" not in raw
+
+
+def test_each_item_code_returns_object_and_openrouter_llm() -> None:
+    """runOnceForEachItem must return one object. The task runner rejects arrays."""
+    wf = json.loads(TEMPLATE.read_text(encoding="utf-8"))
+    by_name = {node["name"]: node for node in wf["nodes"]}
+    for name in ("Normalize Review", "Generate AI Draft", "Build Draft Payload"):
+        node = by_name[name]
+        assert node["parameters"]["mode"] == "runOnceForEachItem"
+        code = node["parameters"]["jsCode"]
+        assert "return {" in code
+        assert "return [{" not in code
+    for name in ("Load Client Context", "Post Reply to Google"):
+        node = by_name[name]
+        assert node["parameters"]["mode"] == "runOnceForAllItems"
+        assert "return [{" in node["parameters"]["jsCode"]
+
+    draft = by_name["Generate AI Draft"]["parameters"]["jsCode"]
+    assert "replace(/<think>" in draft
+    llm = by_name["Call LLM"]
+    assert llm["type"] == "n8n-nodes-base.httpRequest"
+    params = llm["parameters"]
+    assert params["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert params["authentication"] == "predefinedCredentialType"
+    assert params["nodeCredentialType"] == "openAiApi"
+    body = params["jsonBody"]
+    assert "nvidia/nemotron-3-super-120b-a12b:free" in body
+    assert "gemma-4-31b-it:free" in body
+    assert "gemma-4-26b-a4b-it:free" in body
+    assert "español de España" in body
+    assert "idioma de la reseña" in body
+    assert llm["retryOnFail"] is True
+    assert llm["maxTries"] == 3
+    assert llm["waitBetweenTries"] == 5000
+    assert "qwen3" not in body
+    assert "11434" not in params["url"]
+    assert "availableInMCP" not in wf["settings"]
 
 
 def test_template_injection_does_not_duplicate_baked_nodes(monkeypatch: pytest.MonkeyPatch) -> None:

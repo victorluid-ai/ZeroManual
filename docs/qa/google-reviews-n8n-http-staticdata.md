@@ -44,8 +44,8 @@ En la plantilla:
 | `Split Unreplied Reviews` | code | Descarta las que ya tienen respuesta |
 | `Normalize Review` | code | `review_name`, `reviewer_name`, `starRating`, `review_text` |
 | `Filter Unseen Reviews` | code | Salta ids ya borradoreados |
-| `Call LLM` | httpRequest | Chat completions |
-| `Generate AI Draft` | code | **Contrato.** Deja reseña + texto del modelo |
+| `Call LLM` | httpRequest | Chat completions en OpenRouter |
+| `Generate AI Draft` | code | **Contrato.** Deja reseña + texto del modelo, sin bloques `<think>` |
 | `Build Draft Payload` | code | Arma el JSON del portal desde `staticData.global` y el item |
 | `Push Draft to ZeroManual` | httpRequest | **Contrato.** `POST /internal/automations/google_reviews/drafts` con `X-Webhook-Secret` |
 | `Remember Drafted Review` | code | Apunta el id en staticData **después** de que el push responde bien |
@@ -84,9 +84,15 @@ No commitear esos valores.
 3. `PUT https://mybusiness.googleapis.com/v4/{reviewName}/reply` con `{"comment": final_reply}`.  
    `reviewName` es el `name` de la reseña (`accounts/…/reviews/…`). Si el webhook solo trae el id corto, se antepone `location_id + /reviews/`.
 
-LLM (compartido, no por cliente): `POST {$env.ZEROMANUAL_LLM_BASE_URL || http://127.0.0.1:11434/v1}/chat/completions`, modelo `$env.ZEROMANUAL_LLM_MODEL` o `qwen3:8b`. Si el endpoint exige API key, añadir en `Call LLM` el header `Authorization: Bearer {{$env.ZEROMANUAL_LLM_API_KEY}}`.
+LLM compartido (no por cliente): `POST https://openrouter.ai/api/v1/chat/completions`. El nodo `Call LLM` usa la credencial n8n de tipo `openAiApi` llamada **OpenRouter - ZeroManual**. En el JSON solo van el tipo, el nombre y el id de esa credencial en producción (`HF8ZRnBsv79RuSZH`). Ese id no es una API key: la clave vive en n8n. En otra instancia, crea una credencial `openAiApi` con el mismo nombre y sustituye el id antes de importar. No commitear la clave.
 
-`Generate AI Draft` deja en el item `review_name`, `reviewer_name`, `starRating`, `review_text` y `message.content` / `choices[0].message.content`. `Build Draft Payload` convierte eso en el cuerpo del POST. En n8n hace falta `ZEROMANUAL_PUBLIC_URL` y `ZEROMANUAL_WEBHOOK_SECRET` (el mismo valor que en ZeroManual), además de `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. No commitear el secreto.
+El cuerpo pide el modelo `nvidia/nemotron-3-super-120b-a12b:free` y, en `models`, los fallbacks `gemma-4-31b-it:free` y `gemma-4-26b-a4b-it:free` (capa gratuita de OpenRouter). El prompt de sistema responde en el idioma de la reseña; si no hay texto, en español de España. El nodo reintenta 3 veces con 5 s de espera (`retryOnFail`, `maxTries`, `waitBetweenTries`).
+
+Los nodos Code en modo `runOnceForEachItem` (`Normalize Review`, `Generate AI Draft`, `Build Draft Payload`) devuelven un objeto `{ json: ... }`. El task runner de n8n rechaza el array `[{ json: ... }]` con `A 'json' property isn't an object`. Los nodos `runOnceForAllItems` siguen devolviendo un array.
+
+`Generate AI Draft` quita los bloques `<think>...</think>` del texto del modelo antes de armar el borrador, y deja en el item `review_name`, `reviewer_name`, `starRating`, `review_text` y `message.content` / `choices[0].message.content`. `Build Draft Payload` convierte eso en el cuerpo del POST. En n8n hace falta `ZEROMANUAL_PUBLIC_URL` y `ZEROMANUAL_WEBHOOK_SECRET` (el mismo valor que en ZeroManual), además de `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`. No commitear el secreto.
+
+La plantilla no pone `settings.availableInMCP`. `duplicate_template` copia `settings` al crear el workflow del cliente, y en algunas versiones de n8n una clave desconocida en `settings` rompe el `POST`/`activate` (`must NOT have additional properties`). Si esa instancia expone workflows por MCP, se puede marcar `availableInMCP: true` en la copia del cliente desde la UI de n8n, después de activar. No hace falta en la plantilla inactiva.
 
 ## Nombre del workflow
 
@@ -127,7 +133,7 @@ En el entorno de **n8n** (no en el JSON):
 - `ZEROMANUAL_PUBLIC_URL` (URL pública de ZeroManual, sin barra final)
 - `ZEROMANUAL_WEBHOOK_SECRET` (el mismo valor que en ZeroManual)
 - `N8N_BLOCK_ENV_ACCESS_IN_NODE=false`
-- Opcional: `ZEROMANUAL_LLM_BASE_URL`, `ZEROMANUAL_LLM_MODEL`, `ZEROMANUAL_LLM_API_KEY`
+- Credencial n8n `openAiApi` de nombre `OpenRouter - ZeroManual` (en producción el id es `HF8ZRnBsv79RuSZH`). Sin esta credencial, `Call LLM` no autentica. No hace falta `ZEROMANUAL_LLM_BASE_URL`, `ZEROMANUAL_LLM_MODEL` ni `ZEROMANUAL_LLM_API_KEY`.
 
 ```bash
 jq '{name,nodes,connections,settings,staticData}' n8n/templates/google_reviews.json \

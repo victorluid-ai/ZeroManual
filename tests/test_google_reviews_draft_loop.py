@@ -227,3 +227,14 @@ def test_client_ui_offers_edit_accept_and_reject() -> None:
     assert "topbar-brand-mark" in html
     assert 'reply_mode' in html
     assert "Se publicarán en Google" in html
+    assert "Automatizaciones" in html
+    assert "view: 'automations'" in html
+    assert "Gestionar suscripción" in html
+    assert "Pausar automatización" in html
+    assert "Cancelar suscripción" in html
+    assert "Ya la tienes" in html
+    assert "Próximamente" in html
+    assert "Añadir automatización" in html
+    assert "También en Ajustes" in html
+    assert 'label: \'Catálogo\'' not in html
+    assert 'label: \'Ajustes\'' not in html

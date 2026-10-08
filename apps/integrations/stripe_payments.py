@@ -56,14 +56,42 @@ class CurrencyLockedError(ValueError):
     """
 
 
-def normalize_currency(currency: str | None) -> str:
-    """Return eur|usd. Missing or blank defaults to eur. Anything else raises."""
+def requested_currency(currency: str | None) -> str | None:
+    """Explicit eur|usd, or None when the client omitted the field.
+
+    Null and blank are omitted, not a silent EUR. An unknown code raises.
+    """
     if currency is None or not str(currency).strip():
-        return DEFAULT_CURRENCY
+        return None
     code = str(currency).strip().lower()
     if code not in SUPPORTED_CURRENCIES:
         raise ValueError("Moneda no válida: usa eur o usd")
     return code
+
+
+def normalize_currency(currency: str | None) -> str:
+    """Return eur|usd. Missing or blank defaults to eur. Anything else raises."""
+    return requested_currency(currency) or DEFAULT_CURRENCY
+
+
+def resolve_charge_currency(requested: str | None, locked: str | None) -> str:
+    """Currency to put on price_data.
+
+    An omitted request follows the Customer's locked currency when Stripe has
+    one we can charge, otherwise EUR. A 409 happens only when the caller asks
+    for a currency that disagrees with that lock. The portal omits the field;
+    that explicit mismatch comes from the landing selector.
+    """
+    if not requested:
+        if locked in SUPPORTED_CURRENCIES:
+            return locked
+        return DEFAULT_CURRENCY
+    if locked and locked != requested:
+        raise CurrencyLockedError(
+            f"Este cliente ya factura en {locked.upper()}. "
+            "Stripe no permite otra moneda en el mismo Customer."
+        )
+    return requested
 
 
 def _monthly_cents(product: dict[str, Any], currency: str) -> int:
@@ -329,7 +357,11 @@ def ensure_stripe_customer(
 
 
 def customer_billing_currency(customer_id: str, settings: StripeSettings) -> str | None:
-    """Currency Stripe has locked on this Customer, if any."""
+    """Currency Stripe has locked on this Customer, if any.
+
+    Retrieve failures propagate. The checkout route maps them to the existing
+    generic payment error (HTTP 503), not to a currency 409.
+    """
     import stripe
 
     stripe.api_key = settings.secret_key
@@ -369,7 +401,7 @@ def create_checkout_session(
         raise RuntimeError("Stripe no está configurado (ZEROMANUAL_STRIPE_SECRET_KEY)")
 
     interval = "yearly" if billing_interval == "yearly" else "monthly"
-    charge_currency = normalize_currency(currency)
+    requested = requested_currency(currency)
     stripe.api_key = cfg.secret_key
 
     customer_id = ensure_stripe_customer(
@@ -380,11 +412,7 @@ def create_checkout_session(
         settings=cfg,
     )
     locked = customer_billing_currency(customer_id, cfg)
-    if locked and locked != charge_currency:
-        raise CurrencyLockedError(
-            f"Este cliente ya factura en {locked.upper()}. "
-            "Stripe no permite otra moneda en el mismo Customer."
-        )
+    charge_currency = resolve_charge_currency(requested, locked)
 
     success_url = (
         f"{cfg.public_url}/client/checkout/success"

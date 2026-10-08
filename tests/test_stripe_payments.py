@@ -551,13 +551,21 @@ def test_line_items_price_ids_are_currency_scoped() -> None:
     assert usd_pairs[0]["quantity"] == 2
 
 
-def _fake_stripe(monkeypatch: pytest.MonkeyPatch, created: dict, *, locked: str | None = None):
+def _fake_stripe(
+    monkeypatch: pytest.MonkeyPatch,
+    created: dict,
+    *,
+    locked: str | None = None,
+    retrieve_error: str | None = None,
+):
     import sys
     import types
 
     class FakeCustomer:
         @staticmethod
         def retrieve(cid):
+            if retrieve_error:
+                raise RuntimeError(retrieve_error)
             return {"id": cid, "deleted": False, "currency": locked}
 
         @staticmethod
@@ -641,6 +649,51 @@ def test_checkout_rejects_unknown_currency(client: TestClient) -> None:
     )
     assert resp.status_code == 400
     assert "eur" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("currency_field", [None, "", "missing"])
+def test_checkout_omitted_currency_uses_locked_usd(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, currency_field: str | None
+) -> None:
+    """A portal checkout sends no currency. A Customer already on USD stays on USD."""
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created, locked="usd")
+
+    label = {None: "null", "": "blank", "missing": "missing"}[currency_field]
+    reg = _register(client, f"locked-omit-{label}@example.com")
+    payload: dict = {"automation_types": ["google_reviews"], "billing_interval": "monthly"}
+    if currency_field != "missing":
+        payload["currency"] = currency_field
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json=payload,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["currency"] == "usd"
+    item = created["line_items"][0]
+    assert item["price_data"]["currency"] == "usd"
+    assert item["price_data"]["unit_amount"] == 2900
+
+
+def test_checkout_customer_retrieve_failure_is_generic(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Customer.retrieve errors use the existing checkout failure, not a 409."""
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created, retrieve_error="stripe unavailable")
+
+    reg = _register(client, "retrieve-down@example.com")
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json={"automation_types": ["google_reviews"]},
+    )
+    assert resp.status_code == 503
+    assert "No se pudo iniciar el pago" in resp.json()["detail"]
+    assert created == {}
 
 
 def test_checkout_refuses_currency_change_on_locked_customer(

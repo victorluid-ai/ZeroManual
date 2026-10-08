@@ -20,8 +20,10 @@ logger = logging.getLogger(__name__)
 class CheckoutSessionRequest(BaseModel):
     automation_types: list[str]
     billing_interval: str = "monthly"
-    # eur|usd. Omitted or blank → eur. Any other value is rejected with 400
-    # (charging the wrong currency is worse than a validation error).
+    # eur|usd when the landing selector was used. Omitted, null, or blank:
+    # charge the Customer's locked currency if Stripe has one, otherwise eur.
+    # An explicit currency that disagrees with that lock is 409. Anything else
+    # is 400 (charging the wrong currency is worse than a validation error).
     currency: str | None = None
     # Optional (automation_type, business_id) pairs for multi-business checkout.
     # When provided, takes precedence over automation_types for line-item building
@@ -252,12 +254,14 @@ def register_payment_routes(
 
         interval = "yearly" if req.billing_interval == "yearly" else "monthly"
         try:
-            currency = stripe_payments.normalize_currency(req.currency)
+            requested = stripe_payments.requested_currency(req.currency)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         cfg = stripe_payments.load_stripe_settings()
 
         if not stripe_payments.stripe_enabled(cfg):
+            # No Customer to read. An omitted currency stays on the catalog default.
+            currency = requested or stripe_payments.DEFAULT_CURRENCY
             for automation_type in types:
                 store.upsert_subscription(
                     client_id=client["client_id"],
@@ -285,7 +289,7 @@ def register_payment_routes(
                 stripe_customer_id=stored.get("stripe_customer_id") or None,
                 settings=cfg,
                 business_pairs=business_pairs,
-                currency=currency,
+                currency=requested,
             )
         except stripe_payments.CurrencyLockedError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -305,7 +309,7 @@ def register_payment_routes(
             "session_id": session["session_id"],
             "automation_types": types,
             "billing_interval": interval,
-            "currency": session.get("currency") or currency,
+            "currency": session.get("currency") or requested or stripe_payments.DEFAULT_CURRENCY,
         }
 
     @app.get("/client/checkout/continue", response_class=HTMLResponse)

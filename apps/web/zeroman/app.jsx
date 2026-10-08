@@ -176,6 +176,32 @@ function readCurrency() {
   catch { return "eur"; }
 }
 
+/** eur|usd only after the menu selector is used. Absent key is the EUR display default, not a charge. */
+function explicitCurrencyChoice() {
+  try {
+    const raw = localStorage.getItem(CURRENCY_KEY);
+    if (raw === "usd" || raw === "eur") return raw;
+  } catch { /* private mode: treat as not chosen */ }
+  return null;
+}
+
+let checkoutToastTimer = null;
+function showCheckoutToast(message) {
+  const text = String(message || "").trim();
+  if (!text) return;
+  let el = document.getElementById("zm-checkout-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "zm-checkout-toast";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(checkoutToastTimer);
+  checkoutToastTimer = setTimeout(() => { el.classList.remove("show"); }, 4200);
+}
+
 function fmtPrice(amount, currency, lang) {
   const locale = lang === "es" ? "es-ES" : "en-US";
   const code = currency === "usd" ? "USD" : "EUR";
@@ -192,14 +218,17 @@ function faqAnswer(text, currency, lang) {
 async function startCheckout(token, automationTypes, annual, currency) {
   const types = (automationTypes || []).filter(Boolean);
   if (!types.length) throw new Error("no automation types");
+  const body = {
+    automation_types: types,
+    billing_interval: annual ? "yearly" : "monthly",
+  };
+  // The landing EUR default is display-only. Sending it would 409 a Customer
+  // already locked to USD who never touched the selector. Omit unless chosen.
+  if (currency === "usd" || currency === "eur") body.currency = currency;
   const r = await fetch("/client/checkout/session", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({
-      automation_types: types,
-      billing_interval: annual ? "yearly" : "monthly",
-      currency: currency === "usd" ? "usd" : "eur",
-    }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
@@ -344,7 +373,7 @@ function SubscribeModal({ product, lang, t, annual, currency, onClose, onDone })
     localStorage.setItem("mz_client_token", token);
     try {
       setPhase("paying");
-      const checkout = await startCheckout(token, [automationType], annual, currency);
+      const checkout = await startCheckout(token, [automationType], annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
 
       const statusRes = await fetch("/client/google/status", { headers: { Authorization: "Bearer " + token } });
@@ -367,8 +396,10 @@ function SubscribeModal({ product, lang, t, annual, currency, onClose, onDone })
       if (!connRes.ok) throw new Error("connect failed");
       const conn = await connRes.json();
       window.location.href = conn.redirect_url;
-    } catch {
-      setError(ts.error);
+    } catch (err) {
+      const message = (err && err.message) || ts.error;
+      setError(message);
+      showCheckoutToast(message);
       setPhase("form");
     }
   };
@@ -877,7 +908,7 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     setSubscribingId(id);
     try {
-      const checkout = await startCheckout(clientToken, [type], annual, currency);
+      const checkout = await startCheckout(clientToken, [type], annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
       if (checkout.mode === "free") {
         window.alert(
@@ -892,7 +923,10 @@ function App() {
       if (r.ok) setActiveAutomations((a) => (a.includes(type) ? a : [...a, type]));
     } catch (err) {
       console.error("subscribe failed", err);
-      window.alert((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.");
+      showCheckoutToast(
+        (err && err.message)
+          || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
+      );
     }
     finally { setSubscribingId(null); }
   };
@@ -901,7 +935,7 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     setSubscribingId(id);
     try {
-      const checkout = await startCheckout(clientToken, [type], annual, currency);
+      const checkout = await startCheckout(clientToken, [type], annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
       await fetch("/client/pending-automation", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + clientToken },
@@ -910,7 +944,10 @@ function App() {
       const r = await fetch("/client/google/connect", { headers: { Authorization: "Bearer " + clientToken } });
       const d = await r.json();
       window.location.href = d.redirect_url;
-    } catch { setSubscribingId(null); }
+    } catch (err) {
+      showCheckoutToast((err && err.message) || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription."));
+      setSubscribingId(null);
+    }
   };
 
   // Dispatches "Suscribirme" clicks by session state: automations without a
@@ -985,17 +1022,18 @@ function App() {
       return;
     }
     try {
-      const checkout = await startCheckout(clientToken, pending, annual, currency);
+      const checkout = await startCheckout(clientToken, pending, annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
       try { localStorage.removeItem(CART_HANDOFF_KEY); } catch {}
       setCart([]);
       // Free/dev: hand off to portal activation after grant.
       try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
       window.location.href = "/client";
-    } catch {
-      setLoginInitialMode("login");
-      setLoginStayOnPage(true);
-      setShowLogin(true);
+    } catch (err) {
+      showCheckoutToast(
+        (err && err.message)
+          || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
+      );
     }
   };
 
@@ -1007,11 +1045,16 @@ function App() {
     try { pending = JSON.parse(localStorage.getItem(CART_HANDOFF_KEY) || "[]"); } catch { pending = []; }
     if (token && pending.length) {
       try {
-        const checkout = await startCheckout(token, pending, annual, currency);
+        const checkout = await startCheckout(token, pending, annual, explicitCurrencyChoice());
         if (checkout.redirected) return;
         window.location.href = "/client";
         return;
-      } catch {}
+      } catch (err) {
+        showCheckoutToast(
+          (err && err.message)
+            || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
+        );
+      }
     }
   };
 

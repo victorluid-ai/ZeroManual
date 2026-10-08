@@ -196,7 +196,19 @@ def test_client_portal_opens_view_from_query(client: TestClient) -> None:
     resp = client.get("/client")
     assert resp.status_code == 200
     assert "STATIC_VIEWS.has(params.get('view')" in resp.text
-    assert "checkoutCurrency" in resp.text
+    assert "checkoutCurrency" not in resp.text
+    assert "toast(err.message, 'err')" in resp.text
+
+
+def test_landing_checkout_omits_currency_until_the_selector_is_used(client: TestClient) -> None:
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "#zm-checkout-toast" in page.text
+    js = client.get("/assets/app.jsx")
+    assert js.status_code == 200
+    assert "function explicitCurrencyChoice()" in js.text
+    assert 'if (currency === "usd" || currency === "eur") body.currency = currency;' in js.text
+    assert "showCheckoutToast" in js.text
 
 
 def test_homepage_default_html_lang_is_spanish(client: TestClient) -> None:

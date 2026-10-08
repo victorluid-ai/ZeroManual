@@ -761,14 +761,6 @@
     return r.json();
   }
 
-  function checkoutCurrency() {
-    try {
-      return localStorage.getItem('zm_currency') === 'usd' ? 'usd' : 'eur';
-    } catch (err) {
-      return 'eur';
-    }
-  }
-
   function dateStr(iso) {
     if (!iso) return '—';
     return new Date(iso).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' });
@@ -1494,7 +1486,6 @@
         const checkout = await api('POST', '/client/checkout/session', {
           automation_types: [type],
           billing_interval: 'monthly',
-          currency: checkoutCurrency(),
         });
         if (!checkout) return;
         if (checkout.checkout_url) {
@@ -1561,7 +1552,6 @@
           automation_types: [type],
           billing_interval: 'monthly',
           business_pairs,
-          currency: checkoutCurrency(),
         });
         if (!checkout) return;
         if (checkout.checkout_url) {

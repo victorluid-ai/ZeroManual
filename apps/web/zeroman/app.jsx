@@ -61,7 +61,6 @@ const T = {
     menu: {
       portal: "Go to my portal", currency: "Currency",
       pricesIn: { eur: "Prices in euros", usd: "Prices in dollars" },
-      currencyHelp: "Changes the prices shown and the currency charged in Stripe.",
       settings: "Account settings", logout: "Log out", login: "Log in", register: "Create account",
       trial: "14 days free", account: "Account", close: "Close",
       catalog: { eur: "€ Prices in EUR", usd: "$ Prices in USD" },
@@ -113,7 +112,6 @@ const T = {
     menu: {
       portal: "Ir a mi portal", currency: "Moneda",
       pricesIn: { eur: "Precios en euros", usd: "Precios en dólares" },
-      currencyHelp: "Cambia los precios mostrados y la moneda del pago en Stripe.",
       settings: "Ajustes de cuenta", logout: "Cerrar sesión", login: "Iniciar sesión", register: "Crear cuenta",
       trial: "14 días gratis", account: "Cuenta", close: "Cerrar",
       catalog: { eur: "€ Precios en EUR", usd: "$ Precios en USD" },
@@ -739,7 +737,6 @@ function UserMenu({ open, onOpenChange, t, signedIn, name, email, currency, onCu
         <button type="button" aria-pressed={currency === "eur"} onClick={() => onCurrency("eur")}>€ EUR</button>
         <button type="button" aria-pressed={currency === "usd"} onClick={() => onCurrency("usd")}>$ USD</button>
       </div>
-      <p className="zm-currency-help">{m.currencyHelp}</p>
     </div>
   );
 

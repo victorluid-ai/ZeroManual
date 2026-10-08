@@ -5,6 +5,9 @@ La publicación a Google no sale de estos tests: ``trigger_publish_reply`` está
 
 from __future__ import annotations
 
+import json
+import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -238,3 +241,219 @@ def test_client_ui_offers_edit_accept_and_reject() -> None:
     assert "También en Ajustes" in html
     assert 'label: \'Catálogo\'' not in html
     assert 'label: \'Ajustes\'' not in html
+
+
+def _extract_js_function(source: str, name: str) -> str:
+    marker = f"function {name}("
+    start = source.find(marker)
+    assert start != -1, name
+    line_start = source.rfind("\n", 0, start) + 1
+    if source[line_start:start].strip() == "async":
+        start = line_start + source[line_start:start].find("async")
+    brace = source.find("{", start)
+    depth = 0
+    for index in range(brace, len(source)):
+        char = source[index]
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : index + 1]
+    raise AssertionError(f"función sin cerrar: {name}")
+
+
+def _js_const_line(source: str, name: str) -> str:
+    match = re.search(rf"const {name} = [^;]+;", source)
+    assert match, name
+    return match.group(0)
+
+
+def test_open_reviews_refresh_pending_without_reload(client: TestClient, tmp_path: Path) -> None:
+    """La vista abierta vuelve a pedir borradores al recuperar el foco y, unos minutos, por polling."""
+    page = client.get("/client")
+    assert page.status_code == 200
+    html = page.text
+    assert "document.addEventListener('visibilitychange', onReviewSurfaceResume)" in html
+    assert "window.addEventListener('focus', onReviewSurfaceResume)" in html
+    assert "armReviewWatch();" in html
+    assert "activatedType === 'google_reviews') reviewsActivatedAt = Date.now();" in html
+    assert "refreshOpenReviews('poll')" in html
+    assert "refreshOpenReviews('resume')" in html
+    assert "}, REVIEW_POLL_MS);" in html
+
+    functions = [
+        "reviewRefreshPlan",
+        "currentReviewInput",
+        "draftsSignature",
+        "stopReviewPoll",
+        "scheduleReviewPoll",
+        "applyReviewPlan",
+        "armReviewWatch",
+        "runReviewRefresh",
+        "refreshOpenReviews",
+        "onReviewSurfaceResume",
+    ]
+    script = "\n".join(
+        [
+            _js_const_line(html, "REVIEW_POLL_MS"),
+            _js_const_line(html, "REVIEW_WATCH_MS"),
+            r"""
+let now = 0;
+Date.now = function () { return now; };
+let token = 'tok';
+let activeView = 'google_reviews';
+let pendingReviewCount = 0;
+let cachedDrafts = [];
+let reviewLoadError = '';
+let reviewsActivatedAt = 0;
+let reviewWatchUntil = 0;
+let reviewPollTimer = null;
+let reviewResumeTimer = null;
+let reviewRefreshInFlight = null;
+let document = {
+  visibilityState: 'visible',
+  activeElement: null,
+  querySelectorAll: function () { return []; },
+};
+function activeReviewRows() {
+  return [{ automation_type: 'google_reviews', status: 'active', business_id: 'BIZ-1' }];
+}
+const fetches = [];
+const paints = [];
+function draftRow(id) {
+  return {
+    draft_id: id, status: 'pending', suggested_reply: id, final_reply: null,
+    reviewer_name: id, rating: 'FIVE', source_text: 'Bien',
+    created_at: '2026-10-08T08:00:00Z', updated_at: '2026-10-08T08:00:00Z',
+  };
+}
+async function refreshReviewCache() {
+  fetches.push(now);
+  let rows = [];
+  if (now >= 150000) rows = [draftRow('DRF-1'), draftRow('DRF-2')];
+  else if (now >= 120001) rows = [draftRow('DRF-1')];
+  cachedDrafts = rows.map(function (row) { return Object.assign({}, row); });
+  pendingReviewCount = cachedDrafts.length;
+  reviewLoadError = '';
+}
+function captureReviewFocus() { return null; }
+function restoreReviewFocus() {}
+function syncChrome() {}
+function paintReviewList() { paints.push({ t: now, n: pendingReviewCount }); }
+function renderNav() {}
+function $(id) { return id === 'review-list' ? { id: id } : null; }
+const queue = [];
+let seq = 0;
+function setTimeout(fn, ms) {
+  const id = ++seq;
+  queue.push({ id: id, fn: fn, at: now + ms, cancelled: false, ran: false });
+  return id;
+}
+function clearTimeout(id) {
+  queue.forEach(function (item) { if (item.id === id) item.cancelled = true; });
+}
+async function settle() {
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+}
+async function flushUntil(limit) {
+  while (true) {
+    await settle();
+    let next = null;
+    queue.forEach(function (item) {
+      if (item.cancelled || item.ran || item.at > limit) return;
+      if (!next || item.at < next.at) next = item;
+    });
+    if (!next) { now = limit; return; }
+    now = next.at;
+    next.ran = true;
+    next.fn();
+  }
+}
+""",
+            *[_extract_js_function(html, name) for name in functions],
+            r"""
+async function main() {
+  const sample = reviewRefreshPlan({
+    now: 0, activeView: 'google_reviews', hasAutomation: true, pendingCount: 0,
+    activatedAt: 0, watchUntil: 0, visibility: 'visible', reason: 'arm', arm: true,
+  });
+  armReviewWatch();
+  const firstAt = 120001;
+  const secondAt = 150000;
+  await flushUntil(reviewWatchUntil + sample.pollMs * 2);
+  const watchEnd = sample.watchMs;
+  const lateFetches = fetches.filter(function (t) { return t > watchEnd; });
+  const beforeResume = fetches.length;
+  now = watchEnd + sample.pollMs * 3;
+  document.visibilityState = 'visible';
+  await refreshOpenReviews('resume');
+  await settle();
+  const resumeFetched = fetches.length > beforeResume;
+  const beforeHidden = fetches.length;
+  document.visibilityState = 'hidden';
+  await refreshOpenReviews('poll');
+  await settle();
+  const hiddenFetched = fetches.length > beforeHidden;
+  document.visibilityState = 'hidden';
+  const queuedBefore = queue.length;
+  onReviewSurfaceResume();
+  const hiddenArmedTimer = queue.length > queuedBefore;
+  document.visibilityState = 'visible';
+  const beforeFocus = fetches.length;
+  onReviewSurfaceResume();
+  await flushUntil(now + 1000);
+  activeView = 'home';
+  armReviewWatch();
+  const queuedAfterLeave = queue.filter(function (item) { return !item.cancelled && !item.ran; }).length;
+  const activated = reviewRefreshPlan({
+    now: now, activeView: 'google_reviews', hasAutomation: true, pendingCount: 2,
+    activatedAt: now - 60000, watchUntil: 0, visibility: 'visible', reason: 'arm', arm: true,
+  });
+  const idle = reviewRefreshPlan({
+    now: now, activeView: 'google_reviews', hasAutomation: true, pendingCount: 2,
+    activatedAt: 0, watchUntil: 0, visibility: 'visible', reason: 'arm', arm: true,
+  });
+  console.log(JSON.stringify({
+    pollMs: sample.pollMs,
+    watchMs: sample.watchMs,
+    firstFetch: fetches[0],
+    paints: paints,
+    lateFetches: lateFetches,
+    resumeFetched: resumeFetched,
+    hiddenFetched: hiddenFetched,
+    queuedAfterLeave: queuedAfterLeave,
+    activatedSchedules: activated.schedulePoll,
+    idleSchedules: idle.schedulePoll,
+    hiddenArmedTimer: hiddenArmedTimer,
+    focusFetched: fetches.length > beforeFocus,
+    firstAt: firstAt,
+    secondAt: secondAt,
+  }));
+}
+main();
+""",
+        ]
+    )
+    path = tmp_path / "reviews-refresh.js"
+    path.write_text(script, encoding="utf-8")
+    proc = subprocess.run(["node", str(path)], check=False, capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stderr
+    result = json.loads(proc.stdout)
+    assert 15000 <= result["pollMs"] <= 30000
+    assert 3 * 60 * 1000 <= result["watchMs"] <= 8 * 60 * 1000
+    assert result["firstFetch"] == result["pollMs"]
+    assert result["paints"]
+    first = result["paints"][0]
+    second = next(item for item in result["paints"] if item["n"] == 2)
+    assert first["n"] == 1
+    assert 0 < first["t"] - result["firstAt"] <= 30000
+    assert 0 < second["t"] - result["secondAt"] <= 30000
+    assert result["lateFetches"] == []
+    assert result["resumeFetched"] is True
+    assert result["hiddenFetched"] is False
+    assert result["queuedAfterLeave"] == 0
+    assert result["activatedSchedules"] is True
+    assert result["idleSchedules"] is False
+    assert result["hiddenArmedTimer"] is False
+    assert result["focusFetched"] is True

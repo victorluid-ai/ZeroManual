@@ -192,6 +192,13 @@ def test_admin_companies_route_removed(client: TestClient) -> None:
     assert client.get("/api/v1/admin/companies", headers=auth).status_code == 404
 
 
+def test_client_portal_opens_view_from_query(client: TestClient) -> None:
+    resp = client.get("/client")
+    assert resp.status_code == 200
+    assert "STATIC_VIEWS.has(params.get('view')" in resp.text
+    assert "checkoutCurrency" in resp.text
+
+
 def test_homepage_default_html_lang_is_spanish(client: TestClient) -> None:
     resp = client.get("/")
     assert resp.status_code == 200

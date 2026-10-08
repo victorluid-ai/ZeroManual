@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 class CheckoutSessionRequest(BaseModel):
     automation_types: list[str]
     billing_interval: str = "monthly"
+    # eur|usd. Omitted or blank → eur. Any other value is rejected with 400
+    # (charging the wrong currency is worse than a validation error).
+    currency: str | None = None
     # Optional (automation_type, business_id) pairs for multi-business checkout.
     # When provided, takes precedence over automation_types for line-item building
     # and enables the multi-business discount.
@@ -248,6 +251,10 @@ def register_payment_routes(
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         interval = "yearly" if req.billing_interval == "yearly" else "monthly"
+        try:
+            currency = stripe_payments.normalize_currency(req.currency)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         cfg = stripe_payments.load_stripe_settings()
 
         if not stripe_payments.stripe_enabled(cfg):
@@ -264,6 +271,7 @@ def register_payment_routes(
                 "checkout_url": None,
                 "automation_types": types,
                 "billing_interval": interval,
+                "currency": currency,
             }
 
         stored = store.get_client_by_id(client["client_id"]) or {}
@@ -277,7 +285,10 @@ def register_payment_routes(
                 stripe_customer_id=stored.get("stripe_customer_id") or None,
                 settings=cfg,
                 business_pairs=business_pairs,
+                currency=currency,
             )
+        except stripe_payments.CurrencyLockedError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         except Exception as exc:
             logger.exception("Stripe checkout session failed")
             raise HTTPException(
@@ -294,6 +305,7 @@ def register_payment_routes(
             "session_id": session["session_id"],
             "automation_types": types,
             "billing_interval": interval,
+            "currency": session.get("currency") or currency,
         }
 
     @app.get("/client/checkout/continue", response_class=HTMLResponse)

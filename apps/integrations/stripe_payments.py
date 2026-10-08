@@ -13,30 +13,30 @@ logger = logging.getLogger(__name__)
 
 # Server-side catalog — never trust client-sent prices.
 # Keys are automation_type values used by /client/automations.
+# EUR and USD use the same major-unit figures (29 EUR and 29 USD). No FX.
+SUPPORTED_CURRENCIES = ("eur", "usd")
+DEFAULT_CURRENCY = "eur"
+
 CATALOG: dict[str, dict[str, Any]] = {
     "google_reviews": {
         "product_key": "reviews",
         "name": "Reply to Google Reviews",
-        "monthly_cents": 2900,
-        "currency": "usd",
+        "monthly_cents": {"eur": 2900, "usd": 2900},
     },
     "instagram_posts": {
         "product_key": "reels",
         "name": "Post Social Reels",
-        "monthly_cents": 3900,
-        "currency": "usd",
+        "monthly_cents": {"eur": 3900, "usd": 3900},
     },
     "newsletter": {
         "product_key": "newsletter",
         "name": "Send Newsletters",
-        "monthly_cents": 2400,
-        "currency": "usd",
+        "monthly_cents": {"eur": 2400, "usd": 2400},
     },
     "dms": {
         "product_key": "dms",
         "name": "Reply to DMs & Comments",
-        "monthly_cents": 3400,
-        "currency": "usd",
+        "monthly_cents": {"eur": 3400, "usd": 3400},
     },
 }
 
@@ -45,6 +45,64 @@ DEFAULT_TRIAL_DAYS = 14
 # Clients with more than one Google Business location get this discount on
 # every business beyond the first, per automation type, in the same checkout.
 MULTI_BUSINESS_DISCOUNT_PCT = 20
+
+
+class CurrencyLockedError(ValueError):
+    """The Stripe Customer is already locked to a different billing currency.
+
+    Stripe Customers are single-currency: after an invoice, subscription, or
+    credit balance, the currency cannot change on that same Customer. We do
+    not create a second Customer to route around this.
+    """
+
+
+def normalize_currency(currency: str | None) -> str:
+    """Return eur|usd. Missing or blank defaults to eur. Anything else raises."""
+    if currency is None or not str(currency).strip():
+        return DEFAULT_CURRENCY
+    code = str(currency).strip().lower()
+    if code not in SUPPORTED_CURRENCIES:
+        raise ValueError("Moneda no válida: usa eur o usd")
+    return code
+
+
+def _monthly_cents(product: dict[str, Any], currency: str) -> int:
+    amounts = product["monthly_cents"]
+    if isinstance(amounts, dict):
+        return int(amounts[currency])
+    return int(amounts)
+
+
+def _unit_amount(product: dict[str, Any], currency: str, interval: str) -> int:
+    unit = _monthly_cents(product, currency)
+    if interval == "yearly":
+        # Match web marketing: annual = 10× monthly (2 months free).
+        unit = unit * 10
+    return unit
+
+
+def _configured_price_id(
+    settings: StripeSettings, automation_type: str, interval: str, currency: str
+) -> str | None:
+    """Resolve STRIPE_PRICE_IDS without charging the wrong currency.
+
+    Currency-scoped keys win: ``{type}:{interval}:{currency}`` then
+    ``{type}:{currency}``. Legacy keys without a currency
+    (``{type}:{interval}`` and ``{type}``) were created when the catalog was
+    USD-only, so they are used only for usd. A eur checkout never attaches
+    those Price ids; it falls back to inline price_data in eur.
+    """
+    keys = [
+        f"{automation_type}:{interval}:{currency}",
+        f"{automation_type}:{currency}",
+    ]
+    if currency == "usd":
+        keys.extend([f"{automation_type}:{interval}", automation_type])
+    for key in keys:
+        price_id = settings.price_ids.get(key)
+        if price_id:
+            return price_id
+    return None
 
 
 @dataclass(frozen=True)
@@ -116,25 +174,24 @@ def validate_checkout_pairs(pairs: list[tuple[str, str]]) -> list[tuple[str, str
 
 
 def _line_items(
-    settings: StripeSettings, automation_types: list[str], interval: str
+    settings: StripeSettings,
+    automation_types: list[str],
+    interval: str,
+    currency: str = DEFAULT_CURRENCY,
 ) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for automation_type in automation_types:
         product = CATALOG[automation_type]
-        price_key = f"{automation_type}:{interval}"
-        price_id = settings.price_ids.get(price_key) or settings.price_ids.get(automation_type)
+        price_id = _configured_price_id(settings, automation_type, interval, currency)
         if price_id:
             items.append({"price": price_id, "quantity": 1})
             continue
-        unit = int(product["monthly_cents"])
-        if interval == "yearly":
-            # Match web marketing: annual = 10× monthly (2 months free).
-            unit = unit * 10
+        unit = _unit_amount(product, currency, interval)
         items.append(
             {
                 "quantity": 1,
                 "price_data": {
-                    "currency": product["currency"],
+                    "currency": currency,
                     "unit_amount": unit,
                     "recurring": {"interval": "year" if interval == "yearly" else "month"},
                     "product_data": {
@@ -151,7 +208,10 @@ def _line_items(
 
 
 def _line_items_for_pairs(
-    settings: StripeSettings, pairs: list[tuple[str, str]], interval: str
+    settings: StripeSettings,
+    pairs: list[tuple[str, str]],
+    interval: str,
+    currency: str = DEFAULT_CURRENCY,
 ) -> list[dict[str, Any]]:
     """Build line items grouping by automation_type, one line item per type with
     quantity = number of businesses selected for that type. When a client buys the
@@ -166,16 +226,13 @@ def _line_items_for_pairs(
     items: list[dict[str, Any]] = []
     for automation_type, count in counts.items():
         product = CATALOG[automation_type]
-        price_key = f"{automation_type}:{interval}"
-        price_id = settings.price_ids.get(price_key) or settings.price_ids.get(automation_type)
+        price_id = _configured_price_id(settings, automation_type, interval, currency)
         if price_id:
             # Pre-configured Stripe Price: no ad-hoc discount math available, just
             # multiply quantity across the client's businesses at full price.
             items.append({"price": price_id, "quantity": count})
             continue
-        unit = int(product["monthly_cents"])
-        if interval == "yearly":
-            unit = unit * 10
+        unit = _unit_amount(product, currency, interval)
         if count > 1:
             discounted_unit = round(unit * (1 - MULTI_BUSINESS_DISCOUNT_PCT / 100))
             total = unit + (count - 1) * discounted_unit
@@ -186,7 +243,7 @@ def _line_items_for_pairs(
             {
                 "quantity": count,
                 "price_data": {
-                    "currency": product["currency"],
+                    "currency": currency,
                     "unit_amount": blended_unit,
                     "recurring": {"interval": "year" if interval == "yearly" else "month"},
                     "product_data": {
@@ -271,6 +328,18 @@ def ensure_stripe_customer(
     return sid
 
 
+def customer_billing_currency(customer_id: str, settings: StripeSettings) -> str | None:
+    """Currency Stripe has locked on this Customer, if any."""
+    import stripe
+
+    stripe.api_key = settings.secret_key
+    data = stripe_object_to_dict(stripe.Customer.retrieve(customer_id))
+    raw = data.get("currency")
+    if not raw:
+        return None
+    return str(raw).lower()
+
+
 def create_checkout_session(
     *,
     client_id: str,
@@ -281,6 +350,7 @@ def create_checkout_session(
     client_name: str = "",
     settings: StripeSettings | None = None,
     business_pairs: list[tuple[str, str]] | None = None,
+    currency: str | None = None,
 ) -> dict[str, Any]:
     """Create a Stripe Checkout Session (subscription + optional trial).
 
@@ -299,6 +369,7 @@ def create_checkout_session(
         raise RuntimeError("Stripe no está configurado (ZEROMANUAL_STRIPE_SECRET_KEY)")
 
     interval = "yearly" if billing_interval == "yearly" else "monthly"
+    charge_currency = normalize_currency(currency)
     stripe.api_key = cfg.secret_key
 
     customer_id = ensure_stripe_customer(
@@ -308,6 +379,12 @@ def create_checkout_session(
         stripe_customer_id=stripe_customer_id,
         settings=cfg,
     )
+    locked = customer_billing_currency(customer_id, cfg)
+    if locked and locked != charge_currency:
+        raise CurrencyLockedError(
+            f"Este cliente ya factura en {locked.upper()}. "
+            "Stripe no permite otra moneda en el mismo Customer."
+        )
 
     success_url = (
         f"{cfg.public_url}/client/checkout/success"
@@ -318,20 +395,22 @@ def create_checkout_session(
     if business_pairs:
         pairs = validate_checkout_pairs(business_pairs)
         types = sorted({t for t, _ in pairs})
-        line_items = _line_items_for_pairs(cfg, pairs, interval)
+        line_items = _line_items_for_pairs(cfg, pairs, interval, charge_currency)
         metadata = {
             "client_id": client_id,
             "automation_types": ",".join(types),
             "business_pairs": ",".join(f"{t}:{b}" for t, b in pairs),
             "billing_interval": interval,
+            "currency": charge_currency,
         }
     else:
         types = validate_automation_types(automation_types)
-        line_items = _line_items(cfg, types, interval)
+        line_items = _line_items(cfg, types, interval, charge_currency)
         metadata = {
             "client_id": client_id,
             "automation_types": ",".join(types),
             "billing_interval": interval,
+            "currency": charge_currency,
         }
 
     params: dict[str, Any] = {
@@ -356,6 +435,7 @@ def create_checkout_session(
         "checkout_url": session["url"],
         "automation_types": types,
         "billing_interval": interval,
+        "currency": charge_currency,
         "stripe_customer_id": customer_id,
         "business_pairs": metadata.get("business_pairs"),
     }

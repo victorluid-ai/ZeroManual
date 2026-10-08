@@ -411,6 +411,7 @@ def test_catalog_validate_and_line_items() -> None:
         price_ids={},
     )
     items = _line_items(cfg, ["google_reviews"], "yearly")
+    assert items[0]["price_data"]["currency"] == "eur"
     assert items[0]["price_data"]["unit_amount"] == 29000
     assert items[0]["price_data"]["recurring"]["interval"] == "year"
 
@@ -506,6 +507,217 @@ def test_checkout_success_invalid_does_not_reach_continue_or_login(
     assert location == "/client?checkout=error"
     assert "/login" not in location
     assert "checkout/continue" not in location
+
+
+def test_line_items_price_ids_are_currency_scoped() -> None:
+    from apps.integrations.stripe_payments import StripeSettings, _line_items, _line_items_for_pairs
+
+    legacy = StripeSettings(
+        secret_key="sk",
+        webhook_secret="",
+        publishable_key="",
+        public_url="http://localhost",
+        trial_days=14,
+        price_ids={"google_reviews:monthly": "price_legacy_usd"},
+    )
+    usd = _line_items(legacy, ["google_reviews"], "monthly", "usd")
+    assert usd[0]["price"] == "price_legacy_usd"
+    eur = _line_items(legacy, ["google_reviews"], "monthly", "eur")
+    assert "price" not in eur[0]
+    assert eur[0]["price_data"]["currency"] == "eur"
+    assert eur[0]["price_data"]["unit_amount"] == 2900
+
+    scoped = StripeSettings(
+        secret_key="sk",
+        webhook_secret="",
+        publishable_key="",
+        public_url="http://localhost",
+        trial_days=14,
+        price_ids={
+            "google_reviews:monthly": "price_legacy_usd",
+            "google_reviews:monthly:eur": "price_eur",
+        },
+    )
+    assert _line_items(scoped, ["google_reviews"], "monthly", "eur")[0]["price"] == "price_eur"
+
+    pairs = [("google_reviews", "biz-1"), ("google_reviews", "biz-2")]
+    blended = _line_items_for_pairs(legacy, pairs, "monthly", "eur")
+    assert blended[0]["quantity"] == 2
+    assert blended[0]["price_data"]["currency"] == "eur"
+    # 2900 + round(2900 * 0.8) = 5220; blended unit = round(5220 / 2) = 2610
+    assert blended[0]["price_data"]["unit_amount"] == 2610
+    usd_pairs = _line_items_for_pairs(legacy, pairs, "monthly", "usd")
+    assert usd_pairs[0]["price"] == "price_legacy_usd"
+    assert usd_pairs[0]["quantity"] == 2
+
+
+def _fake_stripe(
+    monkeypatch: pytest.MonkeyPatch,
+    created: dict,
+    *,
+    locked: str | None = None,
+    retrieve_error: str | None = None,
+):
+    import sys
+    import types
+
+    class FakeCustomer:
+        @staticmethod
+        def retrieve(cid):
+            if retrieve_error:
+                raise RuntimeError(retrieve_error)
+            return {"id": cid, "deleted": False, "currency": locked}
+
+        @staticmethod
+        def search(**kwargs):
+            return {"data": []}
+
+        @staticmethod
+        def create(**kwargs):
+            return {"id": "cus_new", "currency": locked}
+
+    class FakeSession:
+        @staticmethod
+        def create(**kwargs):
+            created.clear()
+            created.update(kwargs)
+            return {"id": "cs_test_currency", "url": "https://checkout.stripe.com/c/pay/cs_test_currency"}
+
+    fake = types.ModuleType("stripe")
+    fake.Customer = FakeCustomer
+    fake.checkout = types.SimpleNamespace(Session=FakeSession)
+    fake.api_key = None
+    monkeypatch.setitem(sys.modules, "stripe", fake)
+
+
+def test_checkout_default_currency_builds_eur_price_data(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_PUBLIC_URL", "http://localhost:8090")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created)
+
+    reg = _register(client, "eur-default@example.com")
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json={"automation_types": ["google_reviews"], "billing_interval": "monthly"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["currency"] == "eur"
+    assert body["checkout_url"].startswith("https://checkout.stripe.com/")
+    item = created["line_items"][0]
+    assert item["price_data"]["currency"] == "eur"
+    assert item["price_data"]["unit_amount"] == 2900
+    assert item["price_data"]["recurring"]["interval"] == "month"
+    assert created["metadata"]["currency"] == "eur"
+
+
+def test_checkout_usd_builds_usd_price_data(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created)
+
+    reg = _register(client, "usd-choice@example.com")
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json={
+            "automation_types": ["instagram_posts"],
+            "billing_interval": "yearly",
+            "currency": "USD",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["currency"] == "usd"
+    item = created["line_items"][0]
+    assert item["price_data"]["currency"] == "usd"
+    assert item["price_data"]["unit_amount"] == 39000
+    assert item["price_data"]["recurring"]["interval"] == "year"
+
+
+def test_checkout_rejects_unknown_currency(client: TestClient) -> None:
+    reg = _register(client, "bad-currency@example.com")
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json={"automation_types": ["google_reviews"], "currency": "gbp"},
+    )
+    assert resp.status_code == 400
+    assert "eur" in resp.json()["detail"]
+
+
+@pytest.mark.parametrize("currency_field", [None, "", "missing"])
+def test_checkout_omitted_currency_uses_locked_usd(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, currency_field: str | None
+) -> None:
+    """A portal checkout sends no currency. A Customer already on USD stays on USD."""
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created, locked="usd")
+
+    label = {None: "null", "": "blank", "missing": "missing"}[currency_field]
+    reg = _register(client, f"locked-omit-{label}@example.com")
+    payload: dict = {"automation_types": ["google_reviews"], "billing_interval": "monthly"}
+    if currency_field != "missing":
+        payload["currency"] = currency_field
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json=payload,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["currency"] == "usd"
+    item = created["line_items"][0]
+    assert item["price_data"]["currency"] == "usd"
+    assert item["price_data"]["unit_amount"] == 2900
+
+
+def test_checkout_customer_retrieve_failure_is_generic(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Customer.retrieve errors use the existing checkout failure, not a 409."""
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created, retrieve_error="stripe unavailable")
+
+    reg = _register(client, "retrieve-down@example.com")
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json={"automation_types": ["google_reviews"]},
+    )
+    assert resp.status_code == 503
+    assert "No se pudo iniciar el pago" in resp.json()["detail"]
+    assert created == {}
+
+
+def test_checkout_refuses_currency_change_on_locked_customer(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stripe locks a Customer to one currency. Do not create a second Customer."""
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    import apps.interface.api as api_module
+
+    created: dict = {}
+    _fake_stripe(monkeypatch, created, locked="usd")
+    reg = _register(client, "locked-usd@example.com")
+    client_id = reg["client"]["client_id"]
+    api_module.runtime.store.set_stripe_customer_id(client_id, "cus_already_usd")
+
+    resp = client.post(
+        "/client/checkout/session",
+        headers={"Authorization": f"Bearer {reg['token']}"},
+        json={"automation_types": ["google_reviews"], "currency": "eur"},
+    )
+    assert resp.status_code == 409
+    assert "USD" in resp.json()["detail"]
+    assert created == {}
+    assert api_module.runtime.store.get_client_by_id(client_id)["stripe_customer_id"] == "cus_already_usd"
 
 
 def test_checkout_success_free_mode_stays_on_error(client: TestClient) -> None:

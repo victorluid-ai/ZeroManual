@@ -1,6 +1,6 @@
 /* ZeroManual — bilingual (ES default / EN) automation marketplace.
    Subscribe flow: auth → Stripe Checkout (or free/dev grant) → activate / Google OAuth. */
-const { useState, useEffect } = React;
+const { useState, useEffect, useRef } = React;
 
 const CART_HANDOFF_KEY = "zm_pending_activations";
 
@@ -33,7 +33,7 @@ const T = {
       { q: "Can I cancel anytime?", a: "Anytime, right from your dashboard. No contracts and no penalties." },
       { q: "Does it work in my language?", a: "Yes. It replies and posts in English, Spanish and more — always in your business’s tone." },
       { q: "Do I need technical skills?", a: "None. Connect your accounts in a few taps and ZeroManual handles the rest." },
-      { q: "How much does it cost?", a: "A flat monthly price per automation, from $19/mo. Mix and match, cancel anytime." },
+      { q: "How much does it cost?", a: "A flat monthly price per automation, from {from}/mo. Mix and match, cancel anytime." },
     ] },
     drawer: { checkout: "Checkout", cart: "Your automations" },
     checkout: { start: "Create account & start free trial", disclaimer: "Card required for the free trial. You won't be charged until it ends. Cancel anytime." },
@@ -58,6 +58,13 @@ const T = {
       connecting: "Connecting Google…", activating: "Activating…", paying: "Opening secure checkout…",
       error: "Couldn't complete the subscription. Try again.",
     },
+    menu: {
+      portal: "Go to my portal", currency: "Currency",
+      pricesIn: { eur: "Prices in euros", usd: "Prices in dollars" },
+      settings: "Account settings", logout: "Log out", login: "Log in", register: "Create account",
+      trial: "14 days free", account: "Account", close: "Close",
+      catalog: { eur: "€ Prices in EUR", usd: "$ Prices in USD" },
+    },
   },
   es: {
     nav: { automations: "Automatizaciones", how: "Cómo funciona", pricing: "Precios", cart: "Carrito", account: "Área privada", getStarted: "Empezar", login: "Iniciar sesión" },
@@ -77,7 +84,7 @@ const T = {
       { q: "¿Puedo cancelar cuando quiera?", a: "Cuando quieras, desde tu panel. Sin contratos ni penalizaciones." },
       { q: "¿Funciona en español?", a: "Sí. Responde y publica en español de España, inglés y más idiomas — siempre con el tono de tu negocio." },
       { q: "¿Necesito conocimientos técnicos?", a: "Ninguno. Conectas tus cuentas en unos clics y ZeroManual hace el resto." },
-      { q: "¿Cuánto cuesta?", a: "Precio mensual fijo por automatización, desde 19 $/mes. Combínalas como quieras y cancela cuando quieras." },
+      { q: "¿Cuánto cuesta?", a: "Precio mensual fijo por automatización, desde {from}/mes. Combínalas como quieras y cancela cuando quieras." },
     ] },
     drawer: { checkout: "Pago", cart: "Tus automatizaciones" },
     checkout: { start: "Crear cuenta y empezar prueba gratis", disclaimer: "Se pide tarjeta para la prueba. No se cobrará hasta que acabe. Cancela cuando quieras." },
@@ -101,6 +108,13 @@ const T = {
       cta: "Suscribirme y pagar →", ctaLogin: "Entrar y pagar →",
       connecting: "Conectando Google…", activating: "Activando…", paying: "Abriendo pago seguro…",
       error: "No se pudo completar la suscripción. Inténtalo de nuevo.",
+    },
+    menu: {
+      portal: "Ir a mi portal", currency: "Moneda",
+      pricesIn: { eur: "Precios en euros", usd: "Precios en dólares" },
+      settings: "Ajustes de cuenta", logout: "Cerrar sesión", login: "Iniciar sesión", register: "Crear cuenta",
+      trial: "14 días gratis", account: "Cuenta", close: "Cerrar",
+      catalog: { eur: "€ Precios en EUR", usd: "$ Precios en USD" },
     },
   },
 };
@@ -153,23 +167,72 @@ function ProductIcon({ id, size = 24 }) {
   return <Ico paths={paths} size={size} />;
 }
 
-function fmtPrice(n) { return "$" + n; }
+const CURRENCY_KEY = "zm_currency";
+
+function readCurrency() {
+  try { return localStorage.getItem(CURRENCY_KEY) === "usd" ? "usd" : "eur"; }
+  catch { return "eur"; }
+}
+
+/** eur|usd only after the menu selector is used. Absent key is the EUR display default, not a charge. */
+function explicitCurrencyChoice() {
+  try {
+    const raw = localStorage.getItem(CURRENCY_KEY);
+    if (raw === "usd" || raw === "eur") return raw;
+  } catch { /* private mode: treat as not chosen */ }
+  return null;
+}
+
+let checkoutToastTimer = null;
+function showCheckoutToast(message) {
+  const text = String(message || "").trim();
+  if (!text) return;
+  let el = document.getElementById("zm-checkout-toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "zm-checkout-toast";
+    el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(checkoutToastTimer);
+  checkoutToastTimer = setTimeout(() => { el.classList.remove("show"); }, 4200);
+}
+
+function fmtPrice(amount, currency, lang) {
+  const locale = lang === "es" ? "es-ES" : "en-US";
+  const code = currency === "usd" ? "USD" : "EUR";
+  return new Intl.NumberFormat(locale, {
+    style: "currency", currency: code, maximumFractionDigits: 0, minimumFractionDigits: 0,
+  }).format(amount);
+}
+
+function faqAnswer(text, currency, lang) {
+  return String(text).replace("{from}", fmtPrice(19, currency, lang));
+}
 
 /** Start Stripe Checkout (or free/dev grant). Returns { redirected, granted }. */
-async function startCheckout(token, automationTypes, annual) {
+async function startCheckout(token, automationTypes, annual, currency) {
   const types = (automationTypes || []).filter(Boolean);
   if (!types.length) throw new Error("no automation types");
+  const body = {
+    automation_types: types,
+    billing_interval: annual ? "yearly" : "monthly",
+  };
+  // The landing EUR default is display-only. Sending it would 409 a Customer
+  // already locked to USD who never touched the selector. Omit unless chosen.
+  if (currency === "usd" || currency === "eur") body.currency = currency;
   const r = await fetch("/client/checkout/session", {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + token },
-    body: JSON.stringify({
-      automation_types: types,
-      billing_interval: annual ? "yearly" : "monthly",
-    }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
-    throw new Error(d.detail || "checkout failed");
+    const err = new Error(d.detail || "checkout failed");
+    err.status = r.status;
+    throw err;
   }
   const d = await r.json();
   if (d.checkout_url) {
@@ -291,7 +354,7 @@ function LoginModal({ tt, onClose, initialMode = "login", stayOnPage = false, on
   );
 }
 
-function SubscribeModal({ product, lang, t, annual, onClose, onDone }) {
+function SubscribeModal({ product, lang, t, annual, currency, onClose, onDone }) {
   const [mode, setMode] = useState("register");
   const [identifier, setIdentifier] = useState("");
   const [name, setName] = useState("");
@@ -310,7 +373,7 @@ function SubscribeModal({ product, lang, t, annual, onClose, onDone }) {
     localStorage.setItem("mz_client_token", token);
     try {
       setPhase("paying");
-      const checkout = await startCheckout(token, [automationType], annual);
+      const checkout = await startCheckout(token, [automationType], annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
 
       const statusRes = await fetch("/client/google/status", { headers: { Authorization: "Bearer " + token } });
@@ -333,8 +396,10 @@ function SubscribeModal({ product, lang, t, annual, onClose, onDone }) {
       if (!connRes.ok) throw new Error("connect failed");
       const conn = await connRes.json();
       window.location.href = conn.redirect_url;
-    } catch {
-      setError(ts.error);
+    } catch (err) {
+      const message = (err && err.message) || ts.error;
+      setError(message);
+      showCheckoutToast(message);
       setPhase("form");
     }
   };
@@ -424,7 +489,7 @@ function SubscribeModal({ product, lang, t, annual, onClose, onDone }) {
   );
 }
 
-function ProductCard({ product, lang, t, inCart, annual, active, subscribing, onToggleCart, onDetail }) {
+function ProductCard({ product, lang, t, inCart, annual, currency, active, subscribing, onToggleCart, onDetail }) {
   const loc = product[lang];
   const price = annual ? product.price * 10 : product.price;
   const comingSoon = product.id !== "reviews";
@@ -456,7 +521,7 @@ function ProductCard({ product, lang, t, inCart, annual, active, subscribing, on
         ))}
       </ul>
       <div style={{ borderTop: "1px solid #EDEFF3", marginTop: 2, paddingTop: 15, display: "flex", alignItems: "baseline", gap: 6 }}>
-        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em" }}>{fmtPrice(price)}</span>
+        <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em" }}>{fmtPrice(price, currency, lang)}</span>
         <span style={{ color: "#6B7280", fontSize: 14 }}>{annual ? t.per.yr : t.per.mo}</span>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
@@ -472,7 +537,7 @@ function ProductCard({ product, lang, t, inCart, annual, active, subscribing, on
   );
 }
 
-function CartDrawer({ open, onClose, cartIds, lang, t, annual, onRemove, onCheckout }) {
+function CartDrawer({ open, onClose, cartIds, lang, t, annual, currency, onRemove, onCheckout }) {
   if (!open) return null;
   const items = cartIds.map((id) => PRODUCTS.find((p) => p.id === id)).filter(Boolean);
   const per = annual ? t.per.yr : t.per.mo;
@@ -497,7 +562,7 @@ function CartDrawer({ open, onClose, cartIds, lang, t, annual, onRemove, onCheck
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14.5, fontWeight: 600 }}>{p[lang].name}</div>
-                    <div style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{fmtPrice(annual ? p.price * 10 : p.price)}{per}</div>
+                    <div style={{ fontSize: 13, color: "#6B7280", marginTop: 2 }}>{fmtPrice(annual ? p.price * 10 : p.price, currency, lang)}{per}</div>
                   </div>
                   <button className="zm2-remove" onClick={() => onRemove(p.id)} style={{ background: "transparent", border: "none", color: "#9099A6", fontSize: 13, cursor: "pointer", padding: 6 }}>{t.cart.remove}</button>
                 </div>
@@ -516,7 +581,7 @@ function CartDrawer({ open, onClose, cartIds, lang, t, annual, onRemove, onCheck
           <div style={{ borderTop: "1px solid #EDEFF3", padding: "18px 22px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
               <span style={{ fontSize: 14.5, color: "#5B6472" }}>{t.cart.total}</span>
-              <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 24 }}>{fmtPrice(total)}<span style={{ fontSize: 14, color: "#6B7280", fontWeight: 500 }}>{per}</span></span>
+              <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 24 }}>{fmtPrice(total, currency, lang)}<span style={{ fontSize: 14, color: "#6B7280", fontWeight: 500 }}>{per}</span></span>
             </div>
             <button className="zm2-pill-primary" onClick={onCheckout} style={{ width: "100%", background: "#4F46E5", color: "#fff", border: "none", padding: 14, borderRadius: 11, fontSize: 15, fontWeight: 600, cursor: "pointer" }}>
               {t.checkout.start}
@@ -529,7 +594,7 @@ function CartDrawer({ open, onClose, cartIds, lang, t, annual, onRemove, onCheck
   );
 }
 
-function DetailModal({ id, lang, t, inCart, annual, onClose, onSubscribe }) {
+function DetailModal({ id, lang, t, inCart, annual, currency, onClose, onSubscribe }) {
   if (!id) return null;
   const product = PRODUCTS.find((p) => p.id === id);
   if (!product) return null;
@@ -598,7 +663,7 @@ function DetailModal({ id, lang, t, inCart, annual, onClose, onSubscribe }) {
         </div>
         <div style={{ position: "sticky", bottom: 0, background: "#fff", borderTop: "1px solid #EDEFF3", marginTop: 22, padding: "18px 26px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
-            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em" }}>{fmtPrice(price)}</span>
+            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em" }}>{fmtPrice(price, currency, lang)}</span>
             <span style={{ color: "#6B7280", fontSize: 14 }}>{per}</span>
           </div>
           <button className="zm2-pill-primary" disabled={comingSoon} onClick={() => onSubscribe(product.id)} style={{ border: "none", padding: "13px 22px", borderRadius: 11, fontSize: 15, fontWeight: 600, cursor: comingSoon ? "default" : "pointer", ...(comingSoon ? { background: "#F1F3F6", color: "#9099A6" } : { background: "#4F46E5", color: "#fff" }) }}>
@@ -606,6 +671,158 @@ function DetailModal({ id, lang, t, inCart, annual, onClose, onSubscribe }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function givenName(name) {
+  return String(name || "").trim().split(/\s+/)[0] || "";
+}
+
+function useNarrow(query) {
+  const [on, setOn] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const apply = () => setOn(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [query]);
+  return on;
+}
+
+function UserMenu({ open, onOpenChange, t, signedIn, name, email, currency, onCurrency, onLogin, onRegister, onLogout }) {
+  const narrow = useNarrow("(max-width: 720px)");
+  const wrapRef = useRef(null);
+  const menuRef = useRef(null);
+  const triggerRef = useRef(null);
+  const m = t.menu;
+  const initial = (name || "").trim().charAt(0).toUpperCase() || "?";
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") { e.preventDefault(); onOpenChange(false); }
+    };
+    const onDown = (e) => {
+      const target = e.target;
+      if (wrapRef.current && wrapRef.current.contains(target)) return;
+      if (menuRef.current && menuRef.current.contains(target)) return;
+      onOpenChange(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    const prev = document.body.style.overflow;
+    if (narrow) document.body.style.overflow = "hidden";
+    const focusable = menuRef.current && menuRef.current.querySelector(".zm-menu-item, .zm-seg button");
+    if (focusable) focusable.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+      document.body.style.overflow = prev;
+      if (triggerRef.current) triggerRef.current.focus();
+    };
+  }, [open, narrow, onOpenChange]);
+
+  const currencyBlock = (
+    <div className="zm-currency-block">
+      <div className="zm-currency-row">
+        <span className="zm-currency-label">
+          <Ico paths={["M12 3a9 9 0 100 18 9 9 0 000-18z", "M12 7v10", "M9.2 9.2c.5-.8 1.4-1.3 2.5-1.3 1.6 0 2.6.8 2.6 2S13.3 12 11.7 12.3c-1.6.3-2.6 1-2.6 2.2s1 2.1 2.6 2.1c1.1 0 2-.5 2.5-1.3"]} size={18} />
+          {m.currency}
+        </span>
+        <span className="zm-currency-side">{m.pricesIn[currency]}</span>
+      </div>
+      <div className="zm-seg" role="group" aria-label={m.currency}>
+        <button type="button" aria-pressed={currency === "eur"} onClick={() => onCurrency("eur")}>€ EUR</button>
+        <button type="button" aria-pressed={currency === "usd"} onClick={() => onCurrency("usd")}>$ USD</button>
+      </div>
+    </div>
+  );
+
+  const panel = (
+    <div ref={menuRef} id="zm-user-menu" className={"zm-menu" + (narrow ? " zm-menu-sheet" : "")} role="dialog" aria-modal={narrow ? "true" : "false"} aria-label={m.account}>
+      {narrow && <div className="zm-menu-handle" />}
+      {narrow && (
+        <button type="button" className="zm-menu-close" aria-label={m.close} onClick={() => onOpenChange(false)}>
+          <Ico paths={["M6 6l12 12", "M6 18L18 6"]} size={18} />
+        </button>
+      )}
+      {signedIn ? (
+        <>
+          <div className="zm-menu-head">
+            <span className="zm-avatar" aria-hidden="true">{initial}</span>
+            <div>
+              <strong>{name}</strong>
+              <span>{email}</span>
+            </div>
+          </div>
+          <a className="zm-menu-item" href="/client">
+            <Ico paths={["M4 4h7v7H4z", "M13 4h7v7h-7z", "M4 13h7v7H4z", "M13 13h7v7h-7z"]} size={18} />
+            <span className="grow">{m.portal}</span>
+            <Ico paths={["M7 17L17 7", "M8 7h9v9"]} size={16} />
+          </a>
+          {currencyBlock}
+          <a className="zm-menu-item" href="/client?view=settings">
+            <Ico paths={["M12 15.2a3.2 3.2 0 100-6.4 3.2 3.2 0 000 6.4z", "M19.4 13.5a1.6 1.6 0 00.3 1.8l.1.1a1.8 1.8 0 11-2.5 2.5l-.1-.1a1.6 1.6 0 00-1.8-.3 1.6 1.6 0 00-1 1.5v.2a1.8 1.8 0 11-3.6 0v-.2a1.6 1.6 0 00-1-1.5 1.6 1.6 0 00-1.8.3l-.1.1a1.8 1.8 0 11-2.5-2.5l.1-.1a1.6 1.6 0 00.3-1.8 1.6 1.6 0 00-1.5-1H3.6a1.8 1.8 0 110-3.6h.2a1.6 1.6 0 001.5-1 1.6 1.6 0 00-.3-1.8l-.1-.1a1.8 1.8 0 112.5-2.5l.1.1a1.6 1.6 0 001.8.3h.2a1.6 1.6 0 001-1.5V3.6a1.8 1.8 0 113.6 0v.2a1.6 1.6 0 001 1.5 1.6 1.6 0 001.8-.3l.1-.1a1.8 1.8 0 112.5 2.5l-.1.1a1.6 1.6 0 00-.3 1.8v.2a1.6 1.6 0 001.5 1h.2a1.8 1.8 0 110 3.6h-.2a1.6 1.6 0 00-1.5 1z"]} size={18} />
+            <span>{m.settings}</span>
+          </a>
+          <div className="zm-menu-sep" />
+          <button type="button" className="zm-menu-item danger" onClick={onLogout}>
+            <Ico paths={["M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4", "M16 17l5-5-5-5", "M21 12H9"]} size={18} />
+            <span>{m.logout}</span>
+          </button>
+        </>
+      ) : (
+        <>
+          <button type="button" className="zm-menu-item" onClick={onLogin}>
+            <Ico paths={["M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4", "M10 17l5-5-5-5", "M15 12H3"]} size={18} />
+            <span>{m.login}</span>
+          </button>
+          <button type="button" className="zm-menu-item" onClick={onRegister}>
+            <Ico paths={["M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2", "M9 11a4 4 0 100-8 4 4 0 000 8z", "M19 8v6", "M22 11h-6"]} size={18} />
+            <span className="grow">{m.register}</span>
+            <span className="zm-badge">{m.trial}</span>
+          </button>
+          {currencyBlock}
+        </>
+      )}
+    </div>
+  );
+
+  const sheet = open && narrow ? ReactDOM.createPortal(
+    <>
+      <div className="zm-menu-backdrop" onClick={() => onOpenChange(false)} />
+      {panel}
+    </>,
+    document.body
+  ) : null;
+
+  return (
+    <div className="zm-user-wrap" ref={wrapRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={"zm-user-trigger" + (signedIn ? " is-in" : " is-out")}
+        aria-haspopup="dialog"
+        aria-expanded={open ? "true" : "false"}
+        aria-controls="zm-user-menu"
+        onClick={() => onOpenChange(!open)}
+      >
+        {signedIn ? (
+          <>
+            <span className="zm-avatar" aria-hidden="true">{initial}</span>
+            <span className="zm-user-name">{givenName(name) || m.account}</span>
+            <span className="zm-user-chev" aria-hidden="true"><Ico paths={["M6 9l6 6 6-6"]} size={16} /></span>
+          </>
+        ) : (
+          <span className="zm-user-guest" aria-hidden="true">
+            <Ico paths={["M20 21a8 8 0 10-16 0", "M12 11a4 4 0 100-8 4 4 0 000 8z"]} size={18} />
+          </span>
+        )}
+      </button>
+      {open && !narrow ? panel : null}
+      {sheet}
     </div>
   );
 }
@@ -623,6 +840,9 @@ function App() {
   const [loginStayOnPage, setLoginStayOnPage] = useState(false);
   const [clientToken, setClientToken] = useState(() => { try { return localStorage.getItem("mz_client_token"); } catch { return null; } });
   const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [currency, setCurrency] = useState(readCurrency);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [googleConnected, setGoogleConnected] = useState(false);
   const [activeAutomations, setActiveAutomations] = useState([]);
   const [subscribingId, setSubscribingId] = useState(null);
@@ -642,14 +862,17 @@ function App() {
   // and whether Google is connected, so the grid can show "Activa" state and
   // offer the 1-click path without a modal or redirect.
   useEffect(() => {
-    if (!clientToken) { setGoogleConnected(false); setActiveAutomations([]); setClientName(""); return; }
+    if (!clientToken) { setGoogleConnected(false); setActiveAutomations([]); setClientName(""); setClientEmail(""); return; }
     let cancelled = false;
     (async () => {
       try {
         const meRes = await fetch("/client/me", { headers: { Authorization: "Bearer " + clientToken } });
         if (!meRes.ok) throw new Error("unauthorized");
         const meData = await meRes.json();
-        if (!cancelled) setClientName(meData?.client?.name || "");
+        if (!cancelled) {
+          setClientName(meData?.client?.name || "");
+          setClientEmail(meData?.client?.email || "");
+        }
         const [autoRes, statusRes] = await Promise.all([
           fetch("/client/automations", { headers: { Authorization: "Bearer " + clientToken } }),
           fetch("/client/google/status", { headers: { Authorization: "Bearer " + clientToken } }),
@@ -668,6 +891,7 @@ function App() {
           try { localStorage.removeItem("mz_client_token"); } catch {}
           setClientToken(null);
           setClientName("");
+          setClientEmail("");
         }
       }
     })();
@@ -679,13 +903,11 @@ function App() {
     return type ? activeAutomations.includes(type) : false;
   };
 
-  const clientInitial = (clientName || "").trim().charAt(0).toUpperCase() || "?";
-
   const activateDirect = async (id) => {
     const type = AUTOMATION_TYPE_MAP[id];
     setSubscribingId(id);
     try {
-      const checkout = await startCheckout(clientToken, [type], annual);
+      const checkout = await startCheckout(clientToken, [type], annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
       if (checkout.mode === "free") {
         window.alert(
@@ -700,7 +922,10 @@ function App() {
       if (r.ok) setActiveAutomations((a) => (a.includes(type) ? a : [...a, type]));
     } catch (err) {
       console.error("subscribe failed", err);
-      window.alert((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.");
+      showCheckoutToast(
+        (err && err.message)
+          || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
+      );
     }
     finally { setSubscribingId(null); }
   };
@@ -709,7 +934,7 @@ function App() {
     const type = AUTOMATION_TYPE_MAP[id];
     setSubscribingId(id);
     try {
-      const checkout = await startCheckout(clientToken, [type], annual);
+      const checkout = await startCheckout(clientToken, [type], annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
       await fetch("/client/pending-automation", {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + clientToken },
@@ -718,7 +943,10 @@ function App() {
       const r = await fetch("/client/google/connect", { headers: { Authorization: "Bearer " + clientToken } });
       const d = await r.json();
       window.location.href = d.redirect_url;
-    } catch { setSubscribingId(null); }
+    } catch (err) {
+      showCheckoutToast((err && err.message) || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription."));
+      setSubscribingId(null);
+    }
   };
 
   // Dispatches "Suscribirme" clicks by session state: automations without a
@@ -750,8 +978,33 @@ function App() {
   };
 
   const openAccount = () => {
-    if (clientToken) { window.location.href = "/client"; return; }
+    setAccountOpen(false);
     setLoginInitialMode("login"); setLoginStayOnPage(true); setShowLogin(true);
+  };
+
+  const chooseCurrency = (code) => {
+    const next = code === "usd" ? "usd" : "eur";
+    setCurrency(next);
+    try { localStorage.setItem(CURRENCY_KEY, next); } catch {}
+  };
+
+  const logoutClient = async () => {
+    const token = clientToken;
+    setAccountOpen(false);
+    if (token) {
+      try {
+        await fetch("/client/logout", {
+          method: "POST",
+          headers: { Authorization: "Bearer " + token },
+        });
+      } catch {}
+    }
+    try { localStorage.removeItem("mz_client_token"); } catch {}
+    setClientToken(null);
+    setClientName("");
+    setClientEmail("");
+    setGoogleConnected(false);
+    setActiveAutomations([]);
   };
 
   // Cart checkout: require login, then Stripe session for all mapped items.
@@ -768,17 +1021,31 @@ function App() {
       return;
     }
     try {
-      const checkout = await startCheckout(clientToken, pending, annual);
+      const checkout = await startCheckout(clientToken, pending, annual, explicitCurrencyChoice());
       if (checkout.redirected) return;
       try { localStorage.removeItem(CART_HANDOFF_KEY); } catch {}
       setCart([]);
       // Free/dev: hand off to portal activation after grant.
       try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
       window.location.href = "/client";
-    } catch {
-      setLoginInitialMode("login");
-      setLoginStayOnPage(true);
-      setShowLogin(true);
+    } catch (err) {
+      if (err && err.status === 401) {
+        try { localStorage.removeItem("mz_client_token"); } catch {}
+        try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
+        setClientToken(null);
+        setClientName("");
+        setClientEmail("");
+        setGoogleConnected(false);
+        setActiveAutomations([]);
+        setLoginInitialMode("login");
+        setLoginStayOnPage(true);
+        setShowLogin(true);
+        return;
+      }
+      showCheckoutToast(
+        (err && err.message)
+          || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
+      );
     }
   };
 
@@ -790,11 +1057,24 @@ function App() {
     try { pending = JSON.parse(localStorage.getItem(CART_HANDOFF_KEY) || "[]"); } catch { pending = []; }
     if (token && pending.length) {
       try {
-        const checkout = await startCheckout(token, pending, annual);
+        const checkout = await startCheckout(token, pending, annual, explicitCurrencyChoice());
         if (checkout.redirected) return;
         window.location.href = "/client";
         return;
-      } catch {}
+      } catch (err) {
+        if (err && err.status === 401) {
+          try { localStorage.removeItem("mz_client_token"); } catch {}
+          setClientToken(null);
+          setLoginInitialMode("login");
+          setLoginStayOnPage(true);
+          setShowLogin(true);
+          return;
+        }
+        showCheckoutToast(
+          (err && err.message)
+            || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
+        );
+      }
     }
   };
 
@@ -808,12 +1088,12 @@ function App() {
   return (
     <div id="top" style={{ minHeight: "100vh" }}>
       <header style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(246,247,249,.82)", backdropFilter: "blur(12px)", borderBottom: "1px solid #E6E9EE" }}>
-        <div style={{ maxWidth: 1200, margin: "0 auto", padding: "13px 24px", display: "flex", alignItems: "center", gap: 18 }}>
-          <a href="#top" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#0E1116" }}>
+        <div className="zm-topbar" style={{ maxWidth: 1200, margin: "0 auto", padding: "13px 24px", display: "flex", alignItems: "center", gap: 18 }}>
+          <a href="#top" className="zm-brand" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#0E1116" }}>
             <span style={{ width: 27, height: 27, border: "1.6px solid #0E1116", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <span style={{ width: 13, height: 13, borderRadius: "50%", background: "#4F46E5", animation: "zmPulse 2.4s ease-in-out infinite" }}></span>
             </span>
-            <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 19, letterSpacing: "-.01em" }}>Zero<span style={{ fontWeight: 300 }}>Manual</span></span>
+            <span className="zm-word" style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 19, letterSpacing: "-.01em" }}>Zero<span style={{ fontWeight: 300 }}>Manual</span></span>
           </a>
           <nav className="zm-nav" style={{ display: "flex", gap: 4, marginLeft: 6 }}>
             <a href="#zm-grid" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.automations}</a>
@@ -821,7 +1101,7 @@ function App() {
             <a href="#zm-grid" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.pricing}</a>
           </nav>
           <div style={{ flex: 1 }}></div>
-          <div style={{ display: "flex", alignItems: "center", gap: 2, background: "#fff", border: "1px solid #E6E9EE", borderRadius: 9, padding: 3 }}>
+          <div className="zm-lang" style={{ display: "flex", alignItems: "center", gap: 2, background: "#fff", border: "1px solid #E6E9EE", borderRadius: 9, padding: 3 }}>
             <button onClick={() => setLang("es")} style={{ padding: "6px 11px", borderRadius: 6, fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", background: lang === "es" ? "#4F46E5" : "transparent", color: lang === "es" ? "#fff" : "#6B7280" }}>ES</button>
             <button onClick={() => setLang("en")} style={{ padding: "6px 11px", borderRadius: 6, fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", background: lang === "en" ? "#4F46E5" : "transparent", color: lang === "en" ? "#fff" : "#6B7280" }}>EN</button>
           </div>
@@ -830,17 +1110,20 @@ function App() {
             <span className="zm-cart-label">{t.nav.cart}</span>
             {cart.length > 0 && <span style={{ minWidth: 20, height: 20, padding: "0 5px", borderRadius: 999, background: "#4F46E5", color: "#fff", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center" }}>{cart.length}</span>}
           </button>
-          {clientToken && (
-            <button className="zm2-iconbtn" onClick={openAccount} style={{ display: "flex", alignItems: "center", gap: 8, background: "#fff", border: "1px solid #E6E9EE", color: "#0E1116", fontSize: 14, fontWeight: 500, padding: "9px 14px", borderRadius: 10, cursor: "pointer" }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="8" r="3.4"></circle><path d="M5 20c0-3.6 3.1-6 7-6s7 2.4 7 6"></path></svg>
-              <span className="zm-acct-label">{t.nav.account}</span>
-            </button>
-          )}
-          {clientToken ? (
-            <button onClick={openAccount} title={clientName || t.nav.account} style={{ width: 36, height: 36, borderRadius: "50%", background: "#4F46E5", color: "#fff", fontSize: 15, fontWeight: 600, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {clientInitial}
-            </button>
-          ) : (
+          <UserMenu
+            open={accountOpen}
+            onOpenChange={setAccountOpen}
+            t={t}
+            signedIn={!!clientToken}
+            name={clientName}
+            email={clientEmail}
+            currency={currency}
+            onCurrency={chooseCurrency}
+            onLogin={() => { setAccountOpen(false); setLoginInitialMode("login"); setLoginStayOnPage(true); setShowLogin(true); }}
+            onRegister={() => { setAccountOpen(false); setLoginInitialMode("register"); setLoginStayOnPage(true); setShowLogin(true); }}
+            onLogout={logoutClient}
+          />
+          {!clientToken && (
             <button onClick={openAccount} className="zm2-cta zm2-arrowhost" style={{ background: "#4F46E5", color: "#fff", fontSize: 14.5, fontWeight: 600, padding: "10px 18px", borderRadius: 999, display: "inline-flex", alignItems: "center", gap: 6, border: "none", cursor: "pointer" }}>{t.nav.login} <span className="zm2-arrow" style={{ fontSize: 13 }}>→</span></button>
           )}
         </div>
@@ -872,7 +1155,8 @@ function App() {
             <h2 style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 30, letterSpacing: "-.025em", margin: 0 }}>{t.grid.title}</h2>
             <p style={{ margin: "7px 0 0", color: "#6B7280", fontSize: 15.5 }}>{t.grid.sub}</p>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span className="zm-price-currency">{t.menu.catalog[currency]}</span>
             <div style={{ display: "inline-flex", border: "1px solid #E6E9EE", borderRadius: 999, padding: 3, background: "#fff" }}>
               <button onClick={() => setAnnual(false)} style={{ padding: "6px 13px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", background: !annual ? "#4F46E5" : "transparent", color: !annual ? "#fff" : "#6B7280" }}>{t.per.mo === "/mes" ? "Mensual" : "Monthly"}</button>
               <button onClick={() => setAnnual(true)} style={{ padding: "6px 13px", borderRadius: 999, fontSize: 13, fontWeight: 600, border: "none", cursor: "pointer", background: annual ? "#4F46E5" : "transparent", color: annual ? "#fff" : "#6B7280" }}>{t.per.yr === "/año" ? "Anual" : "Annual"}</button>
@@ -891,7 +1175,7 @@ function App() {
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(332px,1fr))", gap: 18 }}>
           {cards.map((p) => (
-            <ProductCard key={p.id} product={p} lang={lang} t={t} inCart={cart.includes(p.id)} annual={annual} active={isAutomationActive(p.id)} subscribing={subscribingId === p.id} onToggleCart={handleCardAction} onDetail={setDetailId} />
+            <ProductCard key={p.id} product={p} lang={lang} t={t} inCart={cart.includes(p.id)} annual={annual} currency={currency} active={isAutomationActive(p.id)} subscribing={subscribingId === p.id} onToggleCart={handleCardAction} onDetail={setDetailId} />
           ))}
         </div>
       </section>
@@ -955,7 +1239,7 @@ function App() {
                 <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 16.5, color: "#0E1116", lineHeight: 1.3, flex: 1 }}>{fq.q}</span>
                 <Ico paths={["M12 5v14", "M5 12h14"]} size={18} strokeWidth={2} stroke="#4F46E5" style={{ flexShrink: 0, transition: "transform .22s ease", transform: faqOpen === i ? "rotate(45deg)" : "none" }} />
               </button>
-              {faqOpen === i && <p style={{ margin: 0, padding: "0 22px 20px", color: "#5B6472", fontSize: 14.5, lineHeight: 1.6, animation: "zmFade .25s ease" }}>{fq.a}</p>}
+              {faqOpen === i && <p style={{ margin: 0, padding: "0 22px 20px", color: "#5B6472", fontSize: 14.5, lineHeight: 1.6, animation: "zmFade .25s ease" }}>{faqAnswer(fq.a, currency, lang)}</p>}
             </div>
           ))}
         </div>
@@ -980,10 +1264,10 @@ function App() {
       {showLogin && <LoginModal tt={t} onClose={() => setShowLogin(false)} initialMode={loginInitialMode} stayOnPage={loginStayOnPage} onLoginSuccess={onLoginModalSuccess} />}
       {subscribeModalId && (
         <SubscribeModal product={PRODUCTS.find((p) => p.id === subscribeModalId)} lang={lang} t={t}
-          annual={annual} onClose={() => setSubscribeModalId(null)} onDone={onSubscribeModalDone} />
+          annual={annual} currency={currency} onClose={() => setSubscribeModalId(null)} onDone={onSubscribeModalDone} />
       )}
-      <CartDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} cartIds={cart} lang={lang} t={t} annual={annual} onRemove={removeFromCart} onCheckout={handleCheckout} />
-      <DetailModal id={detailId} lang={lang} t={t} inCart={detailId ? cart.includes(detailId) : false} annual={annual} onClose={() => setDetailId(null)} onSubscribe={subscribeFromDetail} />
+      <CartDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} cartIds={cart} lang={lang} t={t} annual={annual} currency={currency} onRemove={removeFromCart} onCheckout={handleCheckout} />
+      <DetailModal id={detailId} lang={lang} t={t} inCart={detailId ? cart.includes(detailId) : false} annual={annual} currency={currency} onClose={() => setDetailId(null)} onSubscribe={subscribeFromDetail} />
     </div>
   );
 }

@@ -656,6 +656,14 @@
   let menuOpen = false;
   let sheetOpen = false;
   let settingsAnchor = '';
+  let reviewWatchUntil = 0;
+  let reviewsActivatedAt = 0;
+  let reviewPollTimer = null;
+  let reviewResumeTimer = null;
+  let reviewRefreshInFlight = null;
+
+  const REVIEW_POLL_MS = 20000;
+  const REVIEW_WATCH_MS = 5 * 60 * 1000;
 
   const AUTOMATION_LABELS = {
     google_reviews: { name: 'Responder reseñas de Google',   desc: 'Responde automáticamente cada nueva reseña con tu voz y tono.' },
@@ -1003,6 +1011,144 @@
     }
   }
 
+  function reviewRefreshPlan(input) {
+    const now = input.now;
+    const onReviews = input.activeView === 'google_reviews' && !!input.hasAutomation;
+    const justActivated = !!(input.activatedAt && (now - input.activatedAt) < REVIEW_WATCH_MS);
+    const emptyPending = !input.pendingCount;
+    let watchUntil = input.watchUntil || 0;
+    if (input.arm) {
+      if (onReviews && (justActivated || emptyPending)) {
+        const fromActivation = justActivated ? input.activatedAt + REVIEW_WATCH_MS : 0;
+        const fromEmpty = emptyPending ? now + REVIEW_WATCH_MS : 0;
+        watchUntil = Math.max(fromActivation, fromEmpty);
+      } else {
+        watchUntil = 0;
+      }
+    }
+    return {
+      pollMs: REVIEW_POLL_MS,
+      watchMs: REVIEW_WATCH_MS,
+      watchUntil: watchUntil,
+      schedulePoll: onReviews && now < watchUntil,
+      refetch: onReviews && input.visibility !== 'hidden' && input.reason !== 'arm',
+    };
+  }
+
+  function currentReviewInput(extra) {
+    return Object.assign({
+      now: Date.now(),
+      activeView: activeView,
+      hasAutomation: activeReviewRows().length > 0,
+      pendingCount: pendingReviewCount,
+      activatedAt: reviewsActivatedAt,
+      watchUntil: reviewWatchUntil,
+      visibility: document.visibilityState,
+      reason: 'resume',
+      arm: false,
+    }, extra || {});
+  }
+
+  function draftsSignature(list) {
+    return (list || []).map(function (d) {
+      return [
+        d.draft_id, d.status, d.updated_at, d.suggested_reply, d.final_reply,
+        d.reviewer_name, d.rating, d.source_text, d.created_at,
+      ].join('\u0001');
+    }).join('\u0002');
+  }
+
+  function captureReviewFocus() {
+    const el = document.activeElement;
+    if (!el || !el.closest || !el.classList || !el.classList.contains('draft-text')) return null;
+    const pair = el.closest('[data-draft-id]');
+    if (!pair) return null;
+    return { draftId: pair.dataset.draftId, start: el.selectionStart, end: el.selectionEnd };
+  }
+
+  function restoreReviewFocus(focus) {
+    if (!focus) return;
+    const nodes = document.querySelectorAll('[data-draft-id]');
+    for (let i = 0; i < nodes.length; i++) {
+      if (nodes[i].dataset.draftId !== focus.draftId) continue;
+      const ta = nodes[i].querySelector('.draft-text');
+      if (!ta) return;
+      ta.focus();
+      if (typeof focus.start === 'number' && ta.setSelectionRange) ta.setSelectionRange(focus.start, focus.end);
+      return;
+    }
+  }
+
+  function stopReviewPoll() {
+    if (reviewPollTimer) {
+      clearTimeout(reviewPollTimer);
+      reviewPollTimer = null;
+    }
+  }
+
+  function scheduleReviewPoll() {
+    if (reviewPollTimer) return;
+    reviewPollTimer = setTimeout(function () {
+      reviewPollTimer = null;
+      refreshOpenReviews('poll');
+    }, REVIEW_POLL_MS);
+  }
+
+  function applyReviewPlan(plan) {
+    reviewWatchUntil = plan.watchUntil;
+    if (plan.schedulePoll) scheduleReviewPoll();
+    else stopReviewPoll();
+  }
+
+  function armReviewWatch() {
+    applyReviewPlan(reviewRefreshPlan(currentReviewInput({ reason: 'arm', arm: true })));
+  }
+
+  async function runReviewRefresh() {
+    const beforeSig = draftsSignature(cachedDrafts);
+    const beforeCount = pendingReviewCount;
+    const beforeErr = reviewLoadError;
+    const focus = captureReviewFocus();
+    try {
+      await refreshReviewCache();
+      if (activeView === 'google_reviews' && $('review-list')) {
+        const changed = draftsSignature(cachedDrafts) !== beforeSig
+          || pendingReviewCount !== beforeCount
+          || reviewLoadError !== beforeErr;
+        if (changed) {
+          syncChrome();
+          paintReviewList();
+          if (beforeCount !== pendingReviewCount) renderNav();
+          restoreReviewFocus(focus);
+        }
+      }
+    } finally {
+      applyReviewPlan(reviewRefreshPlan(currentReviewInput({ reason: 'poll', arm: false })));
+    }
+  }
+
+  async function refreshOpenReviews(reason) {
+    const plan = reviewRefreshPlan(currentReviewInput({ reason: reason || 'resume', arm: false }));
+    if (!token || !plan.refetch) {
+      applyReviewPlan(plan);
+      return;
+    }
+    if (reviewRefreshInFlight) return reviewRefreshInFlight;
+    reviewRefreshInFlight = runReviewRefresh().finally(function () {
+      reviewRefreshInFlight = null;
+    });
+    return reviewRefreshInFlight;
+  }
+
+  function onReviewSurfaceResume() {
+    if (document.visibilityState === 'hidden') return;
+    if (reviewResumeTimer) clearTimeout(reviewResumeTimer);
+    reviewResumeTimer = setTimeout(function () {
+      reviewResumeTimer = null;
+      refreshOpenReviews('resume');
+    }, 300);
+  }
+
   async function refreshReplyMode() {
     if (!activeReviewRows().length) { replyMode = 'approval'; return; }
     try {
@@ -1027,6 +1173,7 @@
       if (activeView === 'google_reviews') await refreshReplyMode();
       renderNav();
       await renderPanel(c, data);
+      armReviewWatch();
     } catch (e) {
       c.innerHTML = pageChrome('Portal', '') + '<div class="page-body"><div class="card"><div class="empty">Error cargando datos. Recarga la página.</div></div></div>';
     }
@@ -2083,6 +2230,9 @@
     }
   }
 
+  document.addEventListener('visibilitychange', onReviewSurfaceResume);
+  window.addEventListener('focus', onReviewSurfaceResume);
+
   document.addEventListener('click', (e) => {
     const menu = $('avatar-menu');
     const chip = $('user-chip');
@@ -2113,6 +2263,7 @@
       const lbl = AUTOMATION_LABELS[activatedType] || { name: activatedType };
       toast(`Automatización activada ✓ — ${lbl.name}`, 'ok');
       activeView = activatedType;
+      if (activatedType === 'google_reviews') reviewsActivatedAt = Date.now();
     } else if (params.get('checkout') === 'paid') {
       toast('Pago recibido. Completa la conexión de Google para activar.', 'ok');
     } else if (params.get('connected') === '1') {

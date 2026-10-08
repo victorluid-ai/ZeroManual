@@ -317,7 +317,11 @@ section { position: relative; }
 }
 .zm-menu-head { display: flex; gap: 12px; align-items: center; padding: 10px 10px 12px; }
 .zm-menu-head strong { display: block; font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
-.zm-menu-head span { display: block; margin-top: 2px; font-size: 13px; color: #6B7280; font-weight: 500; }
+.zm-menu-head > div span { display: block; margin-top: 2px; font-size: 13px; color: #6B7280; font-weight: 500; }
+.zm-menu-head .zm-avatar {
+  display: flex; align-items: center; justify-content: center;
+  margin: 0; color: #fff; font-size: 15px; font-weight: 600; line-height: 1;
+}
 .zm-menu-item {
   width: 100%; display: flex; align-items: center; gap: 10px;
   padding: 10px 12px; border: 0; background: transparent; border-radius: 10px;
@@ -401,6 +405,6 @@ section { position: relative; }
     })();
   </script>
   <script type="text/babel" src="/assets/run-widget.jsx?v=6"></script>
-  <script type="text/babel" src="/assets/app.jsx?v=9"></script>
+  <script type="text/babel" src="/assets/app.jsx?v=10"></script>
 </body>
 </html>

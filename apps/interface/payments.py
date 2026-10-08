@@ -7,7 +7,7 @@ import os
 from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from apps.integrations import stripe_payments
@@ -117,6 +117,50 @@ def grant_subscriptions_from_checkout(
         )
 
 
+# /client pinta #login-overlay antes de que el JS pida /client/google/connect.
+# Esta página no incluye el formulario: solo usa el token ya guardado.
+_CHECKOUT_CONTINUE_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Preparando tu cuenta…</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f6f7f9;
+      color: #0e1116;
+      display: flex;
+      min-height: 100vh;
+      align-items: center;
+      justify-content: center;
+      margin: 0;
+    }
+    p { font-size: 1.05rem; }
+  </style>
+</head>
+<body>
+  <p id="status">Preparando tu cuenta…</p>
+  <script>
+  (function () {
+    var token = null;
+    try { token = localStorage.getItem('mz_client_token'); } catch (e) { token = null; }
+    function portal() { window.location.replace('/client?checkout=paid'); }
+    if (!token) { portal(); return; }
+    fetch('/client/google/connect', { headers: { Authorization: 'Bearer ' + token } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (data && data.redirect_url) { window.location.replace(data.redirect_url); return; }
+        portal();
+      })
+      .catch(portal);
+  })();
+  </script>
+</body>
+</html>
+"""
+
+
 def post_payment_redirect(
     *,
     store: Any,
@@ -132,7 +176,7 @@ def post_payment_redirect(
     if not creds:
         if automation_types:
             store.set_pending_automation(client_id, automation_types[0])
-        return RedirectResponse(url="/client?checkout=paid&connect=google", status_code=303)
+        return RedirectResponse(url="/client/checkout/continue", status_code=303)
     activated: list[str] = []
     if business_pairs:
         for automation_type, business_id in business_pairs:
@@ -251,6 +295,10 @@ def register_payment_routes(
             "automation_types": types,
             "billing_interval": interval,
         }
+
+    @app.get("/client/checkout/continue", response_class=HTMLResponse)
+    def client_checkout_continue() -> HTMLResponse:
+        return HTMLResponse(_CHECKOUT_CONTINUE_HTML)
 
     @app.get("/client/checkout/success")
     def client_checkout_success(session_id: str = "") -> RedirectResponse:

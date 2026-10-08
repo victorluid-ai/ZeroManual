@@ -414,3 +414,106 @@ def test_catalog_validate_and_line_items() -> None:
     assert items[0]["price_data"]["unit_amount"] == 29000
     assert items[0]["price_data"]["recurring"]["interval"] == "year"
 
+
+def _complete_session(client_id: str, *, status: str = "complete", payment_status: str = "unpaid") -> dict:
+    return {
+        "id": "cs_return_1",
+        "status": status,
+        "payment_status": payment_status,
+        "customer": "cus_return",
+        "subscription": "sub_return",
+        "metadata": {
+            "client_id": client_id,
+            "automation_types": "google_reviews",
+            "billing_interval": "monthly",
+        },
+        "client_reference_id": client_id,
+    }
+
+
+def test_checkout_success_skips_login_and_prepares_google(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Pago confirmado: la respuesta no pinta el login ni pasa por /login."""
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    import apps.integrations.stripe_payments as sp
+    import apps.interface.api as api_module
+
+    reg = _register(client, "return@example.com")
+    client_id = reg["client"]["client_id"]
+    monkeypatch.setattr(
+        sp,
+        "retrieve_checkout_session",
+        lambda session_id, settings=None: _complete_session(client_id),
+    )
+
+    resp = client.get(
+        "/client/checkout/success",
+        params={"session_id": "cs_return_1"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert resp.url.path == "/client/checkout/continue"
+    assert resp.history
+    for hop in resp.history:
+        location = hop.headers.get("location", "")
+        assert "/login" not in location
+        assert "/client?" not in location
+        assert "connect=google" not in location
+    body = resp.text
+    assert "Preparando tu cuenta" in body
+    assert 'id="view-login"' not in body
+    assert 'id="inp-password"' not in body
+    assert 'id="login-overlay"' not in body
+    assert "/login" not in body
+    assert "/client/google/connect" in body
+
+    store = api_module.runtime.store
+    assert store.get_subscription(client_id, "google_reviews")["status"] == "trialing"
+    assert store.get_pending_automation(client_id) == "google_reviews"
+
+
+@pytest.mark.parametrize(
+    "session_id,session",
+    [
+        ("", None),
+        ("cs_open", {"status": "open", "payment_status": "unpaid"}),
+        ("cs_missing", RuntimeError("No such checkout.session")),
+    ],
+)
+def test_checkout_success_invalid_does_not_reach_continue_or_login(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    session_id: str,
+    session: dict | Exception | None,
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    import apps.integrations.stripe_payments as sp
+
+    def retrieve(sid: str, settings=None):
+        if isinstance(session, Exception):
+            raise session
+        return session or {}
+
+    monkeypatch.setattr(sp, "retrieve_checkout_session", retrieve)
+    resp = client.get(
+        "/client/checkout/success",
+        params={"session_id": session_id},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    location = resp.headers["location"]
+    assert location == "/client?checkout=error"
+    assert "/login" not in location
+    assert "checkout/continue" not in location
+
+
+def test_checkout_success_free_mode_stays_on_error(client: TestClient) -> None:
+    resp = client.get(
+        "/client/checkout/success",
+        params={"session_id": "cs_dev"},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/client?checkout=error"
+

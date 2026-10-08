@@ -198,6 +198,7 @@ def test_client_portal_opens_view_from_query(client: TestClient) -> None:
     assert "STATIC_VIEWS.has(params.get('view')" in resp.text
     assert "checkoutCurrency" not in resp.text
     assert "toast(err.message, 'err')" in resp.text
+    assert "if (r.status === 401) { doLogout(); return null; }" in resp.text
 
 
 def test_landing_checkout_omits_currency_until_the_selector_is_used(client: TestClient) -> None:
@@ -208,6 +209,15 @@ def test_landing_checkout_omits_currency_until_the_selector_is_used(client: Test
     assert js.status_code == 200
     assert "function explicitCurrencyChoice()" in js.text
     assert 'if (currency === "usd" || currency === "eur") body.currency = currency;' in js.text
+    assert "showCheckoutToast" in js.text
+
+
+def test_landing_cart_checkout_reopens_login_on_401(client: TestClient) -> None:
+    js = client.get("/assets/app.jsx")
+    assert js.status_code == 200
+    assert "err.status = r.status" in js.text
+    assert "if (err && err.status === 401)" in js.text
+    assert "setShowLogin(true)" in js.text
     assert "showCheckoutToast" in js.text
 
 

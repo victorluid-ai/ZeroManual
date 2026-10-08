@@ -232,7 +232,9 @@ async function startCheckout(token, automationTypes, annual, currency) {
   });
   if (!r.ok) {
     const d = await r.json().catch(() => ({}));
-    throw new Error(d.detail || "checkout failed");
+    const err = new Error(d.detail || "checkout failed");
+    err.status = r.status;
+    throw err;
   }
   const d = await r.json();
   if (d.checkout_url) {
@@ -1030,6 +1032,19 @@ function App() {
       try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
       window.location.href = "/client";
     } catch (err) {
+      if (err && err.status === 401) {
+        try { localStorage.removeItem("mz_client_token"); } catch {}
+        try { localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(pending)); } catch {}
+        setClientToken(null);
+        setClientName("");
+        setClientEmail("");
+        setGoogleConnected(false);
+        setActiveAutomations([]);
+        setLoginInitialMode("login");
+        setLoginStayOnPage(true);
+        setShowLogin(true);
+        return;
+      }
       showCheckoutToast(
         (err && err.message)
           || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")
@@ -1050,6 +1065,14 @@ function App() {
         window.location.href = "/client";
         return;
       } catch (err) {
+        if (err && err.status === 401) {
+          try { localStorage.removeItem("mz_client_token"); } catch {}
+          setClientToken(null);
+          setLoginInitialMode("login");
+          setLoginStayOnPage(true);
+          setShowLogin(true);
+          return;
+        }
         showCheckoutToast(
           (err && err.message)
             || ((lang === "es") ? "No se pudo iniciar la suscripción." : "Could not start subscription.")

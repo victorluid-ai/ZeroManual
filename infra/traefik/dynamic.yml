@@ -1,24 +1,23 @@
-# Rutas nuevas de exmanual.com. Upstream: servicio Docker api, puerto 8090.
-# No se monta en el Traefik de Hostinger y no redefine app.srv1255804.
-# certResolver letsencrypt no está leído del VPS: docker-compose.vps.yml no está en git.
+# Igual que las labels de infra/docker-compose.exmanual.yml.
+# No declara el router zeromanual. No se monta en el Traefik del VPS.
 http:
   routers:
     exmanual:
       rule: Host(`exmanual.com`)
       entryPoints:
-        - websecure
+        - web
       service: zeromanual
       tls:
-        certResolver: letsencrypt
+        certResolver: mytlschallenge
     exmanual-www:
       rule: Host(`www.exmanual.com`)
       entryPoints:
-        - websecure
+        - web
       middlewares:
         - exmanual-www-redirect
       service: zeromanual
       tls:
-        certResolver: letsencrypt
+        certResolver: mytlschallenge
   middlewares:
     exmanual-www-redirect:
       redirectRegex:

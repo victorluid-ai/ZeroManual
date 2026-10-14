@@ -1,0 +1,18 @@
+# Override: solo labels nuevas. No toca el router zeromanual.
+services:
+  api:
+    labels:
+      - traefik.http.routers.exmanual.entrypoints=web
+      - traefik.http.routers.exmanual.rule=Host(`exmanual.com`)
+      - traefik.http.routers.exmanual.tls=true
+      - traefik.http.routers.exmanual.tls.certresolver=mytlschallenge
+      - traefik.http.routers.exmanual.service=zeromanual
+      - traefik.http.routers.exmanual-www.entrypoints=web
+      - traefik.http.routers.exmanual-www.rule=Host(`www.exmanual.com`)
+      - traefik.http.routers.exmanual-www.tls=true
+      - traefik.http.routers.exmanual-www.tls.certresolver=mytlschallenge
+      - traefik.http.routers.exmanual-www.middlewares=exmanual-www-redirect
+      - traefik.http.routers.exmanual-www.service=zeromanual
+      - "traefik.http.middlewares.exmanual-www-redirect.redirectregex.regex=^https://www\\.exmanual\\.com/(.*)"
+      - "traefik.http.middlewares.exmanual-www-redirect.redirectregex.replacement=https://exmanual.com/$${1}"
+      - traefik.http.middlewares.exmanual-www-redirect.redirectregex.permanent=true

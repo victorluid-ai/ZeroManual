@@ -1,15 +1,8 @@
-# Mismas rutas que las labels de infra/docker-compose.yml.
-# El Traefik de Hostinger lee las labels; este archivo no se monta ahí
-# y no hay que levantar otro proxy. Sirve para validar la config.
+# Rutas nuevas de exmanual.com. Upstream: servicio Docker api, puerto 8090.
+# No se monta en el Traefik de Hostinger y no redefine app.srv1255804.
+# certResolver letsencrypt no está leído del VPS: docker-compose.vps.yml no está en git.
 http:
   routers:
-    zeromanual-app:
-      rule: Host(`app.srv1255804.hstgr.cloud`)
-      entryPoints:
-        - websecure
-      service: zeromanual
-      tls:
-        certResolver: letsencrypt
     exmanual:
       rule: Host(`exmanual.com`)
       entryPoints:
@@ -36,4 +29,4 @@ http:
     zeromanual:
       loadBalancer:
         servers:
-          - url: http://orchestrator:8090
+          - url: http://api:8090

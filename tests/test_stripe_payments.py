@@ -729,3 +729,119 @@ def test_checkout_success_free_mode_stays_on_error(client: TestClient) -> None:
     assert resp.status_code == 303
     assert resp.headers["location"] == "/client?checkout=error"
 
+
+def _stripe_signature(payload: bytes, secret: str) -> str:
+    import hashlib
+    import hmac
+    import time
+
+    timestamp = int(time.time())
+    signed = f"{timestamp}.{payload.decode()}"
+    digest = hmac.new(secret.encode(), signed.encode(), hashlib.sha256).hexdigest()
+    return f"t={timestamp},v1={digest}"
+
+
+def test_webhook_accepts_primary_or_extra_signing_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import apps.integrations.stripe_payments as sp
+
+    payload = b'{"id":"evt_test","object":"event"}'
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "whsec_old")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRETS", "whsec_new")
+    monkeypatch.setenv("MANUALZERO_STRIPE_WEBHOOK_SECRET", "")
+    monkeypatch.setenv("MANUALZERO_STRIPE_WEBHOOK_SECRETS", "")
+
+    primary = sp.construct_webhook_event(payload, _stripe_signature(payload, "whsec_old"))
+    extra = sp.construct_webhook_event(payload, _stripe_signature(payload, "whsec_new"))
+    assert primary["id"] == "evt_test"
+    assert extra["id"] == "evt_test"
+
+    with pytest.raises(Exception):
+        sp.construct_webhook_event(payload, _stripe_signature(payload, "whsec_other"))
+
+
+def test_webhook_without_any_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    import apps.integrations.stripe_payments as sp
+
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRETS", "")
+    monkeypatch.setenv("MANUALZERO_STRIPE_WEBHOOK_SECRET", "")
+    monkeypatch.setenv("MANUALZERO_STRIPE_WEBHOOK_SECRETS", "")
+    with pytest.raises(RuntimeError, match="WEBHOOK_SECRET"):
+        sp.construct_webhook_event(b"{}", "t=1,v1=dead")
+
+
+def test_checkout_urls_follow_allowlisted_host_not_only_public_url(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_PUBLIC_URL", "https://app.srv1255804.hstgr.cloud")
+    created: dict = {}
+    _fake_stripe(monkeypatch, created)
+
+    reg = _register(client, "host-checkout@example.com")
+    auth = {"Authorization": f"Bearer {reg['token']}"}
+    resp = client.post(
+        "/client/checkout/session",
+        headers={**auth, "x-forwarded-host": "exmanual.com"},
+        json={"automation_types": ["google_reviews"], "billing_interval": "monthly"},
+    )
+    assert resp.status_code == 200
+    assert created["success_url"] == (
+        "https://exmanual.com/client/checkout/success?session_id={CHECKOUT_SESSION_ID}"
+    )
+    assert created["cancel_url"] == "https://exmanual.com/?checkout=cancelled"
+
+    created.clear()
+    resp = client.post(
+        "/client/checkout/session",
+        headers={**auth, "x-forwarded-host": "app.srv1255804.hstgr.cloud"},
+        json={"automation_types": ["google_reviews"], "billing_interval": "monthly"},
+    )
+    assert resp.status_code == 200
+    assert created["success_url"].startswith("https://app.srv1255804.hstgr.cloud/client/checkout/success")
+    assert created["cancel_url"] == "https://app.srv1255804.hstgr.cloud/?checkout=cancelled"
+
+    created.clear()
+    resp = client.post(
+        "/client/checkout/session",
+        headers={**auth, "x-forwarded-host": "evil.example"},
+        json={"automation_types": ["google_reviews"], "billing_interval": "monthly"},
+    )
+    assert resp.status_code == 200
+    assert created["success_url"].startswith(
+        "https://app.srv1255804.hstgr.cloud/client/checkout/success"
+    )
+
+
+def test_billing_portal_return_url_follows_browser_host(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_PUBLIC_URL", "https://exmanual.com")
+    import apps.integrations.stripe_payments as sp
+    import apps.interface.api as api_module
+
+    captured: dict = {}
+
+    def fake_portal(*, stripe_customer_id: str, return_url: str | None = None, settings=None):
+        captured["customer"] = stripe_customer_id
+        captured["return_url"] = return_url
+        return {"portal_url": "https://billing.stripe.com/p/session/test"}
+
+    monkeypatch.setattr(sp, "create_billing_portal_session", fake_portal)
+    reg = _register(client, "portal-host@example.com")
+    api_module.runtime.store.set_stripe_customer_id(reg["client"]["client_id"], "cus_portal")
+    resp = client.post(
+        "/client/billing/portal",
+        headers={
+            "Authorization": f"Bearer {reg['token']}",
+            "x-forwarded-host": "app.srv1255804.hstgr.cloud",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["portal_url"].startswith("https://billing.stripe.com/")
+    assert captured["return_url"] == "https://app.srv1255804.hstgr.cloud/client"
+    assert captured["customer"] == "cus_portal"
+

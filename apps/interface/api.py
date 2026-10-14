@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from apps.integrations.google_oauth import GoogleOAuthHelper
+from apps.integrations.public_origin import oauth_redirect_uri
 from apps.integrations.google_business import (
     GoogleBusinessClient,
     GoogleBusinessError,
@@ -329,8 +330,13 @@ def client_me(client: dict = Depends(get_client_user)) -> dict:
 
 
 @app.get("/client/google/connect")
-def google_connect(client: dict = Depends(get_client_user)) -> dict:
-    url = _google_oauth.get_authorization_url(client["client_id"])
+def google_connect(request: Request, client: dict = Depends(get_client_user)) -> dict:
+    redirect_uri = oauth_redirect_uri(
+        host=request.headers.get("host"),
+        forwarded_host=request.headers.get("x-forwarded-host"),
+        forwarded_proto=request.headers.get("x-forwarded-proto"),
+    )
+    url = _google_oauth.get_authorization_url(client["client_id"], redirect_uri=redirect_uri)
     return {"redirect_url": url}
 
 

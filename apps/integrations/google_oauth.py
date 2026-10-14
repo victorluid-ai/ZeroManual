@@ -27,16 +27,21 @@ class GoogleOAuthHelper:
         self._client_id = os.getenv("GOOGLE_CLIENT_ID", "")
         self._client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
         self._redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "")
-        # state → (client_id, expires_at)
-        self._pending: dict[str, tuple[str, float]] = {}
+        # state → (client_id, expires_at, redirect_uri)
+        self._pending: dict[str, tuple[str, float, str]] = {}
 
-    def get_authorization_url(self, client_id: str) -> str:
-        """Generate a Google OAuth URL and track the state token."""
+    def get_authorization_url(self, client_id: str, redirect_uri: str | None = None) -> str:
+        """Generate a Google OAuth URL and track the state token.
+
+        ``redirect_uri`` overrides ``GOOGLE_REDIRECT_URI`` for this attempt.
+        The token exchange uses the same value, stored with the state.
+        """
         state = secrets.token_urlsafe(16)
-        self._pending[state] = (client_id, time.time() + 600)
+        uri = self._redirect_uri if redirect_uri is None else redirect_uri
+        self._pending[state] = (client_id, time.time() + 600, uri)
         params = {
             "client_id": self._client_id,
-            "redirect_uri": self._redirect_uri,
+            "redirect_uri": uri,
             "response_type": "code",
             "scope": SCOPES,
             "access_type": "offline",
@@ -50,14 +55,15 @@ class GoogleOAuthHelper:
         entry = self._pending.pop(state, None)
         if not entry or time.time() > entry[1]:
             raise ValueError("Invalid or expired OAuth state")
-        client_id, _ = entry
+        client_id = entry[0]
+        redirect_uri = entry[2] if len(entry) > 2 else self._redirect_uri
         r = httpx.post(
             GOOGLE_TOKEN_URL,
             data={
                 "code": code,
                 "client_id": self._client_id,
                 "client_secret": self._client_secret,
-                "redirect_uri": self._redirect_uri,
+                "redirect_uri": redirect_uri,
                 "grant_type": "authorization_code",
             },
             timeout=15,

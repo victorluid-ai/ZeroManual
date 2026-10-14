@@ -1,3 +1,8 @@
+# El proxy público es el Traefik de Hostinger (proyecto aparte, red
+# traefik-proxy, puertos 80/443). Este archivo no levanta otro proxy:
+# n8n sigue en su contenedor y en su host. Traefik lee estas labels al
+# recrear solo este servicio. Las mismas rutas están en
+# infra/traefik/dynamic.yml para poder validarlas.
 services:
   orchestrator:
     image: python:3.11-slim
@@ -9,3 +14,33 @@ services:
       - ..:/app
     env_file:
       - ../.env
+    networks:
+      - default
+      - traefik-proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.services.zeromanual.loadbalancer.server.port=8090
+      - traefik.http.routers.zeromanual-app.rule=Host(`app.srv1255804.hstgr.cloud`)
+      - traefik.http.routers.zeromanual-app.entrypoints=websecure
+      - traefik.http.routers.zeromanual-app.tls=true
+      - traefik.http.routers.zeromanual-app.tls.certresolver=letsencrypt
+      - traefik.http.routers.zeromanual-app.service=zeromanual
+      - traefik.http.routers.exmanual.rule=Host(`exmanual.com`)
+      - traefik.http.routers.exmanual.entrypoints=websecure
+      - traefik.http.routers.exmanual.tls=true
+      - traefik.http.routers.exmanual.tls.certresolver=letsencrypt
+      - traefik.http.routers.exmanual.service=zeromanual
+      - traefik.http.routers.exmanual-www.rule=Host(`www.exmanual.com`)
+      - traefik.http.routers.exmanual-www.entrypoints=websecure
+      - traefik.http.routers.exmanual-www.tls=true
+      - traefik.http.routers.exmanual-www.tls.certresolver=letsencrypt
+      - traefik.http.routers.exmanual-www.middlewares=exmanual-www-redirect
+      - traefik.http.routers.exmanual-www.service=zeromanual
+      - "traefik.http.middlewares.exmanual-www-redirect.redirectregex.regex=^https://www\\.exmanual\\.com/(.*)"
+      - "traefik.http.middlewares.exmanual-www-redirect.redirectregex.replacement=https://exmanual.com/$${1}"
+      - traefik.http.middlewares.exmanual-www-redirect.redirectregex.permanent=true
+
+networks:
+  traefik-proxy:
+    external: true

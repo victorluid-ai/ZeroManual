@@ -1,0 +1,39 @@
+# Mismas rutas que las labels de infra/docker-compose.yml.
+# El Traefik de Hostinger lee las labels; este archivo no se monta ahí
+# y no hay que levantar otro proxy. Sirve para validar la config.
+http:
+  routers:
+    zeromanual-app:
+      rule: Host(`app.srv1255804.hstgr.cloud`)
+      entryPoints:
+        - websecure
+      service: zeromanual
+      tls:
+        certResolver: letsencrypt
+    exmanual:
+      rule: Host(`exmanual.com`)
+      entryPoints:
+        - websecure
+      service: zeromanual
+      tls:
+        certResolver: letsencrypt
+    exmanual-www:
+      rule: Host(`www.exmanual.com`)
+      entryPoints:
+        - websecure
+      middlewares:
+        - exmanual-www-redirect
+      service: zeromanual
+      tls:
+        certResolver: letsencrypt
+  middlewares:
+    exmanual-www-redirect:
+      redirectRegex:
+        regex: ^https://www\.exmanual\.com/(.*)
+        replacement: https://exmanual.com/${1}
+        permanent: true
+  services:
+    zeromanual:
+      loadBalancer:
+        servers:
+          - url: http://orchestrator:8090

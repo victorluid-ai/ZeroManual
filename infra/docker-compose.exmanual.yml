@@ -2,12 +2,12 @@
 services:
   api:
     labels:
-      - traefik.http.routers.exmanual.entrypoints=web
+      - traefik.http.routers.exmanual.entrypoints=web,websecure
       - traefik.http.routers.exmanual.rule=Host(`exmanual.com`)
       - traefik.http.routers.exmanual.tls=true
       - traefik.http.routers.exmanual.tls.certresolver=mytlschallenge
       - traefik.http.routers.exmanual.service=zeromanual
-      - traefik.http.routers.exmanual-www.entrypoints=web
+      - traefik.http.routers.exmanual-www.entrypoints=web,websecure
       - traefik.http.routers.exmanual-www.rule=Host(`www.exmanual.com`)
       - traefik.http.routers.exmanual-www.tls=true
       - traefik.http.routers.exmanual-www.tls.certresolver=mytlschallenge

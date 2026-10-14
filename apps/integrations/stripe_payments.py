@@ -141,6 +141,21 @@ class StripeSettings:
     public_url: str
     trial_days: int
     price_ids: dict[str, str]  # "{automation_type}:{monthly|yearly}" -> price_id
+    # Signing secrets of extra webhook endpoints (the exmanual.com endpoint
+    # during the domain transition). The original secret stays in webhook_secret.
+    webhook_secrets: tuple[str, ...] = ()
+
+
+def _extra_webhook_secrets(primary: str, raw: str) -> tuple[str, ...]:
+    seen = {primary} if primary else set()
+    extras: list[str] = []
+    for part in raw.split(","):
+        value = part.strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        extras.append(value)
+    return tuple(extras)
 
 
 def load_stripe_settings() -> StripeSettings:
@@ -158,6 +173,10 @@ def load_stripe_settings() -> StripeSettings:
         public_url=zm_env("PUBLIC_URL", "http://localhost:8090").rstrip("/"),
         trial_days=int(zm_env("STRIPE_TRIAL_DAYS", str(DEFAULT_TRIAL_DAYS))),
         price_ids={str(k): str(v) for k, v in price_ids.items() if v},
+        webhook_secrets=_extra_webhook_secrets(
+            zm_env("STRIPE_WEBHOOK_SECRET", ""),
+            zm_env("STRIPE_WEBHOOK_SECRETS", ""),
+        ),
     )
 
 
@@ -383,6 +402,7 @@ def create_checkout_session(
     settings: StripeSettings | None = None,
     business_pairs: list[tuple[str, str]] | None = None,
     currency: str | None = None,
+    public_url: str | None = None,
 ) -> dict[str, Any]:
     """Create a Stripe Checkout Session (subscription + optional trial).
 
@@ -414,11 +434,12 @@ def create_checkout_session(
     locked = customer_billing_currency(customer_id, cfg)
     charge_currency = resolve_charge_currency(requested, locked)
 
+    base = (public_url or cfg.public_url).rstrip("/")
     success_url = (
-        f"{cfg.public_url}/client/checkout/success"
+        f"{base}/client/checkout/success"
         f"?session_id={{CHECKOUT_SESSION_ID}}"
     )
-    cancel_url = f"{cfg.public_url}/?checkout=cancelled"
+    cancel_url = f"{base}/?checkout=cancelled"
 
     if business_pairs:
         pairs = validate_checkout_pairs(business_pairs)
@@ -560,12 +581,36 @@ def cancel_subscription(
 def construct_webhook_event(
     payload: bytes, signature: str, settings: StripeSettings | None = None
 ) -> Any:
+    """Verify a Stripe webhook against the primary secret, then any extras.
+
+    Each Dashboard endpoint has its own signing secret. During the transition
+    the existing endpoint keeps ``ZEROMANUAL_STRIPE_WEBHOOK_SECRET`` and the
+    exmanual.com endpoint's secret is listed in
+    ``ZEROMANUAL_STRIPE_WEBHOOK_SECRETS``.
+    """
     import stripe
 
     cfg = settings or load_stripe_settings()
-    if not cfg.webhook_secret:
+    secrets: list[str] = []
+    if cfg.webhook_secret:
+        secrets.append(cfg.webhook_secret)
+    for extra in cfg.webhook_secrets:
+        if extra and extra not in secrets:
+            secrets.append(extra)
+    if not secrets:
         raise RuntimeError("ZEROMANUAL_STRIPE_WEBHOOK_SECRET no configurado")
-    return stripe.Webhook.construct_event(payload, signature, cfg.webhook_secret)
+
+    signature_error = stripe.error.SignatureVerificationError
+    last_error: Exception | None = None
+    for secret in secrets:
+        try:
+            return stripe.Webhook.construct_event(payload, signature, secret)
+        except signature_error as exc:
+            last_error = exc
+            continue
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("ZEROMANUAL_STRIPE_WEBHOOK_SECRET no configurado")
 
 
 def parse_session_metadata(session: Any) -> tuple[str, list[str], str]:

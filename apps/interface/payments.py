@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from apps.integrations import stripe_payments
 from apps.integrations.google_business import require_gbp_location_id
 from apps.integrations.n8n_client import negocio_ordinal
+from apps.integrations.public_origin import origin_for_request
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,15 @@ def activate_automation_for_client(
         "automation": record,
         "business_id": resolved_business_id,
     }
+
+
+def _checkout_public_url(request: Request, fallback: str) -> str:
+    return origin_for_request(
+        host=request.headers.get("host"),
+        forwarded_host=request.headers.get("x-forwarded-host"),
+        forwarded_proto=request.headers.get("x-forwarded-proto"),
+        fallback=fallback,
+    )
 
 
 def json_template_ids() -> dict[str, str]:
@@ -232,7 +242,9 @@ def register_payment_routes(
 
     @app.post("/client/checkout/session")
     def create_client_checkout_session(
-        req: CheckoutSessionRequest, client: dict = Depends(get_client_user)
+        req: CheckoutSessionRequest,
+        request: Request,
+        client: dict = Depends(get_client_user),
     ) -> dict:
         business_pairs: list[tuple[str, str]] | None = None
         if req.business_pairs:
@@ -290,6 +302,7 @@ def register_payment_routes(
                 settings=cfg,
                 business_pairs=business_pairs,
                 currency=requested,
+                public_url=_checkout_public_url(request, cfg.public_url),
             )
         except stripe_payments.CurrencyLockedError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -353,13 +366,20 @@ def register_payment_routes(
             return RedirectResponse(url="/client?checkout=error", status_code=303)
 
     @app.post("/client/billing/portal")
-    def client_billing_portal(client: dict = Depends(get_client_user)) -> dict:
+    def client_billing_portal(
+        request: Request, client: dict = Depends(get_client_user)
+    ) -> dict:
         stored = store.get_client_by_id(client["client_id"]) or {}
         customer_id = stored.get("stripe_customer_id")
         if not customer_id:
             raise HTTPException(status_code=400, detail="No hay cliente de Stripe asociado")
         try:
-            return stripe_payments.create_billing_portal_session(stripe_customer_id=customer_id)
+            cfg = stripe_payments.load_stripe_settings()
+            origin = _checkout_public_url(request, cfg.public_url)
+            return stripe_payments.create_billing_portal_session(
+                stripe_customer_id=customer_id,
+                return_url=f"{origin}/client",
+            )
         except Exception as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
 

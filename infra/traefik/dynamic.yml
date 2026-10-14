@@ -1,0 +1,33 @@
+# Igual que las labels de infra/docker-compose.exmanual.yml.
+# No declara el router zeromanual. No se monta en el Traefik del VPS.
+http:
+  routers:
+    exmanual:
+      rule: Host(`exmanual.com`)
+      entryPoints:
+        - web
+        - websecure
+      service: zeromanual
+      tls:
+        certResolver: mytlschallenge
+    exmanual-www:
+      rule: Host(`www.exmanual.com`)
+      entryPoints:
+        - web
+        - websecure
+      middlewares:
+        - exmanual-www-redirect
+      service: zeromanual
+      tls:
+        certResolver: mytlschallenge
+  middlewares:
+    exmanual-www-redirect:
+      redirectRegex:
+        regex: ^https://www\.exmanual\.com/(.*)
+        replacement: https://exmanual.com/${1}
+        permanent: true
+  services:
+    zeromanual:
+      loadBalancer:
+        servers:
+          - url: http://api:8090

@@ -87,6 +87,7 @@ def activate_automation_for_client(
             automation_type=automation_type,
             business_id=resolved_business_id,
             business_ordinal=ordinal,
+            activated_at=(existing or {}).get("activated_at"),
         )
     except ValueError:
         raise

@@ -98,6 +98,8 @@ La plantilla no pone `settings.availableInMCP`. `duplicate_template` copia `sett
 
 Formato: `NombreCliente_NegocioNN_YYYYMMDD` (fecha en Europe/Madrid).
 
+La fecha es la de activación: `client_automations.activated_at`. Si no hay valor, `createdAt` del workflow en n8n, convertido a Europe/Madrid. No es el día del renombrado ni la fecha en que se ejecuta el comando.
+
 - `NombreCliente`: `client_name` sin espacios ni símbolos (se conservan letras Unicode y dígitos). Vacío → `Cliente`.
 - `NegocioNN`: **nunca** la calle ni el nombre comercial.
   - Un solo negocio del cliente → siempre `Negocio01`. Ejemplo: `CDVTrading_Negocio01_20261003`.

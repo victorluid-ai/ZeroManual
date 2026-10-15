@@ -49,19 +49,46 @@ def negocio_ordinal(businesses: list[dict[str, Any]] | None, business_id: str | 
     return len(ordered) + 1
 
 
+def _as_aware(moment: datetime | str | None) -> datetime | None:
+    if moment is None:
+        return None
+    if isinstance(moment, str):
+        text = moment.strip()
+        if not text:
+            return None
+        normalized = f"{text[:-1]}+00:00" if text.endswith("Z") else text
+        moment = datetime.fromisoformat(normalized)
+    if not isinstance(moment, datetime):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment
+
+
+def activation_calendar_date(
+    activated_at: datetime | str | None = None,
+    created_at: datetime | str | None = None,
+) -> str:
+    """YYYYMMDD in Europe/Madrid. Activation wins; otherwise n8n createdAt."""
+    moment = _as_aware(activated_at)
+    if moment is None:
+        moment = _as_aware(created_at)
+    if moment is None:
+        raise ValueError("Falta la fecha de activación del workflow")
+    return moment.astimezone(_MADRID).strftime("%Y%m%d")
+
+
 def build_client_workflow_name(
     client_name: str,
     *,
     ordinal: int = 1,
-    activated_at: datetime | None = None,
+    activated_at: datetime | str | None = None,
+    created_at: datetime | str | None = None,
 ) -> str:
-    """``NombreCliente_NegocioNN_YYYYMMDD`` in Europe/Madrid."""
+    """``NombreCliente_NegocioNN_YYYYMMDD`` from activation, else createdAt, in Europe/Madrid."""
     cliente = sanitize_workflow_name_part(client_name, "Cliente")
     segment = negocio_segment(ordinal)
-    when = activated_at or datetime.now(_MADRID)
-    if when.tzinfo is None:
-        when = when.replace(tzinfo=timezone.utc)
-    fecha = when.astimezone(_MADRID).strftime("%Y%m%d")
+    fecha = activation_calendar_date(activated_at, created_at)
     suffix = f"_{segment}_{fecha}"
     if len(cliente) + len(suffix) > _NAME_MAX:
         cliente = cliente[: _NAME_MAX - len(suffix)] or "Cliente"
@@ -176,7 +203,8 @@ class N8nClient:
         automation_type: str | None = None,
         business_id: str | None = None,
         business_ordinal: int | None = None,
-        activated_at: datetime | None = None,
+        activated_at: datetime | str | None = None,
+        created_at: datetime | str | None = None,
     ) -> str:
         """Copy a template workflow, inject client credentials, activate it, and return the new workflow ID.
 
@@ -185,7 +213,7 @@ class N8nClient:
         webhook paths) per business instead of colliding on the same paths.
 
         ``business_ordinal`` selects the NegocioNN segment (1 → Negocio01). A missing
-        ordinal is treated as 1. The calendar date is Europe/Madrid.
+        ordinal is treated as 1. The date is activation, else the new workflow createdAt.
         """
         if automation_type == "google_reviews":
             location_id = require_gbp_location_id(location_id)
@@ -195,9 +223,17 @@ class N8nClient:
         # (400 "must NOT have additional properties"), so only pass through the
         # fields it actually accepts rather than the full GET /workflows/{id} shape.
         ordinal = 1 if not business_ordinal or business_ordinal < 1 else business_ordinal
+        has_date = _as_aware(activated_at) is not None or _as_aware(created_at) is not None
         wf = {
-            "name": build_client_workflow_name(
-                client_name, ordinal=ordinal, activated_at=activated_at
+            "name": (
+                build_client_workflow_name(
+                    client_name,
+                    ordinal=ordinal,
+                    activated_at=activated_at,
+                    created_at=created_at,
+                )
+                if has_date
+                else sanitize_workflow_name_part(client_name, "Cliente")
             ),
             "nodes": copy.deepcopy(tpl.get("nodes", [])),
             "connections": copy.deepcopy(tpl.get("connections", {})),
@@ -217,6 +253,17 @@ class N8nClient:
             self._inject_publish_reply_webhook(wf, client_id, business_id)
         created = self._submit_workflow(wf, folder_id) if folder_id else self.create_workflow(wf)
         wf_id = str(created["id"])
+        if not has_date:
+            try:
+                wf["name"] = build_client_workflow_name(
+                    client_name,
+                    ordinal=ordinal,
+                    created_at=created.get("createdAt") or created.get("created_at"),
+                )
+                self._put_named_workflow(wf_id, wf, folder_id)
+            except Exception:
+                self.delete_workflow(wf_id)
+                raise
         self.activate_workflow(wf_id)
         return wf_id
 
@@ -254,6 +301,32 @@ class N8nClient:
             return created
         response.raise_for_status()
         return response.json()
+
+    def _put_named_workflow(self, workflow_id: str, wf: dict, folder_id: str | None) -> None:
+        body = {
+            "name": wf.get("name"),
+            "nodes": wf.get("nodes") or [],
+            "connections": wf.get("connections") or {},
+            "settings": wf.get("settings") or {},
+            "staticData": wf.get("staticData") or {},
+        }
+        if folder_id:
+            body["parentFolderId"] = folder_id
+        response = httpx.put(
+            f"{self._base}/workflows/{workflow_id}",
+            headers=self._headers,
+            json=body,
+            timeout=15,
+        )
+        if folder_id and response.status_code == 400 and _body_rejects_parent_folder(response.text):
+            body.pop("parentFolderId", None)
+            response = httpx.put(
+                f"{self._base}/workflows/{workflow_id}",
+                headers=self._headers,
+                json=body,
+                timeout=15,
+            )
+        response.raise_for_status()
 
     def _move_workflow_to_folder(self, workflow_id: str, wf: dict, folder_id: str) -> bool:
         body = {

@@ -508,6 +508,28 @@ def test_activate_threads_ordinal_not_display_name(monkeypatch: pytest.MonkeyPat
                 {"business_id": "B-2", "created_at": "2026-02-01", "business_name": "Norte"},
             ]
 
+        def begin_google_reviews_claim(self, client_id: str, business_id: str, location_id: str) -> dict:
+            assert location_id == LOCATION
+            return {
+                "action": "reserve",
+                "workflow_id": None,
+                "business_id": business_id,
+                "automation": None,
+            }
+
+        def bind_google_reviews_workflow(
+            self, client_id: str, business_id: str, workflow_id: str, location_id: str
+        ) -> dict:
+            return {
+                "status": "active",
+                "n8n_workflow_id": workflow_id,
+                "business_id": business_id,
+                "location_id": location_id,
+            }
+
+        def abort_google_reviews_claim(self, client_id: str, business_id: str) -> None:
+            raise AssertionError("la activación válida no debe liberar la reserva")
+
         def activate_automation(self, *args, **kwargs) -> dict:
             return {"status": "active"}
 

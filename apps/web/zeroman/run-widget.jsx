@@ -1,4 +1,4 @@
-/* ZeroManual live demo: a Google review comes in → ZeroManual drafts a warm,
+/* ExManual live demo: a Google review comes in → ExManual drafts a warm,
    on-brand reply → posts it. Loops through three reviews. Bilingual. */
 
 const { useState, useEffect, useRef } = React;
@@ -131,10 +131,10 @@ const REVIEWS = {
 
 const COPY = {
   es: {
-    watching: "ZeroManual · vigilando tus reseñas",
+    watching: "ExManual · vigilando tus reseñas",
     incoming: "Reseña nueva",
     on: "en Google",
-    drafting: "ZeroManual está redactando una respuesta",
+    drafting: "ExManual está redactando una respuesta",
     learning: "tono cálido, igual al tuyo",
     postBtn: "Publicar respuesta",
     posted: "Respuesta publicada",
@@ -142,10 +142,10 @@ const COPY = {
     foot: "Esto pasa con cada reseña nueva, día y noche.",
   },
   en: {
-    watching: "ZeroManual · watching your reviews",
+    watching: "ExManual · watching your reviews",
     incoming: "New review",
     on: "on Google",
-    drafting: "ZeroManual is drafting a reply",
+    drafting: "ExManual is drafting a reply",
     learning: "warm voice, sounds like you",
     postBtn: "Post reply",
     posted: "Reply posted",
@@ -281,7 +281,7 @@ function ReviewReplyVideo({ lang = "es" }) {
 }
 
 /* ============================================================
-   REELS DEMO: ZeroManual detects new media → auto-edits a reel →
+   REELS DEMO: ExManual detects new media → auto-edits a reel →
    writes caption + hashtags in your voice → posts to Instagram.
    Vertical phone preview cycles scenes like a real story. Bilingual.
    ============================================================ */
@@ -347,33 +347,33 @@ const RL_CSS = `
 
 const REEL_SCENES = {
   es: [
-    { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "Nunca más\neditas un reel", sub: "ZeroManual lo hace por ti", emoji: "🎬" },
+    { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "Nunca más\neditas un reel", sub: "ExManual lo hace por ti", emoji: "🎬" },
     { type: "upload",  dur: 2700, bg: "linear-gradient(165deg,#1d2233,#0b0d16)", glow: "rgba(120,130,160,.3)", kicker: "Paso 1", title: "Sube tus fotos", sub: "o las saca de tu galería", photos: ["🍳", "🥐", "☕"] },
     { type: "edit",    dur: 2900, bg: "linear-gradient(165deg,#3a2f9a,#16182a)", glow: "rgba(79,70,229,.5)", kicker: "Paso 2", title: "La IA las edita", sub: "cortes, ritmo y audio de tendencia", frames: ["🍳", "🥐", "☕", "🪟"] },
     { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Paso 3", title: "Escribe el pie de foto", caption: "Domingo de brunch en Café Luma 🍳 te guardamos mesa ", tags: "#CafeLuma #brunch" },
     { type: "publish", dur: 2800, bg: "linear-gradient(165deg,#11885b,#0a3a2b)", glow: "rgba(16,185,129,.45)", kicker: "Paso 4", title: "Y lo publica\npor ti", sub: "en Instagram y TikTok" },
-    { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Tus reels,\nen piloto automático", sub: "ZeroManual" },
+    { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Tus reels,\nen piloto automático", sub: "ExManual" },
   ],
   en: [
-    { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "You never\nedit a reel again", sub: "ZeroManual does it for you", emoji: "🎬" },
+    { type: "hook",    dur: 2600, bg: "linear-gradient(165deg,#5b53f0,#2a2580)", glow: "rgba(91,83,240,.45)", kicker: "POV", title: "You never\nedit a reel again", sub: "ExManual does it for you", emoji: "🎬" },
     { type: "upload",  dur: 2700, bg: "linear-gradient(165deg,#1d2233,#0b0d16)", glow: "rgba(120,130,160,.3)", kicker: "Step 1", title: "Drop your photos", sub: "or it grabs them from your gallery", photos: ["🍳", "🥐", "☕"] },
     { type: "edit",    dur: 2900, bg: "linear-gradient(165deg,#3a2f9a,#16182a)", glow: "rgba(79,70,229,.5)", kicker: "Step 2", title: "AI edits them", sub: "cuts, pacing and trending audio", frames: ["🍳", "🥐", "☕", "🪟"] },
     { type: "caption", dur: 4400, bg: "linear-gradient(165deg,#141622,#0b0d14)", glow: "rgba(79,70,229,.4)", kicker: "Step 3", title: "Writes the caption", caption: "Sunday brunch at Café Luma 🍳 we'll save you a table ", tags: "#CafeLuma #brunch" },
     { type: "publish", dur: 2800, bg: "linear-gradient(165deg,#11885b,#0a3a2b)", glow: "rgba(16,185,129,.45)", kicker: "Step 4", title: "And posts it\nfor you", sub: "to Instagram and TikTok" },
-    { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Your reels,\non autopilot", sub: "ZeroManual" },
+    { type: "end",     dur: 3000, bg: "linear-gradient(165deg,#5b53f0,#3730a3)", glow: "rgba(91,83,240,.5)", title: "Your reels,\non autopilot", sub: "ExManual" },
   ],
 };
 
 const RL_COPY = {
   es: {
-    watching: "ZeroManual · creando tu contenido",
+    watching: "ExManual · creando tu contenido",
     preview: "Reel",
     music: "Sunny Mornings · audio de tendencia",
     acct: "cafeluma", follow: "Seguir",
     foot: "Tus fotos se vuelven reels y se publican solas, cada semana.",
   },
   en: {
-    watching: "ZeroManual · creating your content",
+    watching: "ExManual · creating your content",
     preview: "Reel",
     music: "Sunny Mornings · trending audio",
     acct: "cafeluma", follow: "Follow",

@@ -619,6 +619,7 @@
         <div class="topbar-brand-name">Zero<span>Manual</span></div>
       </a>
     </div>
+    <p id="location-taken" hidden role="status" style="margin:0;padding:12px 16px;background:#fde8e8;color:#8a1f1f;font:14px/1.45 system-ui,sans-serif">Esta ficha de Google ya está conectada a otra cuenta de ExManual. Si es tuya, escríbenos y lo revisamos.</p>
     <main class="panel" id="content"></main>
   </div>
   <nav class="bottom-nav" id="bottom-nav" aria-label="Navegación"></nav>
@@ -731,12 +732,20 @@
   const $ = id => document.getElementById(id);
   let toastTimer = null;
 
-  function toast(msg, kind) {
+  const GBP_LOCATION_TAKEN = (document.getElementById('location-taken').textContent || '').replace(/\s+/g, ' ').trim();
+
+  function toast(msg, kind, ms) {
     const el = $('toast');
     el.textContent = msg;
     el.className = 'show' + (kind ? ' ' + kind : '');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => { el.className = ''; }, 3200);
+    toastTimer = setTimeout(() => { el.className = ''; }, ms || 3200);
+  }
+
+  function showLocationTaken() {
+    const banner = $('location-taken');
+    if (banner) banner.hidden = false;
+    toast(GBP_LOCATION_TAKEN, 'err', 12000);
   }
 
   function escHtml(s) {
@@ -756,7 +765,10 @@
       const t = await r.text();
       let detail = t;
       try { detail = JSON.parse(t).detail || t; } catch (err) { detail = t; }
-      throw new Error(detail);
+      if (detail && typeof detail !== 'string') detail = t;
+      const error = new Error(detail);
+      error.status = r.status;
+      throw error;
     }
     return r.json();
   }
@@ -953,7 +965,8 @@
     if (failed.length) localStorage.setItem(CART_HANDOFF_KEY, JSON.stringify(failed));
     else localStorage.removeItem(CART_HANDOFF_KEY);
     if (activated) toast(`${activated} automatización(es) activada(s)`, 'ok');
-    if (failed.length) toast(`No se pudo activar: ${lastError}`, 'err');
+    if (failed.length && lastError === GBP_LOCATION_TAKEN) showLocationTaken();
+    else if (failed.length) toast(`No se pudo activar: ${lastError}`, 'err');
   }
 
   async function showApp() {
@@ -1499,6 +1512,11 @@
       }
       await loadWorkspace();
     } catch (err) {
+      if (err && (err.status === 409 || err.message === GBP_LOCATION_TAKEN)) {
+        showLocationTaken();
+        btn.disabled = false;
+        return;
+      }
       if (err.message && err.message.toLowerCase().includes('google')) {
         const card = btn.closest('.product-card') || btn.closest('.auto-card');
         if (!card) { toast(err.message, 'err'); btn.disabled = false; return; }
@@ -1566,7 +1584,8 @@
         activeView = type;
         await loadWorkspace();
       } catch (err) {
-        toast(err.message, 'err');
+        if (err && (err.status === 409 || err.message === GBP_LOCATION_TAKEN)) showLocationTaken();
+        else toast(err.message, 'err');
         picker.remove();
         btn.disabled = false;
       }
@@ -2274,6 +2293,8 @@
     }
     if (params.get('checkout') === 'error') toast('No se pudo confirmar el pago. Inténtalo de nuevo.', 'err');
     if (params.get('error') === 'oauth_failed') toast('Error al conectar Google. Inténtalo de nuevo.', 'err');
+    const locationTaken = params.get('error') === 'location_taken';
+    if (locationTaken) showLocationTaken();
 
     if (params.get('connect') === 'google' && localStorage.getItem('mz_client_token')) {
       try {

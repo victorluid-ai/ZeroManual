@@ -11,9 +11,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 
 from apps.integrations import stripe_payments
-from apps.integrations.google_business import require_gbp_location_id
 from apps.integrations.n8n_client import negocio_ordinal
 from apps.integrations.public_origin import origin_for_request
+from apps.interface.google_reviews_activation import activate_google_reviews_for_client
+from apps.orchestrator.gbp_location_claim import LocationClaimedError
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +52,19 @@ def activate_automation_for_client(
     creds = store.get_google_creds(client_id)
     if not creds:
         raise ValueError("Conecta primero tu cuenta de Google Business")
+    template_id = templates[automation_type]
+    if not template_id:
+        raise RuntimeError("Template no configurado aún")
+    if automation_type == "google_reviews":
+        return activate_google_reviews_for_client(
+            store=store,
+            n8n=n8n,
+            client_id=client_id,
+            client_name=client_name,
+            business_id=business_id,
+            refresh_token=creds["refresh_token"],
+            template_id=template_id,
+        )
     resolved_business_id = business_id or store.ensure_default_business(client_id)["business_id"]
     existing = store.get_automation(client_id, resolved_business_id, automation_type)
     if existing and existing.get("status") == "active":
@@ -60,13 +74,8 @@ def activate_automation_for_client(
             "automation": existing,
             "business_id": resolved_business_id,
         }
-    template_id = templates[automation_type]
-    if not template_id:
-        raise RuntimeError("Template no configurado aún")
     business = store.get_business(resolved_business_id)
     location_id = (business or {}).get("location_id") or creds.get("location_id")
-    if automation_type == "google_reviews":
-        location_id = require_gbp_location_id(location_id)
     try:
         ordinal = negocio_ordinal(store.list_businesses(client_id), resolved_business_id)
         wf_id = n8n.duplicate_template(
@@ -193,6 +202,7 @@ def post_payment_redirect(
             store.set_pending_automation(client_id, automation_types[0])
         return RedirectResponse(url="/client/checkout/continue", status_code=303)
     activated: list[str] = []
+    location_taken = False
     if business_pairs:
         for automation_type, business_id in business_pairs:
             try:
@@ -205,6 +215,8 @@ def post_payment_redirect(
                     business_id=business_id,
                 )
                 activated.append(automation_type)
+            except LocationClaimedError:
+                location_taken = True
             except Exception as exc:
                 logger.warning(
                     "Post-payment activate failed for %s/%s/%s: %s",
@@ -221,11 +233,19 @@ def post_payment_redirect(
                     automation_type=automation_type,
                 )
                 activated.append(automation_type)
+            except LocationClaimedError:
+                location_taken = True
             except Exception as exc:
                 logger.warning("Post-payment activate failed for %s/%s: %s", client_id, automation_type, exc)
+    taken = "&error=location_taken" if location_taken else ""
     if activated:
         return RedirectResponse(
-            url=f"/client?activated={activated[0]}&checkout=paid",
+            url=f"/client?activated={activated[0]}&checkout=paid{taken}",
+            status_code=303,
+        )
+    if location_taken:
+        return RedirectResponse(
+            url=f"/client?error=location_taken&checkout=paid",
             status_code=303,
         )
     return RedirectResponse(url="/client?checkout=paid", status_code=303)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import logging
 import os
@@ -24,6 +25,10 @@ from apps.integrations.google_business import (
 from apps.integrations.n8n_client import N8nClient
 from apps.integrations import stripe_payments
 from apps.interface.payments import activate_automation_for_client, register_payment_routes
+from apps.orchestrator.gbp_location_claim import (
+    GBP_LOCATION_TAKEN_MESSAGE,
+    LocationClaimedError,
+)
 from apps.orchestrator.runtime import OrchestratorRuntime
 from apps.zeromanual_env import zm_env
 
@@ -360,10 +365,16 @@ def google_callback(code: str, state: str) -> RedirectResponse:
             google_email=google_email,
             location_id=None,
         )
-        _sync_businesses_from_google(client_id)
+        synced = _sync_businesses_from_google(client_id)
     except Exception as exc:
         logging.getLogger(__name__).exception("Google OAuth callback failed: %s", exc)
         return RedirectResponse("/client?error=oauth_failed")
+
+    synced_locations = [
+        row.get("location_id") for row in synced if isinstance(row, dict)
+    ]
+    if runtime.store.google_locations_held_by_other(client_id, synced_locations):
+        return _google_location_taken_response()
 
     pending_type = runtime.store.get_pending_automation(client_id)
     if pending_type:
@@ -379,9 +390,23 @@ def google_callback(code: str, state: str) -> RedirectResponse:
                 automation_type=pending_type,
             )
             return RedirectResponse(f"/client?activated={pending_type}")
+        except LocationClaimedError:
+            return _google_location_taken_response()
         except Exception:
             return RedirectResponse("/client?connected=1")
     return RedirectResponse("/client?connected=1")
+
+
+def _google_location_taken_response() -> HTMLResponse:
+    """HTTP 409 with the public sentence. The portal paints the same text."""
+    safe = html.escape(GBP_LOCATION_TAKEN_MESSAGE)
+    page = (
+        "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">"
+        "<meta http-equiv=\"refresh\" content=\"0;url=/client?error=location_taken\">"
+        "<title>ExManual</title></head><body><p>"
+        f"{safe}</p></body></html>"
+    )
+    return HTMLResponse(status_code=409, content=page)
 
 
 @app.get("/client/businesses")
@@ -480,6 +505,8 @@ def activate_client_automation(
             automation_type=automation_type,
             business_id=business_id,
         )
+    except LocationClaimedError as exc:
+        raise HTTPException(status_code=409, detail=GBP_LOCATION_TAKEN_MESSAGE) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:

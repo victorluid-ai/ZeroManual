@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import secrets
 import sqlite3
 from datetime import datetime, timedelta, timezone
@@ -11,11 +12,21 @@ from typing import Any
 
 from apps.integrations.google_business import is_valid_gbp_location_id
 from apps.integrations.settings import load_integration_settings
+from apps.orchestrator.gbp_location_claim import (
+    abort_google_reviews_claim,
+    begin_google_reviews_claim,
+    bind_google_reviews_workflow,
+    ensure_live_location_index,
+    google_locations_held_by_other,
+)
 from apps.orchestrator.models import DEFAULT_ENTITY_ID
 
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+_logger = logging.getLogger(__name__)
 
 
 _PBKDF2_ITERS = 260_000
@@ -46,9 +57,10 @@ class DataStore:
         self.generated_client_password = self.ensure_default_client()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._path)
+        conn = sqlite3.connect(self._path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
         return conn
 
     def _init_schema(self) -> None:
@@ -250,6 +262,7 @@ class DataStore:
                     activated_at        TEXT,
                     reply_mode          TEXT    NOT NULL DEFAULT 'approval',
                     settings_json       TEXT    DEFAULT '{}',
+                    location_id         TEXT,
                     UNIQUE (client_id, business_id, automation_type),
                     FOREIGN KEY (client_id) REFERENCES clients(client_id) ON DELETE CASCADE,
                     FOREIGN KEY (business_id) REFERENCES client_businesses(business_id) ON DELETE CASCADE
@@ -274,6 +287,7 @@ class DataStore:
                 """
             )
             self._apply_migrations(conn)
+        self._ensure_gbp_location_index()
 
     def _apply_migrations(self, conn: sqlite3.Connection) -> None:
         row = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()
@@ -578,6 +592,51 @@ class DataStore:
             if "business_id" not in draft_cols:
                 conn.execute("ALTER TABLE automation_drafts ADD COLUMN business_id TEXT")
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (8)")
+
+        # location_id is additive. Existing rows stay. The partial unique index
+        # covers only active/paused google_reviews. If the current database
+        # already has two live rows for one location (n8n workflows
+        # ePhhOcDT7ew5q74A and 74hUH1G0aTgGBrZT may), index creation is skipped
+        # and no row is deleted. That conflict stays a pending decision.
+        auto_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(client_automations)").fetchall()
+        }
+        if "location_id" not in auto_cols:
+            conn.execute("ALTER TABLE client_automations ADD COLUMN location_id TEXT")
+        if "location_id" not in auto_cols or current < 9:
+            conn.execute(
+                """
+                UPDATE client_automations
+                SET location_id = (
+                    SELECT cb.location_id FROM client_businesses cb
+                    WHERE cb.business_id = client_automations.business_id
+                )
+                WHERE (location_id IS NULL OR location_id = '')
+                  AND business_id IS NOT NULL
+                """
+            )
+        if current < 9:
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (9)")
+
+    def _ensure_gbp_location_index(self) -> None:
+        conn = self._connect()
+        try:
+            ok = ensure_live_location_index(conn)
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            _logger.warning(
+                "No se pudo crear el índice único de fichas Google. Datos conservados.",
+                exc_info=True,
+            )
+            return
+        finally:
+            conn.close()
+        if not ok:
+            _logger.warning(
+                "Índice único de location_id no creado: hay automatizaciones "
+                "active/paused duplicadas. Datos conservados. Decisión pendiente."
+            )
 
     def save_pending_approval(
         self,
@@ -1378,6 +1437,26 @@ class DataStore:
         return dict(row)
 
     # ---- Client Automations ----
+
+    def begin_google_reviews_claim(
+        self, client_id: str, business_id: str, location_id: str
+    ) -> dict[str, Any]:
+        return begin_google_reviews_claim(self._connect, client_id, business_id, location_id)
+
+    def bind_google_reviews_workflow(
+        self, client_id: str, business_id: str, workflow_id: str, location_id: str
+    ) -> dict[str, Any]:
+        return bind_google_reviews_workflow(
+            self._connect, client_id, business_id, workflow_id, location_id
+        )
+
+    def abort_google_reviews_claim(self, client_id: str, business_id: str) -> None:
+        abort_google_reviews_claim(self._connect, client_id, business_id)
+
+    def google_locations_held_by_other(
+        self, client_id: str, location_ids: list[str | None]
+    ) -> bool:
+        return google_locations_held_by_other(self._connect, client_id, location_ids)
 
     def activate_automation(
         self, client_id: str, business_id: str, automation_type: str, n8n_workflow_id: str

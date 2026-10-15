@@ -2,6 +2,15 @@
    Subscribe flow: auth → Stripe Checkout (or free/dev grant) → activate / Google OAuth. */
 const { useState, useEffect, useRef } = React;
 
+function BrandMark({ size = 22 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" style={{ display: "block", flexShrink: 0 }}>
+      <circle cx="16" cy="16" r="15.11" fill="none" stroke="#0E1116" strokeWidth="1.78" />
+      <circle cx="16" cy="16" r="7.7" fill="#4F46E5" />
+    </svg>
+  );
+}
+
 const CART_HANDOFF_KEY = "zm_pending_activations";
 
 // Only these have a real automation_type in the backend today; the rest
@@ -323,8 +332,8 @@ function LoginModal({ tt, onClose, initialMode = "login", stayOnPage = false, on
       <div style={{ background: "#fff", border: "1px solid #E6E9EE", borderRadius: 16, padding: "32px 28px", width: 320, boxShadow: "0 30px 80px rgba(14,17,22,.3)", position: "relative" }}>
         <button onClick={onClose} aria-label="Cerrar" style={{ position: "absolute", top: 12, right: 14, background: "none", border: "none", fontSize: 18, cursor: "pointer", color: "#9099A6", lineHeight: 1 }}>×</button>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 18 }}>
-          <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#4F46E5", display: "inline-block" }}></span>
-          <span style={{ fontWeight: 700, fontSize: 15, fontFamily: "'Space Grotesk',sans-serif" }}>ZeroManual</span>
+          <BrandMark size={22} />
+          <span style={{ fontWeight: 500, fontSize: 15, fontFamily: "'Space Grotesk',sans-serif", letterSpacing: "-.02em", color: "#0E1116" }}>exmanual</span>
         </div>
         <div style={{ fontWeight: 600, fontSize: 17, marginBottom: 4 }}>{isLogin ? tl.title : tl.registerTitle}</div>
         <div style={{ color: "#6B7280", fontSize: 13, marginBottom: 20 }}>{isLogin ? tl.sub : tl.registerSub}</div>
@@ -1090,10 +1099,8 @@ function App() {
       <header style={{ position: "sticky", top: 0, zIndex: 40, background: "rgba(246,247,249,.82)", backdropFilter: "blur(12px)", borderBottom: "1px solid #E6E9EE" }}>
         <div className="zm-topbar" style={{ maxWidth: 1200, margin: "0 auto", padding: "13px 24px", display: "flex", alignItems: "center", gap: 18 }}>
           <a href="#top" className="zm-brand" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none", color: "#0E1116" }}>
-            <span style={{ width: 27, height: 27, border: "1.6px solid #0E1116", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <span style={{ width: 13, height: 13, borderRadius: "50%", background: "#4F46E5", animation: "zmPulse 2.4s ease-in-out infinite" }}></span>
-            </span>
-            <span className="zm-word" style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 19, letterSpacing: "-.01em" }}>Ex<span style={{ fontWeight: 300 }}>Manual</span></span>
+            <BrandMark size={27} />
+            <span className="zm-word" style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 500, fontSize: 19, letterSpacing: "-.02em" }}>exmanual</span>
           </a>
           <nav className="zm-nav" style={{ display: "flex", gap: 4, marginLeft: 6 }}>
             <a href="#zm-grid" className="zm2-navlink" style={{ textDecoration: "none", color: "#3A4150", fontSize: 14.5, fontWeight: 500, padding: "7px 12px", borderRadius: 8 }}>{t.nav.automations}</a>
@@ -1253,10 +1260,8 @@ function App() {
 
       <footer style={{ maxWidth: 1200, margin: "60px auto 0", padding: "34px 24px 44px", borderTop: "1px solid #E6E9EE", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
-          <span style={{ width: 23, height: 23, border: "1.5px solid #0E1116", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <span style={{ width: 11, height: 11, borderRadius: "50%", background: "#4F46E5", animation: "zmPulse 2.4s ease-in-out infinite" }}></span>
-          </span>
-          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 600, fontSize: 16, letterSpacing: "-.01em" }}>Ex<span style={{ fontWeight: 300 }}>Manual</span></span>
+          <BrandMark size={23} />
+          <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 500, fontSize: 16, letterSpacing: "-.02em" }}>exmanual</span>
         </div>
         <p style={{ margin: 0, color: "#9099A6", fontSize: 13.5 }}>{t.footer}</p>
       </footer>

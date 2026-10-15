@@ -74,6 +74,7 @@ def activate_google_reviews_for_client(
             automation_type="google_reviews",
             business_id=claimed_business_id,
             business_ordinal=ordinal,
+            activated_at=(claim.get("automation") or {}).get("activated_at"),
         )
     except LocationClaimedError:
         raise

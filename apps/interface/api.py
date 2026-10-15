@@ -32,7 +32,7 @@ from apps.orchestrator.gbp_location_claim import (
 from apps.orchestrator.runtime import OrchestratorRuntime
 from apps.zeromanual_env import zm_env
 
-app = FastAPI(title="ZeroManual Web API", version="0.2.0")
+app = FastAPI(title="ExManual Web API", version="0.2.0")
 runtime = OrchestratorRuntime()
 _n8n = N8nClient()
 _google_oauth = GoogleOAuthHelper()

@@ -138,7 +138,7 @@ def main() -> None:
 
         page.route("**/*", build_route_handler(intercepted))
         page.goto(BASE + "/")
-        page.wait_for_selector("text=ZeroManual")
+        page.wait_for_selector("text=ExManual")
 
         card = page.locator(".zm2-card", has_text="Responder reseñas de Google").first
         card.locator("button").first.click()  # click 1: Suscribirme

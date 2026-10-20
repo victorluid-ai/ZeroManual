@@ -216,6 +216,7 @@ class DataStore:
                     stripe_checkout_session_id TEXT,
                     current_period_end    TEXT,
                     cancel_at_period_end  INTEGER NOT NULL DEFAULT 0,
+                    stripe_event_created  INTEGER,
                     created_at            TEXT    NOT NULL,
                     updated_at            TEXT    NOT NULL,
                     UNIQUE (client_id, automation_type),
@@ -635,6 +636,16 @@ class DataStore:
             )
         if current < 10:
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (10)")
+
+        # stripe_event_created guarda el event.created del último evento de
+        # suscripción aplicado. CREATE TABLE IF NOT EXISTS no lo añade a una
+        # tabla vieja: ALTER solo si falta.
+        if sub_cols and "stripe_event_created" not in sub_cols:
+            conn.execute(
+                "ALTER TABLE client_subscriptions ADD COLUMN stripe_event_created INTEGER"
+            )
+        if current < 11:
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (11)")
 
     def _ensure_gbp_location_index(self) -> None:
         conn = self._connect()
@@ -1668,6 +1679,22 @@ class DataStore:
         sub = self.get_subscription(client_id, automation_type)
         return bool(sub and sub.get("status") in self._ACTIVE_SUB_STATUSES)
 
+    def subscription_event_is_current(
+        self, stripe_subscription_id: str, event_created: int | None
+    ) -> bool:
+        """False when this subscription event is strictly older than one already applied.
+
+        An event with the same ``created`` is applied. Only a smaller timestamp
+        is ignored.
+        """
+        if event_created is None:
+            return True
+        for row in self.list_subscriptions_by_stripe_id(stripe_subscription_id):
+            prev = row.get("stripe_event_created")
+            if prev is not None and int(event_created) < int(prev):
+                return False
+        return True
+
     def mark_subscriptions_by_stripe_id(
         self,
         stripe_subscription_id: str,
@@ -1675,11 +1702,13 @@ class DataStore:
         *,
         current_period_end: str | None = None,
         cancel_at_period_end: bool | None = None,
+        stripe_event_created: int | None = None,
     ) -> int:
         """Update every row of one Stripe subscription.
 
         ``cancel_at_period_end=None`` leaves the flag untouched.
         ``False`` clears a scheduled cancellation. A null period end is kept.
+        ``stripe_event_created=None`` leaves the last applied event timestamp.
         """
         now = _utc_now()
         flag = None if cancel_at_period_end is None else (1 if cancel_at_period_end else 0)
@@ -1689,9 +1718,17 @@ class DataStore:
                    status=?,
                    current_period_end=COALESCE(?, current_period_end),
                    cancel_at_period_end=COALESCE(?, cancel_at_period_end),
+                   stripe_event_created=COALESCE(?, stripe_event_created),
                    updated_at=?
                    WHERE stripe_subscription_id=?""",
-                (status, current_period_end, flag, now, stripe_subscription_id),
+                (
+                    status,
+                    current_period_end,
+                    flag,
+                    stripe_event_created,
+                    now,
+                    stripe_subscription_id,
+                ),
             )
             return int(cur.rowcount)
 

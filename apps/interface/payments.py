@@ -430,8 +430,14 @@ def register_payment_routes(
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"Webhook inválido: {exc}") from exc
 
-        event_type = event["type"]
-        data_object = stripe_payments.stripe_object_to_dict(event["data"]["object"])
+        # stripe 16 Event no es un dict: .get lanza AttributeError. to_dict()
+        # deja un dict plano, igual que los eventos que llegan ya como dict.
+        event_payload = stripe_payments.stripe_object_to_dict(event)
+        event_type = str(event_payload.get("type") or "")
+        envelope = event_payload.get("data") or {}
+        if not isinstance(envelope, dict):
+            envelope = stripe_payments.stripe_object_to_dict(envelope)
+        data_object = stripe_payments.stripe_object_to_dict(envelope.get("object"))
 
         if event_type == "checkout.session.completed":
             try:
@@ -458,7 +464,9 @@ def register_payment_routes(
             "customer.subscription.updated",
             "customer.subscription.deleted",
         ):
-            apply_subscription_webhook(store, event_type, data_object)
+            apply_subscription_webhook(
+                store, event_type, data_object, event_payload.get("created")
+            )
 
         elif event_type == "invoice.payment_failed":
             sub_id = stripe_payments.stripe_id(data_object.get("subscription"))

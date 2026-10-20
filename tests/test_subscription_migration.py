@@ -85,7 +85,8 @@ def _subscription_row(path: Path) -> tuple:
     row = conn.execute(
         """SELECT subscription_id, client_id, automation_type, status, billing_interval,
                   provider, stripe_subscription_id, stripe_checkout_session_id,
-                  created_at, updated_at, current_period_end, cancel_at_period_end
+                  created_at, updated_at, current_period_end, cancel_at_period_end,
+                  stripe_event_created
            FROM client_subscriptions WHERE subscription_id='SUB-OLD'"""
     ).fetchone()
     conn.close()
@@ -101,8 +102,10 @@ def test_legacy_subscriptions_gain_period_columns_without_losing_rows(tmp_path: 
     DataStore(str(db_path))
     DataStore(str(db_path))
 
-    assert {"current_period_end", "cancel_at_period_end"} <= _columns(db_path)
-    assert _subscription_row(db_path) == _OLD_SUBSCRIPTION + (None, 0)
+    assert {"current_period_end", "cancel_at_period_end", "stripe_event_created"} <= _columns(
+        db_path
+    )
+    assert _subscription_row(db_path) == _OLD_SUBSCRIPTION + (None, 0, None)
 
     conn = sqlite3.connect(db_path)
     client = conn.execute(
@@ -112,5 +115,78 @@ def test_legacy_subscriptions_gain_period_columns_without_losing_rows(tmp_path: 
     count = conn.execute("SELECT COUNT(*) FROM client_subscriptions").fetchone()[0]
     conn.close()
     assert client == ("Antigua", "antigua@example.com", "cus_old")
-    assert version >= 10
+    assert version >= 11
+    assert count == 1
+
+
+def test_schema_10_gains_event_created_without_losing_rows(tmp_path: Path) -> None:
+    db_path = tmp_path / "v10.db"
+    conn = sqlite3.connect(db_path)
+    conn.executescript(
+        """
+        CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+        INSERT INTO schema_version (version) VALUES (10);
+
+        CREATE TABLE clients (
+            client_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            plan TEXT NOT NULL DEFAULT 'starter',
+            created_at TEXT NOT NULL,
+            pending_automation_type TEXT,
+            stripe_customer_id TEXT
+        );
+
+        CREATE TABLE client_subscriptions (
+            subscription_id TEXT PRIMARY KEY,
+            client_id TEXT NOT NULL,
+            automation_type TEXT NOT NULL,
+            status TEXT NOT NULL,
+            billing_interval TEXT NOT NULL DEFAULT 'monthly',
+            provider TEXT NOT NULL DEFAULT 'stripe',
+            stripe_subscription_id TEXT,
+            stripe_checkout_session_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            current_period_end TEXT,
+            cancel_at_period_end INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (client_id, automation_type)
+        );
+        """
+    )
+    conn.execute(
+        """INSERT INTO clients
+           (client_id, name, email, password_hash, plan, created_at, stripe_customer_id)
+           VALUES ('CLI-10', 'Diez', 'diez@example.com', 'hash', 'starter',
+                   '2026-03-01T00:00:00+00:00', 'cus_10')"""
+    )
+    conn.execute(
+        """INSERT INTO client_subscriptions
+           (subscription_id, client_id, automation_type, status, billing_interval,
+            provider, stripe_subscription_id, stripe_checkout_session_id,
+            created_at, updated_at, current_period_end, cancel_at_period_end)
+           VALUES ('SUB-10', 'CLI-10', 'google_reviews', 'active', 'monthly',
+                   'stripe', 'sub_10', 'cs_10',
+                   '2026-03-01T00:00:00+00:00', '2026-03-02T00:00:00+00:00',
+                   '1767225600', 1)"""
+    )
+    conn.commit()
+    conn.close()
+    assert "stripe_event_created" not in _columns(db_path)
+
+    DataStore(str(db_path))
+    DataStore(str(db_path))
+
+    assert "stripe_event_created" in _columns(db_path)
+    conn = sqlite3.connect(db_path)
+    row = conn.execute(
+        """SELECT status, current_period_end, cancel_at_period_end, stripe_event_created
+           FROM client_subscriptions WHERE subscription_id='SUB-10'"""
+    ).fetchone()
+    version = conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+    count = conn.execute("SELECT COUNT(*) FROM client_subscriptions").fetchone()[0]
+    conn.close()
+    assert row == ("active", "1767225600", 1, None)
+    assert version >= 11
     assert count == 1

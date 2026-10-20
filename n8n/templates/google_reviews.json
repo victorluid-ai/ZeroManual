@@ -183,7 +183,7 @@
         "nodeCredentialType": "openAiApi",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ model: 'nvidia/nemotron-3-super-120b-a12b:free', models: ['gemma-4-31b-it:free', 'gemma-4-26b-a4b-it:free'], messages: [{ role: 'system', content: 'Responde en el idioma de la reseña. Si la reseña no tiene texto, responde en español de España. Redacta una respuesta breve y profesional. No inventes datos ni ofrezcas compensaciones.' }, { role: 'user', content: 'Cliente: ' + ($json.reviewer_name || 'Anónimo') + '\\nNota: ' + ($json.starRating || '') + '\\nTexto: ' + ($json.review_text || '(sin texto)') }] }) }}",
+        "jsonBody": "={{ JSON.stringify({ model: 'mistralai/mistral-small-3.2-24b-instruct', provider: { data_collection: 'deny', zdr: true }, max_tokens: 300, temperature: 0.3, messages: [{ role: 'system', content: 'Responde en el idioma de la reseña. Si la reseña no tiene texto, responde en español de España. Redacta una respuesta breve y profesional. No inventes datos ni ofrezcas compensaciones.' }, { role: 'user', content: 'Cliente: ' + ($json.reviewer_name || 'Anónimo') + '\\nNota: ' + ($json.starRating || '') + '\\nTexto: ' + ($json.review_text || '(sin texto)') }] }) }}",
         "options": {
           "timeout": 60000
         }

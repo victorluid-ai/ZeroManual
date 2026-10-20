@@ -556,6 +556,121 @@ def test_subscription_updated_terminal_status_deactivates(
     assert store.get_subscription(client_id, "google_reviews")["status"] == expected
 
 
+def _post_subscription_event(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, event: dict
+):
+    import apps.integrations.stripe_payments as sp
+
+    monkeypatch.setattr(sp, "construct_webhook_event", lambda payload, sig: event)
+    return client.post(
+        "/internal/stripe/webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=fake"},
+    )
+
+
+def test_late_updated_after_deleted_stays_canceled(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "whsec_test")
+
+    reg, store = _seed_paid_automation(client, "late-updated@example.com", status="active")
+    client_id = reg["client"]["client_id"]
+    business_id = store.ensure_default_business(client_id)["business_id"]
+
+    deleted = {
+        "type": "customer.subscription.deleted",
+        "created": 300,
+        "data": {"object": {"id": "sub_to_cancel", "status": "canceled"}},
+    }
+    assert _post_subscription_event(client, monkeypatch, deleted).status_code == 200
+    assert store.get_subscription(client_id, "google_reviews")["status"] == "canceled"
+    assert store.get_subscription(client_id, "google_reviews")["stripe_event_created"] == 300
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "inactive"
+
+    late = {
+        "type": "customer.subscription.updated",
+        "created": 200,
+        "data": {
+            "object": _basil_subscription(
+                "sub_to_cancel", status="active", scheduled=False, cancel_at=None
+            )
+        },
+    }
+    assert _post_subscription_event(client, monkeypatch, late).status_code == 200
+    row = store.get_subscription(client_id, "google_reviews")
+    assert row["status"] == "canceled"
+    assert row["stripe_event_created"] == 300
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "inactive"
+
+    newer = {
+        "type": "customer.subscription.updated",
+        "created": 400,
+        "data": {
+            "object": _basil_subscription(
+                "sub_to_cancel", status="active", scheduled=False, cancel_at=None
+            )
+        },
+    }
+    assert _post_subscription_event(client, monkeypatch, newer).status_code == 200
+    row = store.get_subscription(client_id, "google_reviews")
+    assert row["status"] == "canceled"
+    assert row["stripe_event_created"] == 400
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "inactive"
+
+
+def test_cancel_and_reactivate_webhooks_out_of_order(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "whsec_test")
+
+    reg, store = _seed_paid_automation(client, "out-of-order@example.com", status="active")
+    client_id = reg["client"]["client_id"]
+    business_id = store.ensure_default_business(client_id)["business_id"]
+    store.mark_subscriptions_by_stripe_id(
+        "sub_to_cancel", "active", current_period_end=str(OPEN_PERIOD_END)
+    )
+
+    reactivate = {
+        "type": "customer.subscription.updated",
+        "created": 200,
+        "data": {
+            "object": _endive_subscription(
+                "sub_to_cancel",
+                status="active",
+                scheduled=False,
+                cancel_at=None,
+                item_end=PERIOD_END,
+            )
+        },
+    }
+    assert _post_subscription_event(client, monkeypatch, reactivate).status_code == 200
+    row = store.get_subscription(client_id, "google_reviews")
+    assert row["cancel_at_period_end"] == 0
+    assert row["stripe_event_created"] == 200
+    assert row["current_period_end"] == str(OPEN_PERIOD_END)
+
+    older_cancel = {
+        "type": "customer.subscription.updated",
+        "created": 100,
+        "data": {
+            "object": _basil_subscription(
+                "sub_to_cancel", status="active", cancel_at=PERIOD_END, item_end=PERIOD_END
+            )
+        },
+    }
+    assert _post_subscription_event(client, monkeypatch, older_cancel).status_code == 200
+    row = store.get_subscription(client_id, "google_reviews")
+    assert row["status"] == "active"
+    assert row["cancel_at_period_end"] == 0
+    assert row["current_period_end"] == str(OPEN_PERIOD_END)
+    assert row["stripe_event_created"] == 200
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "active"
+    assert store.has_active_subscription(client_id, "google_reviews")
+
+
 def test_checkout_persists_stripe_customer_id(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -458,7 +458,9 @@ def register_payment_routes(
             "customer.subscription.updated",
             "customer.subscription.deleted",
         ):
-            apply_subscription_webhook(store, event_type, data_object)
+            apply_subscription_webhook(
+                store, event_type, data_object, event.get("created")
+            )
 
         elif event_type == "invoice.payment_failed":
             sub_id = stripe_payments.stripe_id(data_object.get("subscription"))

@@ -101,20 +101,51 @@ def deactivate_paid_automations(store: Any, stripe_subscription_id: str) -> None
             )
 
 
-def apply_subscription_webhook(store: Any, event_type: str, data_object: dict[str, Any]) -> None:
+def _event_created(value: Any) -> int | None:
+    if value is None or value is False or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
+
+
+def apply_subscription_webhook(
+    store: Any,
+    event_type: str,
+    data_object: dict[str, Any],
+    event_created: Any = None,
+) -> None:
     """Sincroniza la suscripción.
 
     ``deleted`` apaga la automatización. ``updated`` también la apaga si el
     status es ``unpaid``, ``canceled`` o ``incomplete_expired``. Un cambio
     solo de ``cancel_at_period_end`` (la suscripción sigue active o trialing)
-    no la apaga.
+    no la apaga. Un ``updated`` no saca una fila de ``canceled``.
+
+    Se guarda ``event.created`` del último evento aplicado y se ignora
+    cualquiera más antiguo.
     """
     sub_id = stripe_payments.stripe_id(data_object.get("id"))
     if not sub_id:
         return
+    created = _event_created(event_created)
+    if not store.subscription_event_is_current(sub_id, created):
+        return
+    if event_type == "customer.subscription.updated" and any(
+        row.get("status") == "canceled"
+        for row in store.list_subscriptions_by_stripe_id(sub_id)
+    ):
+        store.mark_subscriptions_by_stripe_id(
+            sub_id, "canceled", stripe_event_created=created
+        )
+        return
     if event_type == "customer.subscription.deleted":
         store.mark_subscriptions_by_stripe_id(
-            sub_id, "canceled", cancel_at_period_end=False
+            sub_id, "canceled", cancel_at_period_end=False, stripe_event_created=created
         )
         deactivate_paid_automations(store, sub_id)
         return
@@ -130,6 +161,7 @@ def apply_subscription_webhook(store: Any, event_type: str, data_object: dict[st
         mapped,
         current_period_end=str(end_unix) if end_unix else None,
         cancel_at_period_end=flag,
+        stripe_event_created=created,
     )
     if raw_status in _DEACTIVATE_STATUSES:
         deactivate_paid_automations(store, sub_id)

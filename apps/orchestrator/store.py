@@ -1682,12 +1682,16 @@ class DataStore:
     def subscription_event_is_current(
         self, stripe_subscription_id: str, event_created: int | None
     ) -> bool:
-        """False when this subscription event is older than one already applied."""
+        """False when this subscription event is strictly older than one already applied.
+
+        An event with the same ``created`` is applied. Only a smaller timestamp
+        is ignored.
+        """
         if event_created is None:
             return True
         for row in self.list_subscriptions_by_stripe_id(stripe_subscription_id):
             prev = row.get("stripe_event_created")
-            if prev is not None and int(event_created) <= int(prev):
+            if prev is not None and int(event_created) < int(prev):
                 return False
         return True
 

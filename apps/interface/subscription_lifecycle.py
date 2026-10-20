@@ -127,7 +127,7 @@ def apply_subscription_webhook(
     no la apaga. Un ``updated`` no saca una fila de ``canceled``.
 
     Se guarda ``event.created`` del último evento aplicado y se ignora
-    cualquiera más antiguo.
+    cualquiera estrictamente más antiguo. El mismo ``created`` sí se aplica.
     """
     sub_id = stripe_payments.stripe_id(data_object.get("id"))
     if not sub_id:

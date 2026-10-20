@@ -367,9 +367,10 @@
     .auto-card-body { flex: 1; }
     .auto-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
     .auto-desc { font-size: 12px; color: var(--fg-3); line-height: 1.4; }
-    .auto-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .auto-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .auto-status { font-size: 11px; font-weight: 500; }
     .auto-status.on { color: var(--ok); }
+    .sub-until { color: var(--ok); font-weight: 600; font-size: 13px; }
     .auto-status.off { color: var(--fg-3); }
     .auto-warn { font-size: 11px; color: #8a6516; background: #faf0da; border-radius: var(--r-sm); padding: 6px 10px; }
     .auto-warn a { color: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; }
@@ -646,6 +647,7 @@
   let reviewStars = 0;
   let replyMode = 'approval';
   let cachedAutos = null;
+  let cachedSubs = [];
   let cachedBusinesses = [];
   let cachedDrafts = [];
   let pendingReviewCount = 0;
@@ -982,6 +984,60 @@
     return data;
   }
 
+  async function fetchSubscriptions() {
+    try {
+      const data = await api('GET', '/client/subscriptions');
+      cachedSubs = (data && data.subscriptions) || [];
+    } catch (e) {
+      cachedSubs = [];
+    }
+  }
+
+  function subFor(type) {
+    return (cachedSubs || []).find(s => s.automation_type === type) || null;
+  }
+
+  function accessUntilText(type) {
+    const sub = subFor(type);
+    if (!sub || !sub.cancel_at_period_end || !sub.access_until) return '';
+    return `Activo hasta el ${sub.access_until}`;
+  }
+
+  async function scheduleCancel(type) {
+    const ok = window.confirm('¿Programar la baja? Seguirás activo hasta el final del periodo ya pagado. La automatización no se para ahora.');
+    if (!ok) return false;
+    const result = await api('POST', `/client/subscriptions/${encodeURIComponent(type)}/cancel`);
+    if (!result) return false;
+    const when = result.access_until ? ` Activo hasta el ${result.access_until}.` : '';
+    toast(`Baja programada.${when} La automatización sigue activa.`, 'ok');
+    return true;
+  }
+
+  async function reactivateSubscription(type) {
+    const ok = window.confirm('¿Reactivar la suscripción? Volverá a renovarse al final del periodo.');
+    if (!ok) return false;
+    const result = await api('POST', `/client/subscriptions/${encodeURIComponent(type)}/reactivate`);
+    if (!result) return false;
+    toast('Suscripción reactivada.', 'ok');
+    return true;
+  }
+
+  function bindReactivate(root) {
+    root.querySelectorAll('[data-reactivate]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        btn.disabled = true;
+        try {
+          const done = await reactivateSubscription(btn.dataset.reactivate);
+          if (done) await loadWorkspace();
+          else btn.disabled = false;
+        } catch (err) {
+          toast(err.message, 'err');
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   async function fetchBusinesses() {
     try {
       const data = await api('GET', '/client/businesses');
@@ -1178,6 +1234,7 @@
     try {
       const data = await fetchAutomations();
       if (!data) return;
+      await fetchSubscriptions();
       await fetchBusinesses();
       const active = (data.active || []).filter(a => a.status === 'active');
       const activeTypes = [...new Set(active.map(a => a.automation_type))];
@@ -1342,16 +1399,26 @@
       (d.status === 'approved' || d.status === 'edited' || d.status === 'auto_sent') &&
       isThisMonth(d.updated_at || d.created_at)
     ).length;
+    let untilMarked = false;
     const rows = active.map(a => {
       const lbl = AUTOMATION_LABELS[a.automation_type] || { name: a.automation_type };
+      const until = accessUntilText(a.automation_type);
+      const mark = until && !untilMarked;
+      if (mark) untilMarked = true;
+      const status = until
+        ? `<span class="auto-status on sub-until"${mark ? ' id="sub-until"' : ''}>${escHtml(until)}</span>`
+        : '<span class="auto-status on">● Activa</span>';
+      const reactivate = until
+        ? `<button class="btn sm ghost" type="button" data-reactivate="${escHtml(a.automation_type)}">Reactivar</button>`
+        : '';
       return `<div class="auto-card" style="margin-bottom:12px">
         <div class="auto-card-body">
           <div class="auto-name">${escHtml(lbl.name)}</div>
           <div class="auto-desc">${escHtml(a.business_name || '')}</div>
         </div>
         <div class="auto-footer">
-          <span class="auto-status on">● Activa</span>
-          <button class="btn sm ghost" type="button" data-open="${escHtml(a.automation_type)}">Abrir</button>
+          ${status}
+          <span style="display:flex;gap:8px">${reactivate}<button class="btn sm ghost" type="button" data-open="${escHtml(a.automation_type)}">Abrir</button></span>
         </div>
       </div>`;
     }).join('') || '<div class="card"><div class="empty">Todavía no tienes automatizaciones activas. <button class="btn sm primary" type="button" data-go="explore" style="margin-top:12px">Explorar</button></div></div>';
@@ -1370,6 +1437,7 @@
     c.querySelectorAll('[data-open]').forEach(btn => {
       btn.addEventListener('click', () => goView(btn.dataset.open));
     });
+    bindReactivate(c);
   }
 
   function activeRowsFor(type) {
@@ -1429,12 +1497,13 @@
     }
     return types.map(type => {
       const owned = activeRowsFor(type);
-      let sub = 'Activa';
-      if (type === 'google_reviews') {
+      const until = accessUntilText(type);
+      let sub = until || 'Activa';
+      if (!until && type === 'google_reviews') {
         const n = pendingReviewCount;
         const pending = n === 1 ? '1 respuesta pendiente' : `${n} respuestas pendientes`;
         sub = `${pending} · Activa`;
-      } else if (owned.length > 1) {
+      } else if (!until && owned.length > 1) {
         sub = `${owned.length} negocios · Activa`;
       }
       return `<button class="hub-card" type="button" data-open="${escHtml(type)}">
@@ -1483,15 +1552,8 @@
     btn.disabled = true;
     try {
       if (isOn) {
-        const rows = (cachedAutos && cachedAutos.active || []).filter(
-          a => a.automation_type === type && a.status === 'active'
-        );
-        const businessIds = rows.length ? rows.map(r => r.business_id) : [null];
-        for (const bid of businessIds) {
-          await api('DELETE', withQuery(`/client/automations/${encodeURIComponent(type)}`, bizQuery(bid)));
-        }
-        toast('Suscripción cancelada', 'ok');
-        if (activeView === type) activeView = 'explore';
+        const scheduled = await scheduleCancel(type);
+        if (!scheduled) { btn.disabled = false; return; }
       } else if (cachedBusinesses.length > 1) {
         await openBusinessPicker(type, btn);
         return;
@@ -1599,11 +1661,15 @@
     const subs = types.length ? types.map(type => {
       const rows = activeRowsFor(type);
       const where = rows.map(r => escHtml(r.business_name || r.business_id)).join(', ');
-      const manage = type === 'google_reviews'
-        ? `<button class="btn sm ghost" type="button" data-go="google_reviews">Gestionar en Reseñas</button>`
-        : `<button class="btn sm ghost" type="button" data-type="${escHtml(type)}" data-on="true">Cancelar suscripción</button>`;
+      const until = accessUntilText(type);
+      const manage = until
+        ? `<button class="btn sm ghost" type="button" data-reactivate="${escHtml(type)}">Reactivar</button>`
+        : (type === 'google_reviews'
+          ? `<button class="btn sm ghost" type="button" data-go="google_reviews">Gestionar en Reseñas</button>`
+          : `<button class="btn sm ghost" type="button" data-type="${escHtml(type)}" data-on="true">Cancelar suscripción</button>`);
+      const detail = until || where || 'Activa';
       return `<div class="acct-row" style="margin-top:10px">
-        <div class="acct-info"><strong>${escHtml(shortAutoName(type))}</strong><span>${where || 'Activa'}</span></div>
+        <div class="acct-info"><strong>${escHtml(shortAutoName(type))}</strong><span class="${until ? 'sub-until' : ''}">${escHtml(detail)}</span></div>
         ${manage}
       </div>`;
     }).join('') : '<p class="card-sub" style="margin-top:8px">No hay suscripciones activas.</p>';
@@ -1620,9 +1686,9 @@
     </div>`;
     c.querySelectorAll('[data-go]').forEach(btn => btn.addEventListener('click', () => goView(btn.dataset.go)));
     c.querySelectorAll('[data-type]').forEach(btn => btn.addEventListener('click', (e) => {
-      if (btn.dataset.on === 'true' && !window.confirm('¿Cancelar esta suscripción?')) return;
       handleAutoBtn(e);
     }));
+    bindReactivate(c);
     if (settingsAnchor === 'subs') {
       settingsAnchor = '';
       const box = $('settings-subs');
@@ -1645,18 +1711,11 @@
       toast('No hay suscripción activa de Reseñas de Google', 'err');
       return;
     }
-    const msg = rows.length > 1
-      ? `¿Cancelar la suscripción de Reseñas de Google en ${rows.length} negocios?`
-      : '¿Cancelar la suscripción de Reseñas de Google?';
-    if (!window.confirm(msg)) return;
     if (trigger) trigger.disabled = true;
     try {
-      for (const row of rows) {
-        await api('DELETE', withQuery('/client/automations/google_reviews', bizQuery(row.business_id)));
-      }
-      toast('Suscripción cancelada', 'ok');
-      activeView = 'automations';
-      await loadWorkspace();
+      const scheduled = await scheduleCancel('google_reviews');
+      if (scheduled) await loadWorkspace();
+      else if (trigger) trigger.disabled = false;
     } catch (err) {
       toast(err.message, 'err');
       if (trigger) trigger.disabled = false;
@@ -1672,6 +1731,7 @@
       return;
     }
     const row = currentReviewRow();
+    const until = accessUntilText('google_reviews');
     const copy = modeCopy();
     const tab = effectiveSubtab();
     const count = badgeText(pendingReviewCount);
@@ -1688,12 +1748,13 @@
         <div class="reviews-titlebar">
           <h1>Reseñas de Google</h1>
           <div class="sub-manage" id="sub-manage">
+            ${until ? `<button class="btn sm ghost" type="button" id="btn-reactivate-sub">Reactivar</button>` : ''}
             <button class="link-subtle" type="button" id="btn-manage-sub">Gestionar suscripción</button>
             <div class="more-wrap">
               <button class="btn-icon" type="button" id="btn-more-sub" aria-label="Más opciones de suscripción" aria-expanded="false">${ICO.dots}</button>
               <div class="more-menu" id="sub-menu" hidden>
                 <button type="button" id="btn-pause-auto">Pausar automatización</button>
-                <button type="button" class="danger" id="btn-cancel-sub">Cancelar suscripción</button>
+                ${until ? '' : '<button type="button" class="danger" id="btn-cancel-sub">Cancelar suscripción</button>'}
                 <div class="sep"></div>
                 <button type="button" class="muted" id="btn-mirror-settings">También en Ajustes → Suscripciones</button>
               </div>
@@ -1701,6 +1762,7 @@
           </div>
         </div>
         <p class="page-lead" id="reviews-lead">${escHtml(reviewsLead())}</p>
+        ${until ? `<p class="page-lead sub-until" id="sub-until">${escHtml(until)}</p>` : ''}
         <div class="biz-slot">${biz}</div>
         <div class="toggle-wrap">
           <div class="toggle-card">
@@ -1778,10 +1840,24 @@
       subMenu.hidden = true;
       pauseReviewsAutomation();
     });
-    $('btn-cancel-sub').addEventListener('click', (e) => {
+    const cancelSub = $('btn-cancel-sub');
+    if (cancelSub) cancelSub.addEventListener('click', (e) => {
       e.stopPropagation();
       subMenu.hidden = true;
       cancelReviewsSubscription(e.currentTarget);
+    });
+    const reactivateSub = $('btn-reactivate-sub');
+    if (reactivateSub) reactivateSub.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      reactivateSub.disabled = true;
+      try {
+        const done = await reactivateSubscription('google_reviews');
+        if (done) await loadWorkspace();
+        else reactivateSub.disabled = false;
+      } catch (err) {
+        toast(err.message, 'err');
+        reactivateSub.disabled = false;
+      }
     });
     $('btn-mirror-settings').addEventListener('click', (e) => {
       e.stopPropagation();

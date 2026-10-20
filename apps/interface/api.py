@@ -24,6 +24,7 @@ from apps.integrations.google_business import (
 )
 from apps.integrations.n8n_client import N8nClient
 from apps.integrations import stripe_payments
+from apps.interface.legal import render_legal_page
 from apps.interface.payments import activate_automation_for_client, register_payment_routes
 from apps.orchestrator.gbp_location_claim import (
     GBP_LOCATION_TAKEN_MESSAGE,
@@ -226,6 +227,26 @@ def health() -> dict[str, str]:
 def zeroman_site() -> str:
     page = Path(__file__).parent.parent / "web" / "zeroman" / "index.html"
     return page.read_text(encoding="utf-8")
+
+
+@app.get("/aviso-legal", response_class=HTMLResponse)
+def aviso_legal() -> str:
+    return render_legal_page("aviso-legal")
+
+
+@app.get("/privacidad", response_class=HTMLResponse)
+def privacidad() -> str:
+    return render_legal_page("privacidad")
+
+
+@app.get("/cookies", response_class=HTMLResponse)
+def cookies() -> str:
+    return render_legal_page("cookies")
+
+
+@app.get("/terminos", response_class=HTMLResponse)
+def terminos() -> str:
+    return render_legal_page("terminos")
 
 
 @app.get("/admin", response_class=HTMLResponse)

@@ -485,16 +485,28 @@ function SubscribeModal({ product, lang, t, annual, currency, onClose, onDone })
               type="password" autoComplete={isLogin ? "current-password" : "new-password"} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={onKey} />
             {error && <div style={{ color: "#E5484D", fontSize: 12, marginBottom: 10, minHeight: 16 }}>{error}</div>}
             <button className="zm2-pill-primary" disabled={busy} onClick={isLogin ? doLogin : doRegister}
-              style={{ width: "100%", padding: 10, background: "#4F46E5", color: "#fff", border: "none", borderRadius: 8, font: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 14 }}>
+              style={{ width: "100%", padding: 10, background: "#4F46E5", color: "#fff", border: "none", borderRadius: 8, font: "inherit", fontSize: 14, fontWeight: 600, cursor: "pointer", marginBottom: 4 }}>
               {isLogin ? ts.ctaLogin : ts.cta}
             </button>
-            <button onClick={() => switchMode(isLogin ? "register" : "login")} style={{ display: "block", width: "100%", textAlign: "center", fontSize: 12, color: "#9099A6", cursor: "pointer", textDecoration: "underline", background: "none", border: "none", font: "inherit" }}>
+            <LegalPair />
+            <button onClick={() => switchMode(isLogin ? "register" : "login")} style={{ display: "block", width: "100%", textAlign: "center", fontSize: 12, color: "#9099A6", cursor: "pointer", textDecoration: "underline", background: "none", border: "none", font: "inherit", marginTop: 10 }}>
               {isLogin ? tl.switchToRegister : tl.switchToLogin}
             </button>
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function LegalPair() {
+  const link = { color: "#4F46E5", fontWeight: 600, textDecoration: "none" };
+  return (
+    <p className="zm-legal-pair" style={{ textAlign: "center", color: "#9099A6", fontSize: 12, lineHeight: 1.45, margin: "10px 0 0" }}>
+      <a href="/terminos" style={link}>Términos</a>
+      {" · "}
+      <a href="/privacidad" style={link}>Privacidad</a>
+    </p>
   );
 }
 
@@ -541,6 +553,7 @@ function ProductCard({ product, lang, t, inCart, annual, currency, active, subsc
         <button className="zm2-link-muted" onClick={() => onDetail(product.id)} style={{ background: "transparent", border: "none", color: "#6B7280", fontSize: 13.5, fontWeight: 500, cursor: "pointer", padding: 2 }}>
           {t.card.details}
         </button>
+        {!comingSoon && !active && <LegalPair />}
       </div>
     </article>
   );
@@ -596,6 +609,7 @@ function CartDrawer({ open, onClose, cartIds, lang, t, annual, currency, onRemov
               {t.checkout.start}
             </button>
             <p style={{ textAlign: "center", color: "#9099A6", fontSize: 12, margin: "12px 0 0" }}>{t.checkout.disclaimer}</p>
+            <LegalPair />
           </div>
         )}
       </aside>
@@ -670,7 +684,7 @@ function DetailModal({ id, lang, t, inCart, annual, currency, onClose, onSubscri
             ))}
           </div>
         </div>
-        <div style={{ position: "sticky", bottom: 0, background: "#fff", borderTop: "1px solid #EDEFF3", marginTop: 22, padding: "18px 26px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+        <div style={{ position: "sticky", bottom: 0, background: "#fff", borderTop: "1px solid #EDEFF3", marginTop: 22, padding: "18px 26px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "baseline", gap: 5 }}>
             <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em" }}>{fmtPrice(price, currency, lang)}</span>
             <span style={{ color: "#6B7280", fontSize: 14 }}>{per}</span>
@@ -678,6 +692,7 @@ function DetailModal({ id, lang, t, inCart, annual, currency, onClose, onSubscri
           <button className="zm2-pill-primary" disabled={comingSoon} onClick={() => onSubscribe(product.id)} style={{ border: "none", padding: "13px 22px", borderRadius: 11, fontSize: 15, fontWeight: 600, cursor: comingSoon ? "default" : "pointer", ...(comingSoon ? { background: "#F1F3F6", color: "#9099A6" } : { background: "#4F46E5", color: "#fff" }) }}>
             {comingSoon ? t.card.comingSoon : inCart ? t.detail.inCart : t.detail.subscribe}
           </button>
+          {!comingSoon && <div style={{ flexBasis: "100%" }}><LegalPair /></div>}
         </div>
       </div>
     </div>
@@ -1263,6 +1278,12 @@ function App() {
           <BrandMark size={23} />
           <span style={{ fontFamily: "'Space Grotesk',sans-serif", fontWeight: 500, fontSize: 16, letterSpacing: "-.02em" }}>exmanual</span>
         </div>
+        <nav aria-label="Información legal" style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+          <a href="/aviso-legal" style={{ color: "#3A4150", textDecoration: "none", fontSize: 13.5 }}>Aviso legal</a>
+          <a href="/privacidad" style={{ color: "#3A4150", textDecoration: "none", fontSize: 13.5 }}>Privacidad</a>
+          <a href="/cookies" style={{ color: "#3A4150", textDecoration: "none", fontSize: 13.5 }}>Cookies</a>
+          <a href="/terminos" style={{ color: "#3A4150", textDecoration: "none", fontSize: 13.5 }}>Términos</a>
+        </nav>
         <p style={{ margin: 0, color: "#9099A6", fontSize: 13.5 }}>{t.footer}</p>
       </footer>
 

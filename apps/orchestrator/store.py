@@ -618,6 +618,24 @@ class DataStore:
         if current < 9:
             conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (9)")
 
+        # current_period_end y cancel_at_period_end van en el CREATE de las
+        # bases nuevas. CREATE TABLE IF NOT EXISTS no añade columnas a una
+        # client_subscriptions que ya existía: ALTER solo si faltan.
+        sub_cols = {
+            r[1] for r in conn.execute("PRAGMA table_info(client_subscriptions)").fetchall()
+        }
+        if sub_cols and "current_period_end" not in sub_cols:
+            conn.execute(
+                "ALTER TABLE client_subscriptions ADD COLUMN current_period_end TEXT"
+            )
+        if sub_cols and "cancel_at_period_end" not in sub_cols:
+            conn.execute(
+                "ALTER TABLE client_subscriptions"
+                " ADD COLUMN cancel_at_period_end INTEGER NOT NULL DEFAULT 0"
+            )
+        if current < 10:
+            conn.execute("INSERT OR REPLACE INTO schema_version (version) VALUES (10)")
+
     def _ensure_gbp_location_index(self) -> None:
         conn = self._connect()
         try:

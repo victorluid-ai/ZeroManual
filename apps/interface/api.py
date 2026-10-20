@@ -23,7 +23,6 @@ from apps.integrations.google_business import (
     is_valid_gbp_location_id,
 )
 from apps.integrations.n8n_client import N8nClient
-from apps.integrations import stripe_payments
 from apps.interface.payments import activate_automation_for_client, register_payment_routes
 from apps.orchestrator.gbp_location_claim import (
     GBP_LOCATION_TAKEN_MESSAGE,
@@ -536,50 +535,10 @@ def deactivate_client_automation(
         except Exception:
             pass
     runtime.store.deactivate_automation(client_id, resolved_business_id, automation_type)
-
-    stripe_cancelled = False
-    sub = runtime.store.get_subscription(client_id, automation_type)
-    stripe_sub_id = (sub or {}).get("stripe_subscription_id") if sub else None
-    if stripe_sub_id and stripe_payments.stripe_enabled():
-        try:
-            stripe_payments.cancel_subscription(stripe_sub_id)
-            stripe_cancelled = True
-        except Exception as exc:
-            logging.getLogger(__name__).exception(
-                "Stripe cancel failed for %s/%s: %s", client_id, automation_type, exc
-            )
-            raise HTTPException(
-                status_code=503,
-                detail=f"Automatización desactivada localmente, pero Stripe no canceló: {exc}",
-            ) from exc
-        # Same Stripe sub may cover several automations (multi-item cart).
-        for linked in runtime.store.list_subscriptions_by_stripe_id(stripe_sub_id):
-            runtime.store.upsert_subscription(
-                client_id=linked["client_id"],
-                automation_type=linked["automation_type"],
-                status="canceled",
-                billing_interval=linked.get("billing_interval") or "monthly",
-                provider=linked.get("provider") or "stripe",
-                stripe_subscription_id=stripe_sub_id,
-            )
-            if linked["automation_type"] != automation_type:
-                for other in runtime.store.list_automations_by_type(
-                    linked["client_id"], linked["automation_type"]
-                ):
-                    runtime.store.deactivate_automation(
-                        linked["client_id"], other["business_id"], linked["automation_type"]
-                    )
-    elif sub:
-        runtime.store.upsert_subscription(
-            client_id=client_id,
-            automation_type=automation_type,
-            status="canceled",
-            billing_interval=sub.get("billing_interval") or "monthly",
-            provider=sub.get("provider") or "dev",
-            stripe_subscription_id=sub.get("stripe_subscription_id"),
-        )
-
-    return {"status": "inactive", "stripe_cancelled": stripe_cancelled}
+    # Apagar un flujo no da de baja la suscripción. La baja es
+    # POST /client/subscriptions/{type}/cancel y solo tiene efecto al
+    # final del periodo; customer.subscription.deleted apaga el resto.
+    return {"status": "inactive", "stripe_cancelled": False}
 
 
 def _publish_draft_via_n8n(draft: dict, final_reply: str) -> None:

@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from apps.zeromanual_env import zm_env
 
@@ -41,6 +43,10 @@ CATALOG: dict[str, dict[str, Any]] = {
 }
 
 DEFAULT_TRIAL_DAYS = 14
+_MADRID = ZoneInfo("Europe/Madrid")
+
+# Estados con los que el cliente sigue teniendo el servicio contratado.
+_ACCESS_STATUSES = frozenset({"active", "trialing", "past_due", "paid"})
 
 # Clients with more than one Google Business location get this discount on
 # every business beyond the first, per automation type, in the same checkout.
@@ -523,6 +529,76 @@ def stripe_id(value: Any) -> str | None:
     return str(sid) if sid else None
 
 
+def _unix_timestamp(value: Any) -> int | None:
+    """Unix seconds, or None when Stripe omits the field (basil sends null)."""
+    if value is None or value is False or value == "":
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        iv = int(value)
+        return iv or None
+    if isinstance(value, str) and value.strip().isdigit():
+        iv = int(value.strip())
+        return iv or None
+    return None
+
+
+def subscription_access_until_unix(subscription: Any) -> int | None:
+    """When paid access ends after a scheduled cancellation.
+
+    Stripe API 2025-05-28.basil leaves ``current_period_end`` null on the
+    subscription root. The date is ``cancel_at`` (equal to
+    ``items.data[0].current_period_end``). While trialing, ``cancel_at``
+    equals ``trial_end`` and ``status`` stays ``trialing``.
+    """
+    data = stripe_object_to_dict(subscription)
+    cancel_at = _unix_timestamp(data.get("cancel_at"))
+    if cancel_at:
+        return cancel_at
+    items = data.get("items") or {}
+    if not isinstance(items, dict):
+        items = stripe_object_to_dict(items)
+    rows = items.get("data") or []
+    if rows:
+        first = rows[0]
+        if not isinstance(first, dict):
+            first = stripe_object_to_dict(first)
+        item_end = _unix_timestamp(first.get("current_period_end"))
+        if item_end:
+            return item_end
+    return _unix_timestamp(data.get("current_period_end"))
+
+
+def format_access_until(timestamp: Any) -> str | None:
+    """Calendar date in Spain: DD/MM/AAAA."""
+    unix = _unix_timestamp(timestamp)
+    if not unix:
+        return None
+    return datetime.fromtimestamp(unix, tz=_MADRID).strftime("%d/%m/%Y")
+
+
+def present_subscription(row: dict[str, Any]) -> dict[str, Any]:
+    """API shape for /client/subscriptions. Adds ``access_until`` when scheduled."""
+    view = dict(row)
+    scheduled = bool(row.get("cancel_at_period_end"))
+    view["cancel_at_period_end"] = scheduled
+    view["access_until"] = (
+        format_access_until(row.get("current_period_end")) if scheduled else None
+    )
+    return view
+
+
+def access_status_after_schedule(remote_status: str | None, fallback: str) -> str:
+    """Keep active/trialing. Scheduling a cancellation is not a terminal status."""
+    status = str(remote_status or fallback or "active")
+    if status in _ACCESS_STATUSES:
+        return status
+    if fallback in _ACCESS_STATUSES:
+        return fallback
+    return "active"
+
+
 def retrieve_checkout_session(session_id: str, settings: StripeSettings | None = None) -> dict[str, Any]:
     import stripe
 
@@ -555,13 +631,13 @@ def create_billing_portal_session(
 def cancel_subscription(
     stripe_subscription_id: str,
     *,
-    at_period_end: bool = False,
     settings: StripeSettings | None = None,
 ) -> dict[str, Any]:
-    """Cancel a Stripe Subscription only — never delete the Customer.
+    """Schedule cancellation at the end of the paid period (or the trial).
 
-    The Stripe Customer stays linked to the ZeroManual client for future
-    checkouts, invoices, and the billing portal.
+    Stripe call: ``Subscription.modify(id, cancel_at_period_end=True)``.
+    Does not call ``Subscription.cancel`` and does not delete the Customer.
+    The subscription stays ``active`` or ``trialing`` until Stripe deletes it.
     """
     import stripe
 
@@ -569,12 +645,30 @@ def cancel_subscription(
     if not cfg.secret_key:
         raise RuntimeError("Stripe no está configurado")
     stripe.api_key = cfg.secret_key
-    if at_period_end:
-        sub = stripe.Subscription.modify(
-            stripe_subscription_id, cancel_at_period_end=True
-        )
-    else:
-        sub = stripe.Subscription.cancel(stripe_subscription_id)
+    sub = stripe.Subscription.modify(
+        stripe_subscription_id, cancel_at_period_end=True
+    )
+    return stripe_object_to_dict(sub)
+
+
+def reactivate_subscription(
+    stripe_subscription_id: str,
+    *,
+    settings: StripeSettings | None = None,
+) -> dict[str, Any]:
+    """Undo a scheduled cancellation.
+
+    Stripe call: ``Subscription.modify(id, cancel_at_period_end=False)``.
+    """
+    import stripe
+
+    cfg = settings or load_stripe_settings()
+    if not cfg.secret_key:
+        raise RuntimeError("Stripe no está configurado")
+    stripe.api_key = cfg.secret_key
+    sub = stripe.Subscription.modify(
+        stripe_subscription_id, cancel_at_period_end=False
+    )
     return stripe_object_to_dict(sub)
 
 

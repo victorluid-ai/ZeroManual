@@ -238,40 +238,225 @@ def test_stripe_object_helpers_normalize_metadata() -> None:
     assert stripe_object_to_dict(FakeStripe())["id"] == "cs_1"
 
 
-def test_unsubscribe_cancels_stripe_subscription(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-) -> None:
+# 2026-01-01 00:00:00 UTC → 01/01/2026 en Europe/Madrid.
+PERIOD_END = 1_767_225_600
+
+
+def _basil_subscription(
+    sub_id: str,
+    *,
+    status: str = "active",
+    scheduled: bool = True,
+    cancel_at: int | None = PERIOD_END,
+    trial_end: int | None = None,
+    item_end: int | None = PERIOD_END,
+) -> dict:
+    """Forma real de la API 2025-05-28.basil: current_period_end raíz es None."""
+    return {
+        "id": sub_id,
+        "status": status,
+        "cancel_at_period_end": scheduled,
+        "cancel_at": cancel_at if scheduled else None,
+        "trial_end": trial_end,
+        "current_period_end": None,
+        "items": {
+            "object": "list",
+            "data": [{"id": "si_1", "current_period_end": item_end}],
+        },
+    }
+
+
+def _install_fake_stripe(monkeypatch: pytest.MonkeyPatch, **shape: object):
+    import sys
+    import types
+
+    calls: list[tuple] = []
+
+    class Subscription:
+        @staticmethod
+        def modify(sub_id, **kwargs):
+            calls.append(("modify", sub_id, dict(kwargs)))
+            scheduled = bool(kwargs.get("cancel_at_period_end"))
+            payload = _basil_subscription(sub_id, scheduled=scheduled, **shape)
+            return payload
+
+        @staticmethod
+        def cancel(sub_id, **kwargs):
+            calls.append(("cancel", sub_id, dict(kwargs)))
+            raise AssertionError("Subscription.cancel no debe usarse")
+
+    module = types.ModuleType("stripe")
+    module.Subscription = Subscription
+    module.api_key = None
+    module.error = types.SimpleNamespace(SignatureVerificationError=Exception)
+    monkeypatch.setitem(sys.modules, "stripe", module)
+    return calls
+
+
+def test_access_until_prefers_cancel_at_then_subscription_item() -> None:
+    from apps.integrations.stripe_payments import (
+        format_access_until,
+        subscription_access_until_unix,
+    )
+
+    both = _basil_subscription("sub_both", cancel_at=PERIOD_END, item_end=PERIOD_END + 86_400)
+    assert subscription_access_until_unix(both) == PERIOD_END
+    assert format_access_until(PERIOD_END) == "01/01/2026"
+
+    fallback = _basil_subscription("sub_item", cancel_at=None, item_end=PERIOD_END)
+    fallback["cancel_at"] = None
+    assert subscription_access_until_unix(fallback) == PERIOD_END
+
+    root_only = {
+        "cancel_at": None,
+        "current_period_end": PERIOD_END,
+        "items": {"data": [{}]},
+    }
+    assert subscription_access_until_unix(root_only) == PERIOD_END
+
+
+def test_cancel_subscription_modifies_at_period_end(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
     import apps.integrations.stripe_payments as sp
+
+    calls = _install_fake_stripe(monkeypatch, status="trialing", trial_end=PERIOD_END)
+    remote = sp.cancel_subscription("sub_trial")
+    assert calls == [("modify", "sub_trial", {"cancel_at_period_end": True})]
+    assert remote["status"] == "trialing"
+    assert remote["current_period_end"] is None
+    assert remote["cancel_at"] == PERIOD_END
+    assert remote["trial_end"] == PERIOD_END
+    assert sp.subscription_access_until_unix(remote) == PERIOD_END
+
+
+def test_reactivate_subscription_clears_period_end_flag(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    import apps.integrations.stripe_payments as sp
+
+    calls = _install_fake_stripe(monkeypatch, status="active")
+    remote = sp.reactivate_subscription("sub_back")
+    assert calls == [("modify", "sub_back", {"cancel_at_period_end": False})]
+    assert remote["cancel_at"] is None
+    assert remote["status"] == "active"
+
+
+def _seed_paid_automation(client: TestClient, email: str, *, status: str = "trialing") -> tuple[dict, dict]:
     import apps.interface.api as api_module
 
-    calls: list[str] = []
-
-    def fake_cancel(sub_id: str, **kwargs):
-        calls.append(sub_id)
-        return {"id": sub_id, "status": "canceled"}
-
-    monkeypatch.setattr(sp, "cancel_subscription", fake_cancel)
-
-    reg = _register(client, "unsub@example.com")
+    reg = _register(client, email)
     client_id = reg["client"]["client_id"]
-    auth = {"Authorization": f"Bearer {reg['token']}"}
     store = api_module.runtime.store
+    business_id = store.ensure_default_business(client_id)["business_id"]
     store.upsert_subscription(
         client_id=client_id,
         automation_type="google_reviews",
-        status="trialing",
+        status=status,
         stripe_subscription_id="sub_to_cancel",
     )
-    store.activate_automation(client_id, store.ensure_default_business(client_id)["business_id"], "google_reviews", "wf-1")
+    store.activate_automation(client_id, business_id, "google_reviews", "wf-1")
+    return reg, store
 
-    resp = client.delete("/client/automations/google_reviews", headers=auth)
+
+def test_schedule_cancel_keeps_trial_and_automation(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    calls = _install_fake_stripe(monkeypatch, status="trialing", trial_end=PERIOD_END)
+
+    reg, store = _seed_paid_automation(client, "unsub@example.com", status="trialing")
+    client_id = reg["client"]["client_id"]
+    auth = {"Authorization": f"Bearer {reg['token']}"}
+
+    resp = client.post("/client/subscriptions/google_reviews/cancel", headers=auth)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] == "inactive"
-    assert body["stripe_cancelled"] is True
-    assert calls == ["sub_to_cancel"]
-    assert not store.has_active_subscription(client_id, "google_reviews")
+    assert body["status"] == "trialing"
+    assert body["cancel_at_period_end"] is True
+    assert body["access_until"] == "01/01/2026"
+    assert body["automation_active"] is True
+    assert calls == [("modify", "sub_to_cancel", {"cancel_at_period_end": True})]
+
+    assert store.has_active_subscription(client_id, "google_reviews")
+    business_id = store.ensure_default_business(client_id)["business_id"]
+    auto = store.get_automation(client_id, business_id, "google_reviews")
+    assert auto["status"] == "active"
+    row = store.get_subscription(client_id, "google_reviews")
+    assert row["status"] == "trialing"
+    assert row["cancel_at_period_end"] == 1
+    assert row["current_period_end"] == str(PERIOD_END)
+
+    listed = client.get("/client/subscriptions", headers=auth)
+    shown = listed.json()["subscriptions"][0]
+    assert shown["access_until"] == "01/01/2026"
+    assert shown["cancel_at_period_end"] is True
+
+    again = client.post("/client/subscriptions/google_reviews/reactivate", headers=auth)
+    assert again.status_code == 200
+    assert again.json()["cancel_at_period_end"] is False
+    assert again.json()["status"] == "trialing"
+    assert calls[1] == ("modify", "sub_to_cancel", {"cancel_at_period_end": False})
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "active"
+    cleared = client.get("/client/subscriptions", headers=auth).json()["subscriptions"][0]
+    assert cleared["cancel_at_period_end"] is False
+    assert cleared["access_until"] is None
+
+
+def test_subscription_updated_does_not_deactivate(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "whsec_test")
+    import apps.integrations.stripe_payments as sp
+    import apps.interface.api as api_module
+
+    reg, store = _seed_paid_automation(client, "updated@example.com", status="active")
+    client_id = reg["client"]["client_id"]
+    business_id = store.ensure_default_business(client_id)["business_id"]
+
+    scheduled = {
+        "type": "customer.subscription.updated",
+        "data": {
+            "object": _basil_subscription(
+                "sub_to_cancel", status="active", cancel_at=None, item_end=PERIOD_END
+            )
+        },
+    }
+    scheduled["data"]["object"]["cancel_at"] = None
+    monkeypatch.setattr(sp, "construct_webhook_event", lambda payload, sig: scheduled)
+    resp = client.post(
+        "/internal/stripe/webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=fake"},
+    )
+    assert resp.status_code == 200
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "active"
+    assert store.has_active_subscription(client_id, "google_reviews")
+    row = store.get_subscription(client_id, "google_reviews")
+    assert row["cancel_at_period_end"] == 1
+    assert row["current_period_end"] == str(PERIOD_END)
+    assert row["status"] == "active"
+
+    terminal = {
+        "type": "customer.subscription.updated",
+        "data": {
+            "object": {
+                "id": "sub_to_cancel",
+                "status": "canceled",
+                "cancel_at_period_end": False,
+                "cancel_at": None,
+                "current_period_end": None,
+                "items": {"data": [{"current_period_end": None}]},
+            }
+        },
+    }
+    monkeypatch.setattr(sp, "construct_webhook_event", lambda payload, sig: terminal)
+    resp = client.post(
+        "/internal/stripe/webhook",
+        content=b"{}",
+        headers={"stripe-signature": "t=1,v1=fake"},
+    )
+    assert resp.status_code == 200
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "active"
 
 
 def test_checkout_persists_stripe_customer_id(

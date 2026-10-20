@@ -14,6 +14,7 @@ from apps.integrations import stripe_payments
 from apps.integrations.n8n_client import negocio_ordinal
 from apps.integrations.public_origin import origin_for_request
 from apps.interface.google_reviews_activation import activate_google_reviews_for_client
+from apps.interface.subscription_lifecycle import apply_subscription_webhook, reactivate, schedule_cancel
 from apps.orchestrator.gbp_location_claim import LocationClaimedError
 
 logger = logging.getLogger(__name__)
@@ -405,7 +406,20 @@ def register_payment_routes(
 
     @app.get("/client/subscriptions")
     def list_client_subscriptions(client: dict = Depends(get_client_user)) -> dict:
-        return {"subscriptions": store.list_client_subscriptions(client["client_id"])}
+        rows = store.list_client_subscriptions(client["client_id"])
+        return {"subscriptions": [stripe_payments.present_subscription(row) for row in rows]}
+
+    @app.post("/client/subscriptions/{automation_type}/cancel")
+    def cancel_client_subscription(
+        automation_type: str, client: dict = Depends(get_client_user)
+    ) -> dict:
+        return schedule_cancel(store, client["client_id"], automation_type)
+
+    @app.post("/client/subscriptions/{automation_type}/reactivate")
+    def reactivate_client_subscription(
+        automation_type: str, client: dict = Depends(get_client_user)
+    ) -> dict:
+        return reactivate(store, client["client_id"], automation_type)
 
     @app.post("/internal/stripe/webhook")
     async def stripe_webhook(request: Request) -> dict:
@@ -444,30 +458,7 @@ def register_payment_routes(
             "customer.subscription.updated",
             "customer.subscription.deleted",
         ):
-            sub_id = stripe_payments.stripe_id(data_object.get("id"))
-            raw_status = data_object.get("status") or "canceled"
-            if event_type == "customer.subscription.deleted":
-                raw_status = "canceled"
-            mapped = {
-                "active": "active",
-                "trialing": "trialing",
-                "past_due": "past_due",
-                "canceled": "canceled",
-                "unpaid": "unpaid",
-                "incomplete": "incomplete",
-                "incomplete_expired": "canceled",
-                "paused": "paused",
-            }.get(raw_status, raw_status)
-            if sub_id:
-                store.mark_subscriptions_by_stripe_id(sub_id, mapped)
-                if mapped in ("canceled", "unpaid"):
-                    for sub in store.list_subscriptions_by_stripe_id(sub_id):
-                        for auto in store.list_automations_by_type(
-                            sub["client_id"], sub["automation_type"]
-                        ):
-                            store.deactivate_automation(
-                                sub["client_id"], auto["business_id"], sub["automation_type"]
-                            )
+            apply_subscription_webhook(store, event_type, data_object)
 
         elif event_type == "invoice.payment_failed":
             sub_id = stripe_payments.stripe_id(data_object.get("subscription"))

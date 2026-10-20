@@ -1650,13 +1650,30 @@ class DataStore:
         sub = self.get_subscription(client_id, automation_type)
         return bool(sub and sub.get("status") in self._ACTIVE_SUB_STATUSES)
 
-    def mark_subscriptions_by_stripe_id(self, stripe_subscription_id: str, status: str) -> int:
+    def mark_subscriptions_by_stripe_id(
+        self,
+        stripe_subscription_id: str,
+        status: str,
+        *,
+        current_period_end: str | None = None,
+        cancel_at_period_end: bool | None = None,
+    ) -> int:
+        """Update every row of one Stripe subscription.
+
+        ``cancel_at_period_end=None`` leaves the flag untouched.
+        ``False`` clears a scheduled cancellation. A null period end is kept.
+        """
         now = _utc_now()
+        flag = None if cancel_at_period_end is None else (1 if cancel_at_period_end else 0)
         with self._connect() as conn:
             cur = conn.execute(
-                "UPDATE client_subscriptions SET status=?, updated_at=?"
-                " WHERE stripe_subscription_id=?",
-                (status, now, stripe_subscription_id),
+                """UPDATE client_subscriptions SET
+                   status=?,
+                   current_period_end=COALESCE(?, current_period_end),
+                   cancel_at_period_end=COALESCE(?, cancel_at_period_end),
+                   updated_at=?
+                   WHERE stripe_subscription_id=?""",
+                (status, current_period_end, flag, now, stripe_subscription_id),
             )
             return int(cur.rowcount)
 

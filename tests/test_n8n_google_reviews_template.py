@@ -127,9 +127,11 @@ def test_each_item_code_returns_object_and_openrouter_llm() -> None:
     assert params["authentication"] == "predefinedCredentialType"
     assert params["nodeCredentialType"] == "openAiApi"
     body = params["jsonBody"]
-    assert "nvidia/nemotron-3-super-120b-a12b:free" in body
-    assert "gemma-4-31b-it:free" in body
-    assert "gemma-4-26b-a4b-it:free" in body
+    assert "mistralai/mistral-small-3.2-24b-instruct" in body
+    assert "zdr: true" in body
+    assert "data_collection: 'deny'" in body
+    assert ":free" not in body
+    assert "models" not in body
     assert "español de España" in body
     assert "idioma de la reseña" in body
     assert llm["retryOnFail"] is True

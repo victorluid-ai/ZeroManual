@@ -106,12 +106,11 @@ _AVISO = """
 <p>Información exigida por el artículo 10 de la Ley 34/2002, de servicios de la sociedad de la información y de comercio electrónico (LSSI-CE).</p>
 <div class="card">
   <p><strong>Marca:</strong> ExManual</p>
-  <p><strong>Titular:</strong> <span class="pending">[PENDIENTE]</span> nombre fiscal. Solo lo conoce el titular.</p>
-  <p><strong>Forma jurídica:</strong> <span class="pending">[PENDIENTE]</span> autónomo o sociedad. No se indica aquí hasta que el titular lo confirme.</p>
+  <p><strong>Titular:</strong> Victor Luid</p>
+  <p><strong>Forma jurídica:</strong> persona física</p>
   <p><strong>NIF:</strong> <span class="pending">[PENDIENTE]</span></p>
   <p><strong>Domicilio:</strong> <span class="pending">[PENDIENTE]</span></p>
   <p><strong>Correo:</strong> <a href="mailto:hola@exmanual.com">hola@exmanual.com</a></p>
-  <p><strong>Datos registrales:</strong> <span class="pending">[PENDIENTE]</span> Registro Mercantil (tomo, folio, hoja e inscripción) si es una sociedad. Si es autónomo, este apartado no aplica y se retirará la mención.</p>
 </div>
 <h2>Actividad</h2>
 <p>ExManual ofrece a negocios suscripciones de automatización: responder reseñas de Google y, cuando estén disponibles, otras tareas del catálogo (reels, newsletters, mensajes). El servicio se contrata en este sitio y se usa desde el portal de cliente.</p>
@@ -124,10 +123,9 @@ _PRIVACIDAD = f"""
 <h2>Responsable</h2>
 <div class="card">
   <p><strong>Marca:</strong> ExManual</p>
-  <p><strong>Titular:</strong> <span class="pending">[PENDIENTE]</span> nombre fiscal.</p>
+  <p><strong>Titular:</strong> Victor Luid, persona física</p>
   <p><strong>NIF:</strong> <span class="pending">[PENDIENTE]</span></p>
   <p><strong>Domicilio:</strong> <span class="pending">[PENDIENTE]</span></p>
-  <p><strong>Forma jurídica:</strong> <span class="pending">[PENDIENTE]</span> autónomo o sociedad.</p>
   <p><strong>Contacto:</strong> <a href="mailto:hola@exmanual.com">hola@exmanual.com</a></p>
 </div>
 <h2>Qué datos tratamos</h2>
@@ -159,7 +157,7 @@ _PRIVACIDAD = f"""
   <li><strong>Stripe.</strong> Alta, cobro y cancelación de la suscripción.</li>
   <li><strong>Google.</strong> Acceso a Business Profile, identidad de la cuenta (correo) y, en la web, las tipografías servidas desde sus servidores.</li>
   <li><strong>Hostinger.</strong> Alojamiento del servicio en un VPS situado en la Unión Europea.</li>
-  <li><strong>OpenRouter.</strong> Es el proveedor de IA que redacta las respuestas a las reseñas. El flujo de n8n llama a <code>https://openrouter.ai/api/v1/chat/completions</code>. El modelo indicado en ese flujo es <code>nvidia/nemotron-3-super-120b-a12b:free</code>, con reserva <code>gemma-4-31b-it:free</code> y <code>gemma-4-26b-a4b-it:free</code>.</li>
+  <li><strong>OpenRouter.</strong> Las respuestas a las reseñas las redacta un modelo de IA de pago a través de OpenRouter, configurado sin entrenamiento con los datos y con cero retención.</li>
   <li><strong>Anthropic (Claude).</strong> Los agentes internos de la empresa pueden llamar a la API de Anthropic si hay una clave configurada (<code>apps/llm/claude_client.py</code>). Ese canal no es el que redacta las respuestas a reseñas del portal.</li>
   <li><strong>n8n autoalojado</strong> en el VPS de Hostinger. Orquesta la automatización (leer reseñas, pedir el borrador y devolverlo al portal). No es n8n Cloud.</li>
 </ul>
@@ -172,7 +170,7 @@ _PRIVACIDAD = f"""
 <p><strong>Qué se lee.</strong> Reseñas de Google Business Profile (nombre público, estrellas, texto e identificador) y la ficha (cuentas, nombre del local y dirección). También el correo de la cuenta de Google, solo para saber qué cuenta quedó conectada. Los permisos que pide el código son <code>business.manage</code>, <code>userinfo.email</code> y <code>openid</code>.</p>
 <p><strong>Gmail.</strong> El código del newsletter no usa Gmail. No hay permiso de la API de Gmail ni un flujo que lea el buzón. El catálogo describe «Mailchimp o Gmail» como conexión prevista de ese producto, que todavía no está implementada. El correo SMTP de las facturas de la propia empresa, si se configura, no es el buzón del cliente.</p>
 <p><strong>Para qué.</strong> Conectar la ficha, redactar una respuesta a cada reseña y publicarla cuando tú la apruebas o, si activas ese modo, de forma automática.</p>
-<p><strong>Qué no se hace.</strong> Esos datos no se venden. No se usan para publicidad. No se usan para entrenar modelos generales de ExManual. <span class="review">[REVISAR]</span> El texto de la reseña sale hacia OpenRouter para redactar la respuesta. Hay que dejar cerrado por escrito con ese proveedor que no entrena modelos generales con datos procedentes de las API de Google.</p>
+<p><strong>Qué no se hace.</strong> Esos datos no se venden. No se usan para publicidad. No se usan para entrenar modelos generales. Las respuestas a las reseñas las redacta un modelo de IA de pago a través de OpenRouter, configurado sin entrenamiento con los datos y con cero retención.</p>
 <p><strong>Cómo revocar el acceso.</strong> En el portal, Cuentas, desconecta Google: se borran las credenciales guardadas. También puedes retirar el permiso de la aplicación en <a href="https://myaccount.google.com/permissions">la cuenta de Google</a>. A partir de ese momento la automatización deja de leer reseñas y de publicar.</p>
 <h2>Derechos (ARSOPL) y la AEPD</h2>
 <p>Puedes pedir acceso, rectificación, supresión, oposición, limitación del tratamiento y portabilidad, y oponerte a decisiones automatizadas que te afecten de forma jurídica o similar. Para publicar respuestas sin revisión tienes que haber activado tú ese modo, y puedes volver a la aprobación en el portal.</p>
@@ -243,8 +241,7 @@ _TERMINOS = """
 <p>Hoy el alta desde la web está abierta para las reseñas de Google. El resto figura en el catálogo y se cobra con estas cifras cuando se puede contratar.</p>
 <p>Si eliges facturación anual, el importe de ese año es diez veces el precio mensual (equivale a dos meses sin cargo). Si eliges dólares en la web, el catálogo usa la misma cifra en USD. A partir del segundo negocio de la misma automatización en un mismo pago, ese negocio adicional queda al 80&nbsp;% del precio (20&nbsp;% de descuento).</p>
 <h2>Cancelación</h2>
-<p>Puedes cancelar en cualquier momento desde el portal de cliente, con el botón «Cancelar suscripción» de la automatización.</p>
-<p><span class="review">[REVISAR]</span> El efecto previsto es que la baja opere al final del periodo ya pagado y que el servicio siga hasta entonces. Hay que confirmarlo antes de dar esta frase por cerrada: la llamada actual a Stripe cancela la suscripción en el acto, no al final del periodo.</p>
+<p>Puedes cancelar en cualquier momento desde el portal de cliente, con el botón «Cancelar suscripción» de la automatización. La baja tiene efecto al final del periodo ya pagado: el servicio sigue hasta entonces y no se renueva.</p>
 <h2>Qué se publica</h2>
 <p>En reseñas de Google, el modo inicial es de aprobación: la respuesta se publica cuando tú la apruebas. Si activas las respuestas automáticas, ExManual la publica sin esa revisión. Puedes volver a la aprobación desde el portal cuando quieras. El texto lo redacta el flujo de IA a partir de la reseña; tú sigues siendo responsable de lo que queda publicado en tu ficha.</p>
 <h2>Responsabilidad</h2>
@@ -252,7 +249,7 @@ _TERMINOS = """
 <h2>Ley aplicable</h2>
 <p>Estos términos se rigen por la ley española. En los contratos con clientes que actúan en su actividad empresarial, conocen de los conflictos los juzgados españoles. El fuero concreto depende del domicilio del titular, que está <span class="pending">[PENDIENTE]</span> en el <a href="/aviso-legal">aviso legal</a>.</p>
 <h2>Desistimiento</h2>
-<p><span class="review">[REVISAR]</span> Las personas consumidoras tienen, con carácter general, 14 días para desistir. El servicio se dirige a empresas y profesionales (B2B). Confirmar si esta nota debe quedarse, adaptarse o retirarse.</p>
+<p>Las personas consumidoras tienen, con carácter general, 14 días para desistir. El servicio se dirige a empresas y profesionales (B2B).</p>
 """
 
 _PAGES: dict[str, tuple[str, str]] = {

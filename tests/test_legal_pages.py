@@ -40,9 +40,13 @@ def test_legal_pages_are_spanish_and_name_exmanual(client: TestClient, path: str
 def test_aviso_legal_marks_founder_data_pending(client: TestClient) -> None:
     text = client.get("/aviso-legal").text
     assert "LSSI" in text
-    for label in ("Titular", "NIF", "Domicilio", "Datos registrales", "autónomo o sociedad"):
-        assert label in text
-    assert text.count("[PENDIENTE]") >= 5
+    assert "Victor Luid" in text
+    assert "persona física" in text
+    assert "autónomo" not in text
+    assert "Datos registrales" not in text
+    assert "NIF" in text
+    assert "Domicilio" in text
+    assert text.count("[PENDIENTE]") == 2
 
 
 def test_privacidad_covers_gdpr_google_and_processors(client: TestClient) -> None:
@@ -56,8 +60,17 @@ def test_privacidad_covers_gdpr_google_and_processors(client: TestClient) -> Non
     assert "business.manage" in text
     assert "no usa Gmail" in text or "no usa Gmail".lower() in text.lower()
     assert "www.aepd.es" in text
-    assert "[PENDIENTE]" in text
-    assert "[REVISAR]" in text
+    assert "Victor Luid" in text
+    assert "persona física" in text
+    assert "autónomo" not in text
+    assert "un modelo de IA de pago a través de OpenRouter" in text
+    assert "sin entrenamiento con los datos" in text
+    assert "cero retención" in text
+    assert ":free" not in text
+    assert "nemotron" not in text
+    assert text.count("[PENDIENTE]") == 2
+    assert text.count("[REVISAR]") == 1
+    assert "contrato de encargo" in text
 
 
 def test_cookies_page_lists_only_technical_storage(client: TestClient) -> None:
@@ -87,8 +100,11 @@ def test_terminos_use_catalog_prices_and_review_notes(client: TestClient) -> Non
     assert "aprobación" in text
     assert "automáticas" in text
     assert "ley española" in text
-    assert "[REVISAR]" in text
+    assert "final del periodo ya pagado" in text
+    assert "14 días para desistir" in text
     assert "B2B" in text
+    assert "[REVISAR]" not in text
+    assert text.count("[PENDIENTE]") == 1
 
 
 def test_landing_and_portal_link_the_legal_pages(client: TestClient) -> None:

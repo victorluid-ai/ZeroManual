@@ -4,14 +4,35 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
+import stripe as _stripe_lib
+
 from apps.zeromanual_env import zm_env
 
 logger = logging.getLogger(__name__)
+
+# Default of stripe-python 16.0.0 (`stripe.api_version` and
+# `_ApiVersion.CURRENT`). Outbound calls use this. The Dashboard webhook
+# endpoint is still 2025-05-28.basil, so inbound events keep that shape.
+STRIPE_API_VERSION = "2026-09-30.endive"
+
+
+def _stripe_module(secret_key: str | None = None):
+    """The only place that assigns ``stripe.api_version``.
+
+    ``sys.modules`` is read on purpose: tests replace the ``stripe`` entry
+    after this module has already been imported.
+    """
+    module = sys.modules.get("stripe", _stripe_lib)
+    module.api_version = STRIPE_API_VERSION
+    if secret_key is not None:
+        module.api_key = secret_key
+    return module
 
 # Server-side catalog — never trust client-sent prices.
 # Keys are automation_type values used by /client/automations.
@@ -332,12 +353,10 @@ def ensure_stripe_customer(
     Production model: one Stripe Customer per client account, reused forever.
     We never delete Customers from the app — only cancel Subscriptions.
     """
-    import stripe
-
     cfg = settings or load_stripe_settings()
     if not cfg.secret_key:
         raise RuntimeError("Stripe no está configurado (ZEROMANUAL_STRIPE_SECRET_KEY)")
-    stripe.api_key = cfg.secret_key
+    stripe = _stripe_module(cfg.secret_key)
 
     if stripe_customer_id:
         try:
@@ -387,9 +406,7 @@ def customer_billing_currency(customer_id: str, settings: StripeSettings) -> str
     Retrieve failures propagate. The checkout route maps them to the existing
     generic payment error (HTTP 503), not to a currency 409.
     """
-    import stripe
-
-    stripe.api_key = settings.secret_key
+    stripe = _stripe_module(settings.secret_key)
     data = stripe_object_to_dict(stripe.Customer.retrieve(customer_id))
     raw = data.get("currency")
     if not raw:
@@ -420,15 +437,13 @@ def create_checkout_session(
     business onward per automation type. When omitted, falls back to the
     simple one-line-item-per-type behaviour (single implicit business).
     """
-    import stripe
-
     cfg = settings or load_stripe_settings()
     if not cfg.secret_key:
         raise RuntimeError("Stripe no está configurado (ZEROMANUAL_STRIPE_SECRET_KEY)")
 
     interval = "yearly" if billing_interval == "yearly" else "monthly"
     requested = requested_currency(currency)
-    stripe.api_key = cfg.secret_key
+    stripe = _stripe_module(cfg.secret_key)
 
     customer_id = ensure_stripe_customer(
         client_id=client_id,
@@ -547,10 +562,16 @@ def _unix_timestamp(value: Any) -> int | None:
 def subscription_access_until_unix(subscription: Any) -> int | None:
     """When paid access ends after a scheduled cancellation.
 
-    Stripe API 2025-05-28.basil leaves ``current_period_end`` null on the
-    subscription root. The date is ``cancel_at`` (equal to
-    ``items.data[0].current_period_end``). While trialing, ``cancel_at``
-    equals ``trial_end`` and ``status`` stays ``trialing``.
+    Order: ``cancel_at``, then ``items.data[0].current_period_end``, then
+    the root ``current_period_end`` for older payloads.
+
+    2025-05-28.basil (the webhook endpoint) leaves the root field null and
+    puts the date on ``cancel_at`` and the subscription item. While trialing,
+    ``cancel_at`` equals ``trial_end`` and ``status`` stays ``trialing``.
+
+    2026-09-30.endive (stripe 16 modify responses) drops ``current_period_end``
+    from Subscription. It stays on SubscriptionItem, and ``cancel_at`` is
+    unchanged. Endive does not move the period end back to the root.
     """
     data = stripe_object_to_dict(subscription)
     cancel_at = _unix_timestamp(data.get("cancel_at"))
@@ -600,10 +621,8 @@ def access_status_after_schedule(remote_status: str | None, fallback: str) -> st
 
 
 def retrieve_checkout_session(session_id: str, settings: StripeSettings | None = None) -> dict[str, Any]:
-    import stripe
-
     cfg = settings or load_stripe_settings()
-    stripe.api_key = cfg.secret_key
+    stripe = _stripe_module(cfg.secret_key)
     session = stripe.checkout.Session.retrieve(session_id)
     return stripe_object_to_dict(session)
 
@@ -614,12 +633,10 @@ def create_billing_portal_session(
     return_url: str | None = None,
     settings: StripeSettings | None = None,
 ) -> dict[str, str]:
-    import stripe
-
     cfg = settings or load_stripe_settings()
     if not cfg.secret_key:
         raise RuntimeError("Stripe no está configurado")
-    stripe.api_key = cfg.secret_key
+    stripe = _stripe_module(cfg.secret_key)
     portal = stripe.billing_portal.Session.create(
         customer=stripe_customer_id,
         return_url=return_url or f"{cfg.public_url}/client",
@@ -639,12 +656,10 @@ def cancel_subscription(
     Does not call ``Subscription.cancel`` and does not delete the Customer.
     The subscription stays ``active`` or ``trialing`` until Stripe deletes it.
     """
-    import stripe
-
     cfg = settings or load_stripe_settings()
     if not cfg.secret_key:
         raise RuntimeError("Stripe no está configurado")
-    stripe.api_key = cfg.secret_key
+    stripe = _stripe_module(cfg.secret_key)
     sub = stripe.Subscription.modify(
         stripe_subscription_id, cancel_at_period_end=True
     )
@@ -660,12 +675,10 @@ def reactivate_subscription(
 
     Stripe call: ``Subscription.modify(id, cancel_at_period_end=False)``.
     """
-    import stripe
-
     cfg = settings or load_stripe_settings()
     if not cfg.secret_key:
         raise RuntimeError("Stripe no está configurado")
-    stripe.api_key = cfg.secret_key
+    stripe = _stripe_module(cfg.secret_key)
     sub = stripe.Subscription.modify(
         stripe_subscription_id, cancel_at_period_end=False
     )
@@ -682,8 +695,7 @@ def construct_webhook_event(
     exmanual.com endpoint's secret is listed in
     ``ZEROMANUAL_STRIPE_WEBHOOK_SECRETS``.
     """
-    import stripe
-
+    stripe = _stripe_module()
     cfg = settings or load_stripe_settings()
     secrets: list[str] = []
     if cfg.webhook_secret:

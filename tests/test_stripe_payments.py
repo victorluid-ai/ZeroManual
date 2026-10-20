@@ -240,6 +240,8 @@ def test_stripe_object_helpers_normalize_metadata() -> None:
 
 # 2026-01-01 00:00:00 UTC → 01/01/2026 en Europe/Madrid.
 PERIOD_END = 1_767_225_600
+# Periodo que devuelve modify(cancel_at_period_end=False). Distinto a PERIOD_END.
+OPEN_PERIOD_END = PERIOD_END + 2_678_400
 
 
 def _basil_subscription(
@@ -251,7 +253,7 @@ def _basil_subscription(
     trial_end: int | None = None,
     item_end: int | None = PERIOD_END,
 ) -> dict:
-    """Forma real de la API 2025-05-28.basil: current_period_end raíz es None."""
+    """Webhook 2025-05-28.basil: current_period_end en la raíz es null."""
     return {
         "id": sub_id,
         "status": status,
@@ -266,19 +268,55 @@ def _basil_subscription(
     }
 
 
-def _install_fake_stripe(monkeypatch: pytest.MonkeyPatch, **shape: object):
+def _endive_subscription(
+    sub_id: str,
+    *,
+    status: str = "active",
+    scheduled: bool = True,
+    cancel_at: int | None = PERIOD_END,
+    trial_end: int | None = None,
+    item_end: int | None = PERIOD_END,
+) -> dict:
+    """Respuesta de modify en 2026-09-30.endive.
+
+    Subscription ya no tiene current_period_end. La fecha sigue en cancel_at
+    y en items.data[0].current_period_end.
+    """
+    payload = {
+        "id": sub_id,
+        "status": status,
+        "cancel_at_period_end": scheduled,
+        "cancel_at": cancel_at if scheduled else None,
+        "items": {
+            "object": "list",
+            "data": [{"id": "si_1", "current_period_end": item_end}],
+        },
+    }
+    if trial_end is not None:
+        payload["trial_end"] = trial_end
+    return payload
+
+
+def _install_fake_stripe(
+    monkeypatch: pytest.MonkeyPatch, *, form: str = "endive", **shape: object
+):
     import sys
     import types
 
     calls: list[tuple] = []
+    builder = _endive_subscription if form == "endive" else _basil_subscription
 
     class Subscription:
         @staticmethod
         def modify(sub_id, **kwargs):
             calls.append(("modify", sub_id, dict(kwargs)))
             scheduled = bool(kwargs.get("cancel_at_period_end"))
-            payload = _basil_subscription(sub_id, scheduled=scheduled, **shape)
-            return payload
+            payload_shape = dict(shape)
+            open_end = payload_shape.pop("open_item_end", None)
+            if not scheduled and open_end is not None:
+                payload_shape["item_end"] = open_end
+                payload_shape["cancel_at"] = None
+            return builder(sub_id, scheduled=scheduled, **payload_shape)
 
         @staticmethod
         def cancel(sub_id, **kwargs):
@@ -293,19 +331,34 @@ def _install_fake_stripe(monkeypatch: pytest.MonkeyPatch, **shape: object):
     return calls
 
 
-def test_access_until_prefers_cancel_at_then_subscription_item() -> None:
+def test_access_until_reads_basil_webhook_and_endive_modify() -> None:
     from apps.integrations.stripe_payments import (
         format_access_until,
         subscription_access_until_unix,
     )
 
-    both = _basil_subscription("sub_both", cancel_at=PERIOD_END, item_end=PERIOD_END + 86_400)
-    assert subscription_access_until_unix(both) == PERIOD_END
+    basil = _basil_subscription(
+        "sub_basil", cancel_at=PERIOD_END, item_end=PERIOD_END + 86_400
+    )
+    assert basil["current_period_end"] is None
+    assert subscription_access_until_unix(basil) == PERIOD_END
     assert format_access_until(PERIOD_END) == "01/01/2026"
 
-    fallback = _basil_subscription("sub_item", cancel_at=None, item_end=PERIOD_END)
-    fallback["cancel_at"] = None
-    assert subscription_access_until_unix(fallback) == PERIOD_END
+    basil_item = _basil_subscription("sub_basil_item", cancel_at=None, item_end=PERIOD_END)
+    basil_item["cancel_at"] = None
+    assert subscription_access_until_unix(basil_item) == PERIOD_END
+
+    endive = _endive_subscription(
+        "sub_endive", cancel_at=PERIOD_END, item_end=PERIOD_END + 86_400
+    )
+    assert "current_period_end" not in endive
+    assert subscription_access_until_unix(endive) == PERIOD_END
+
+    endive_item = _endive_subscription(
+        "sub_endive_item", scheduled=False, cancel_at=None, item_end=OPEN_PERIOD_END
+    )
+    assert endive_item["cancel_at"] is None
+    assert subscription_access_until_unix(endive_item) == OPEN_PERIOD_END
 
     root_only = {
         "cancel_at": None,
@@ -313,6 +366,20 @@ def test_access_until_prefers_cancel_at_then_subscription_item() -> None:
         "items": {"data": [{}]},
     }
     assert subscription_access_until_unix(root_only) == PERIOD_END
+
+
+def test_api_version_is_the_stripe_16_default() -> None:
+    import stripe
+    from stripe._api_version import _ApiVersion
+
+    from apps.integrations.stripe_payments import STRIPE_API_VERSION, _stripe_module
+
+    assert stripe.VERSION == "16.0.0"
+    assert _ApiVersion.CURRENT == "2026-09-30.endive"
+    assert STRIPE_API_VERSION == _ApiVersion.CURRENT
+    module = _stripe_module()
+    assert module.api_version == "2026-09-30.endive"
+    assert module is stripe
 
 
 def test_cancel_subscription_modifies_at_period_end(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -323,21 +390,27 @@ def test_cancel_subscription_modifies_at_period_end(monkeypatch: pytest.MonkeyPa
     remote = sp.cancel_subscription("sub_trial")
     assert calls == [("modify", "sub_trial", {"cancel_at_period_end": True})]
     assert remote["status"] == "trialing"
-    assert remote["current_period_end"] is None
+    assert "current_period_end" not in remote
     assert remote["cancel_at"] == PERIOD_END
     assert remote["trial_end"] == PERIOD_END
+    assert remote["items"]["data"][0]["current_period_end"] == PERIOD_END
     assert sp.subscription_access_until_unix(remote) == PERIOD_END
+    assert sp._stripe_module().api_version == "2026-09-30.endive"
 
 
 def test_reactivate_subscription_clears_period_end_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
     import apps.integrations.stripe_payments as sp
 
-    calls = _install_fake_stripe(monkeypatch, status="active")
+    calls = _install_fake_stripe(
+        monkeypatch, status="active", open_item_end=OPEN_PERIOD_END
+    )
     remote = sp.reactivate_subscription("sub_back")
     assert calls == [("modify", "sub_back", {"cancel_at_period_end": False})]
     assert remote["cancel_at"] is None
     assert remote["status"] == "active"
+    assert "current_period_end" not in remote
+    assert sp.subscription_access_until_unix(remote) == OPEN_PERIOD_END
 
 
 def _seed_paid_automation(client: TestClient, email: str, *, status: str = "trialing") -> tuple[dict, dict]:
@@ -361,7 +434,12 @@ def test_schedule_cancel_keeps_trial_and_automation(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
-    calls = _install_fake_stripe(monkeypatch, status="trialing", trial_end=PERIOD_END)
+    calls = _install_fake_stripe(
+        monkeypatch,
+        status="trialing",
+        trial_end=PERIOD_END,
+        open_item_end=OPEN_PERIOD_END,
+    )
 
     reg, store = _seed_paid_automation(client, "unsub@example.com", status="trialing")
     client_id = reg["client"]["client_id"]
@@ -399,6 +477,9 @@ def test_schedule_cancel_keeps_trial_and_automation(
     cleared = client.get("/client/subscriptions", headers=auth).json()["subscriptions"][0]
     assert cleared["cancel_at_period_end"] is False
     assert cleared["access_until"] is None
+    assert store.get_subscription(client_id, "google_reviews")["current_period_end"] == str(
+        OPEN_PERIOD_END
+    )
 
 
 def test_subscription_updated_does_not_deactivate(
@@ -436,12 +517,25 @@ def test_subscription_updated_does_not_deactivate(
     assert row["current_period_end"] == str(PERIOD_END)
     assert row["status"] == "active"
 
+
+@pytest.mark.parametrize("raw_status", ["unpaid", "canceled", "incomplete_expired"])
+def test_subscription_updated_terminal_status_deactivates(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, raw_status: str
+) -> None:
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setenv("ZEROMANUAL_STRIPE_WEBHOOK_SECRET", "whsec_test")
+    import apps.integrations.stripe_payments as sp
+    import apps.interface.api as api_module
+
+    reg, store = _seed_paid_automation(client, f"{raw_status}@example.com", status="active")
+    client_id = reg["client"]["client_id"]
+    business_id = store.ensure_default_business(client_id)["business_id"]
     terminal = {
         "type": "customer.subscription.updated",
         "data": {
             "object": {
                 "id": "sub_to_cancel",
-                "status": "canceled",
+                "status": raw_status,
                 "cancel_at_period_end": False,
                 "cancel_at": None,
                 "current_period_end": None,
@@ -456,7 +550,10 @@ def test_subscription_updated_does_not_deactivate(
         headers={"stripe-signature": "t=1,v1=fake"},
     )
     assert resp.status_code == 200
-    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "active"
+    assert store.get_automation(client_id, business_id, "google_reviews")["status"] == "inactive"
+    assert not store.has_active_subscription(client_id, "google_reviews")
+    expected = "canceled" if raw_status == "incomplete_expired" else raw_status
+    assert store.get_subscription(client_id, "google_reviews")["status"] == expected
 
 
 def test_checkout_persists_stripe_customer_id(

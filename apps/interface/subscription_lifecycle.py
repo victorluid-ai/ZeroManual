@@ -19,6 +19,10 @@ _STATUS_MAP = {
     "paused": "paused",
 }
 
+# Master apagaba la automatización cuando el status mapeado era canceled o
+# unpaid. incomplete_expired se mapea a canceled, así que también apaga.
+_DEACTIVATE_STATUSES = frozenset({"unpaid", "canceled", "incomplete_expired"})
+
 
 def owned_stripe_subscription(store: Any, client_id: str, automation_type: str) -> tuple[dict, str]:
     sub = store.get_subscription(client_id, automation_type)
@@ -74,9 +78,11 @@ def reactivate(store: Any, client_id: str, automation_type: str) -> dict:
     status = stripe_payments.access_status_after_schedule(
         remote.get("status"), str(sub.get("status") or "active")
     )
+    end_unix = stripe_payments.subscription_access_until_unix(remote)
     store.mark_subscriptions_by_stripe_id(
         stripe_sub_id,
         status,
+        current_period_end=str(end_unix) if end_unix else None,
         cancel_at_period_end=False,
     )
     return {
@@ -96,7 +102,13 @@ def deactivate_paid_automations(store: Any, stripe_subscription_id: str) -> None
 
 
 def apply_subscription_webhook(store: Any, event_type: str, data_object: dict[str, Any]) -> None:
-    """Sincroniza la suscripción. Solo ``deleted`` apaga la automatización."""
+    """Sincroniza la suscripción.
+
+    ``deleted`` apaga la automatización. ``updated`` también la apaga si el
+    status es ``unpaid``, ``canceled`` o ``incomplete_expired``. Un cambio
+    solo de ``cancel_at_period_end`` (la suscripción sigue active o trialing)
+    no la apaga.
+    """
     sub_id = stripe_payments.stripe_id(data_object.get("id"))
     if not sub_id:
         return
@@ -112,10 +124,6 @@ def apply_subscription_webhook(store: Any, event_type: str, data_object: dict[st
     mapped = _STATUS_MAP.get(raw_status, raw_status)
     scheduled = data_object.get("cancel_at_period_end")
     flag = bool(scheduled) if "cancel_at_period_end" in data_object else None
-    # Una baja programada no es un estado terminal. En prueba, sigue en trialing.
-    if flag and mapped in ("canceled", "unpaid"):
-        # La baja programada no cierra el acceso. En prueba Stripe manda status=trialing.
-        mapped = "active"
     end_unix = stripe_payments.subscription_access_until_unix(data_object) if flag else None
     store.mark_subscriptions_by_stripe_id(
         sub_id,
@@ -123,3 +131,5 @@ def apply_subscription_webhook(store: Any, event_type: str, data_object: dict[st
         current_period_end=str(end_unix) if end_unix else None,
         cancel_at_period_end=flag,
     )
+    if raw_status in _DEACTIVATE_STATUSES:
+        deactivate_paid_automations(store, sub_id)
